@@ -26,5 +26,8 @@ def set_tenant_context(db: Session, tenant_id: str) -> None:
 
     Debe llamarse en cada request autenticado, antes de cualquier query.
     Sin esto, las politicas RLS de Postgres no devuelven filas.
+
+    Postgres no acepta parametros bindeados en `SET LOCAL` (es un comando,
+    no una expresion): hay que usar `set_config`, que si los acepta.
     """
-    db.execute(text("SET LOCAL app.current_tenant = :tid"), {"tid": tenant_id})
+    db.execute(text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id})

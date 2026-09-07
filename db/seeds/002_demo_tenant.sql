@@ -57,7 +57,7 @@ BEGIN
   -- Usuario admin. Password: admin123 (cambiar en cualquier entorno real)
   INSERT INTO users (tenant_id, branch_id, role_id, name, email, password_hash)
   VALUES (t_id, b_id, role_admin, 'Admin Demo', 'admin@demo.local',
-          '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewYyKcbGvUJDkm5.');
+          '$2b$12$6Uu.8PPEP97PeEmhjuC5te6cXlQ2n7VXZ72gnEvP8cW8DAf9LbvQy');
 
   -- Horario: lunes a domingo 10:00 - 22:00
   INSERT INTO branch_schedules (branch_id, weekday, opens_at, closes_at)
