@@ -12,10 +12,11 @@ declare(strict_types=1);
 use App\Api\Routes\AdminRoutes;
 use App\Api\Routes\AuthRoutes;
 use App\Api\Routes\MenuRoutes;
+use App\Api\Routes\OrderRoutes;
 
 AuthRoutes::register($router);
 AdminRoutes::register($router);
 MenuRoutes::register($router);
+OrderRoutes::register($router);
 
-// Siguiente en migrarse: OrderRoutes, KitchenRoutes, PaymentRoutes,
-// ReportRoutes (ver app/api/v1/router.py).
+// Siguiente en migrarse: ReportRoutes (ver app/api/v1/router.py).

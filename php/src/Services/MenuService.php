@@ -13,36 +13,6 @@ use App\Repositories\BranchRepository;
 use App\Repositories\MenuRepository;
 use App\Repositories\TaxRateRepository;
 
-final class MenuError extends \RuntimeException
-{
-}
-
-/** Producto tal como lo ve quien vende: precio y disponibilidad ya resueltos para su sucursal. */
-final class MenuItemView
-{
-    /** @param \App\Models\ModifierGroup[] $modifierGroups */
-    public function __construct(
-        public readonly string $id,
-        public readonly string $name,
-        public readonly ?string $description,
-        public readonly int $priceCents,
-        public readonly bool $isAvailable,
-        public readonly array $modifierGroups,
-    ) {
-    }
-}
-
-final class MenuCategoryView
-{
-    /** @param MenuItemView[] $items */
-    public function __construct(
-        public readonly string $id,
-        public readonly string $name,
-        public readonly array $items,
-    ) {
-    }
-}
-
 final class MenuService
 {
     /**

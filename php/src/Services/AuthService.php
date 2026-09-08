@@ -15,10 +15,6 @@ use App\Repositories\RoleRepository;
 use App\Repositories\TenantRepository;
 use App\Repositories\UserRepository;
 
-final class AuthError extends \RuntimeException
-{
-}
-
 final class AuthService
 {
     /**

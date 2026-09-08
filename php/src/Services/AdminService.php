@@ -22,10 +22,6 @@ use App\Repositories\TenantRepository;
 use App\Repositories\UserRepository;
 use PDO;
 
-final class AdminError extends \RuntimeException
-{
-}
-
 /**
  * Casos de uso de administracion: configuracion, sucursales, usuarios y roles.
  *

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Core\Row;
-use App\Domain\OrderStatus;
 use App\Domain\StatusTransition;
+use App\Models\OrderStatusRow;
 use PDO;
 
 final class OrderStatusRepository
@@ -15,43 +15,32 @@ final class OrderStatusRepository
     {
     }
 
-    private static function hydrate(array $row): OrderStatus
-    {
-        return new OrderStatus(
-            id: $row['id'],
-            code: $row['code'],
-            category: $row['category'],
-            isInitial: Row::bool($row['is_initial']),
-            isFinal: Row::bool($row['is_final']),
-        );
-    }
-
-    public function getInitial(string $tenantId): ?OrderStatus
+    public function getInitial(string $tenantId): ?OrderStatusRow
     {
         $stmt = $this->pdo->prepare(
             'SELECT * FROM order_statuses WHERE tenant_id = :tenant_id AND is_initial = true'
         );
         $stmt->execute(['tenant_id' => $tenantId]);
         $row = $stmt->fetch();
-        return $row === false ? null : self::hydrate($row);
+        return $row === false ? null : OrderStatusRow::fromRow($row);
     }
 
-    public function get(string $tenantId, string $statusId): ?OrderStatus
+    public function get(string $tenantId, string $statusId): ?OrderStatusRow
     {
         $stmt = $this->pdo->prepare('SELECT * FROM order_statuses WHERE tenant_id = :tenant_id AND id = :id');
         $stmt->execute(['tenant_id' => $tenantId, 'id' => $statusId]);
         $row = $stmt->fetch();
-        return $row === false ? null : self::hydrate($row);
+        return $row === false ? null : OrderStatusRow::fromRow($row);
     }
 
-    /** @return OrderStatus[] */
+    /** @return OrderStatusRow[] */
     public function listStatuses(string $tenantId): array
     {
         $stmt = $this->pdo->prepare(
             'SELECT * FROM order_statuses WHERE tenant_id = :tenant_id ORDER BY sort_order'
         );
         $stmt->execute(['tenant_id' => $tenantId]);
-        return array_map(self::hydrate(...), $stmt->fetchAll());
+        return array_map(OrderStatusRow::fromRow(...), $stmt->fetchAll());
     }
 
     /** @return StatusTransition[] */
