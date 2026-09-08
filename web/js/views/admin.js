@@ -6,10 +6,11 @@
 
 import { api } from '../api.js';
 import { percent } from '../format.js';
+import { icon } from '../icons.js';
 import { can } from '../session.js';
 import {
-  badge, button, card, confirm, empty, errorBox, field, h, input, loading, render, select,
-  titledCard, toast,
+  badge, button, card, confirm, empty, errorBox, field, h, input, loading, pageHeader, render,
+  select, skeleton, titledCard, toast,
 } from '../ui.js';
 
 const CANALES = [
@@ -21,17 +22,22 @@ const CANALES = [
 ];
 
 const SECCIONES = [
-  { clave: 'config', etiqueta: 'Cómo opera', permiso: 'settings.view' },
-  { clave: 'sucursales', etiqueta: 'Sucursales', permiso: 'settings.view' },
-  { clave: 'impuestos', etiqueta: 'Impuestos', permiso: 'settings.view' },
-  { clave: 'equipo', etiqueta: 'Equipo', permiso: 'users.manage' },
+  { clave: 'config', etiqueta: 'Cómo opera', icono: 'admin', permiso: 'settings.view' },
+  { clave: 'sucursales', etiqueta: 'Sucursales', icono: 'sucursal', permiso: 'settings.view' },
+  { clave: 'impuestos', etiqueta: 'Impuestos', icono: 'impuesto', permiso: 'settings.view' },
+  { clave: 'equipo', etiqueta: 'Equipo', icono: 'clientes', permiso: 'users.manage' },
 ];
 
 export async function admin(outlet) {
-  const nav = h('div', { class: 'flex flex-wrap gap-2 mb-4' });
+  const nav = h('div', { class: 'flex flex-wrap gap-1 p-1 bg-stone-200/60 rounded-xl w-fit mb-4' });
   const panel = h('div', { class: 'space-y-4' });
-  render(outlet, h('h1', { class: 'text-lg font-semibold text-slate-900 mb-4' }, 'Administración'), nav, panel);
-  render(panel, loading());
+  render(
+    outlet,
+    pageHeader('Administración', { hint: 'Configura cómo opera tu restaurante y quién puede hacer qué.' }),
+    nav,
+    panel
+  );
+  render(panel, skeleton({ rows: 2 }));
 
   const estado = {};
   try {
@@ -69,11 +75,12 @@ export async function admin(outlet) {
         h(
           'button',
           {
-            class: `px-4 py-2 rounded-lg text-sm font-medium ${
-              s.clave === activa ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200'
+            class: `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+              s.clave === activa ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'
             }`,
             onClick: () => mostrar(s.clave),
           },
+          icon(s.icono, { size: 16 }),
           s.etiqueta
         )
       )
@@ -103,7 +110,7 @@ function seccionConfig({ ajustes }, refrescar) {
     code,
     control: h('input', {
       type: 'checkbox',
-      class: 'w-4 h-4 rounded border-slate-300',
+      class: 'w-4 h-4 rounded border-stone-300',
       checked: ajustes.channels.includes(code),
       disabled: !editable,
     }),
@@ -117,10 +124,10 @@ function seccionConfig({ ajustes }, refrescar) {
       'Cómo opera el restaurante',
       h(
         'p',
-        { class: 'text-sm text-slate-600 mb-4' },
+        { class: 'text-sm text-stone-600 mb-4' },
         `${ajustes.name} · ${ajustes.business_type} · ${ajustes.currency}`
       ),
-      h('div', { class: 'text-sm font-medium text-slate-700 mb-2' }, 'Canales de venta activos'),
+      h('div', { class: 'text-sm font-medium text-stone-700 mb-2' }, 'Canales de venta activos'),
       h(
         'div',
         { class: 'flex flex-wrap gap-4 mb-4' },
@@ -150,11 +157,11 @@ function seccionConfig({ ajustes }, refrescar) {
               }
             },
           })
-        : h('p', { class: 'text-xs text-slate-500' }, 'No tienes permiso para editar esta configuración.')
+        : h('p', { class: 'text-xs text-stone-500' }, 'No tienes permiso para editar esta configuración.')
     ),
     h(
       'p',
-      { class: 'text-xs text-slate-500 px-1' },
+      { class: 'text-xs text-stone-500 px-1' },
       'Esto cambia cómo se comporta el sistema sin tocar código: los canales apagados se rechazan al tomar un pedido, y sin mesas ni propina esos campos desaparecen de la pantalla de venta.'
     ),
   ];
@@ -179,7 +186,7 @@ function seccionSucursales({ sucursales, ajustes }, refrescar) {
       sucursales.length
         ? h(
             'div',
-            { class: 'divide-y divide-slate-100' },
+            { class: 'divide-y divide-stone-100' },
             sucursales.map((b) =>
               h(
                 'div',
@@ -189,12 +196,12 @@ function seccionSucursales({ sucursales, ajustes }, refrescar) {
                   { class: 'flex-1 min-w-[180px]' },
                   h(
                     'div',
-                    { class: 'font-medium text-sm text-slate-900 flex items-center gap-2' },
+                    { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
                     b.name,
                     badge(b.code),
                     b.is_active ? null : badge('Inactiva', 'warn')
                   ),
-                  h('div', { class: 'text-xs text-slate-500' }, [b.timezone, b.address].filter(Boolean).join(' · '))
+                  h('div', { class: 'text-xs text-stone-500' }, [b.timezone, b.address].filter(Boolean).join(' · '))
                 ),
                 gestiona
                   ? button(b.is_active ? 'Desactivar' : 'Activar', {
@@ -287,8 +294,8 @@ async function verMesas(sucursal, host, ajustes) {
     return render(host, errorBox(error.message));
   }
 
-  const codigo = input({ placeholder: 'M1', class: 'w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm' });
-  const capacidad = input({ type: 'number', min: '1', value: '4', class: 'w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm' });
+  const codigo = input({ placeholder: 'M1', class: 'w-28 rounded-lg border border-stone-300 px-3 py-2 text-sm' });
+  const capacidad = input({ type: 'number', min: '1', value: '4', class: 'w-24 rounded-lg border border-stone-300 px-3 py-2 text-sm' });
 
   render(
     host,
@@ -301,13 +308,13 @@ async function verMesas(sucursal, host, ajustes) {
             mesas.map((m) =>
               h(
                 'span',
-                { class: 'border border-slate-300 rounded-lg px-3 py-1.5 text-sm' },
+                { class: 'border border-stone-300 rounded-lg px-3 py-1.5 text-sm' },
                 m.code,
-                h('span', { class: 'text-slate-500' }, ` · ${m.capacity} personas`)
+                h('span', { class: 'text-stone-500' }, ` · ${m.capacity} personas`)
               )
             )
           )
-        : h('p', { class: 'text-sm text-slate-500 mb-3' }, 'Esta sucursal todavía no tiene mesas.'),
+        : h('p', { class: 'text-sm text-stone-500 mb-3' }, 'Esta sucursal todavía no tiene mesas.'),
       h(
         'div',
         { class: 'flex flex-wrap gap-2 items-end' },
@@ -350,7 +357,7 @@ function seccionImpuestos({ impuestos }, refrescar) {
       impuestos.length
         ? h(
             'div',
-            { class: 'divide-y divide-slate-100' },
+            { class: 'divide-y divide-stone-100' },
             impuestos.map((t) =>
               h(
                 'div',
@@ -358,10 +365,10 @@ function seccionImpuestos({ impuestos }, refrescar) {
                 h(
                   'div',
                   { class: 'flex-1 min-w-[180px]' },
-                  h('div', { class: 'font-medium text-sm text-slate-900' }, t.name),
+                  h('div', { class: 'font-medium text-sm text-stone-900' }, t.name),
                   h(
                     'div',
-                    { class: 'text-xs text-slate-500 tabular-nums' },
+                    { class: 'text-xs text-stone-500 tabular-nums' },
                     `${percent(t.rate)} · ${t.included_in_price ? 'incluido en el precio' : 'se suma al precio'}`
                   )
                 ),
@@ -448,7 +455,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
   const rolNombre = input({ placeholder: 'Mesero' });
   const casillasPermisos = permisos.map((p) => ({
     code: p.code,
-    control: h('input', { type: 'checkbox', class: 'mt-0.5 w-4 h-4 rounded border-slate-300' }),
+    control: h('input', { type: 'checkbox', class: 'mt-0.5 w-4 h-4 rounded border-stone-300' }),
     descripcion: p.description,
   }));
 
@@ -457,7 +464,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
       'Usuarios',
       h(
         'div',
-        { class: 'divide-y divide-slate-100' },
+        { class: 'divide-y divide-stone-100' },
         usuarios.map((u) =>
           h(
             'div',
@@ -465,8 +472,8 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
             h(
               'div',
               { class: 'flex-1 min-w-[180px]' },
-              h('div', { class: 'font-medium text-sm text-slate-900' }, u.name),
-              h('div', { class: 'text-xs text-slate-500' }, `${u.email} · ${u.role_code}`)
+              h('div', { class: 'font-medium text-sm text-stone-900' }, u.name),
+              h('div', { class: 'text-xs text-stone-500' }, `${u.email} · ${u.role_code}`)
             ),
             u.is_active ? badge('Activo', 'ok') : badge('Inactivo'),
             button(u.is_active ? 'Desactivar' : 'Activar', {
@@ -534,21 +541,21 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
       'Roles',
       h(
         'div',
-        { class: 'divide-y divide-slate-100' },
+        { class: 'divide-y divide-stone-100' },
         roles.map((r) =>
           h(
             'div',
             { class: 'py-3' },
             h(
               'div',
-              { class: 'font-medium text-sm text-slate-900 flex items-center gap-2' },
+              { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
               r.name,
               badge(r.code),
               r.is_system ? badge('Del sistema', 'info') : null
             ),
             h(
               'div',
-              { class: 'text-xs text-slate-500 mt-1' },
+              { class: 'text-xs text-stone-500 mt-1' },
               `${r.permissions.length} permisos: ${r.permissions.join(', ')}`
             )
           )
@@ -566,7 +573,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
       ),
       h(
         'div',
-        { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-slate-200 rounded-lg p-2' },
+        { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-stone-200 rounded-lg p-2' },
         casillasPermisos.map((p) =>
           h(
             'label',
@@ -577,7 +584,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
               {},
               h('span', { class: 'font-mono text-xs' }, p.code),
               h('br'),
-              h('span', { class: 'text-xs text-slate-500' }, p.descripcion ?? '')
+              h('span', { class: 'text-xs text-stone-500' }, p.descripcion ?? '')
             )
           )
         )
@@ -605,7 +612,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
       ),
       h(
         'p',
-        { class: 'text-xs text-slate-500 mt-2' },
+        { class: 'text-xs text-stone-500 mt-2' },
         'El catálogo de permisos es fijo; lo configurable es cómo se agrupan en roles.'
       )
     ),

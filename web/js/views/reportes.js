@@ -8,7 +8,7 @@
 import { api, query } from '../api.js';
 import { isoDate, money, number } from '../format.js';
 import { can } from '../session.js';
-import { button, card, errorBox, h, loading, render, toast } from '../ui.js';
+import { button, card, errorBox, h, pageHeader, render, skeleton } from '../ui.js';
 import { canal } from './cocina.js';
 
 const SERIE = '#2a78d6'; // validado para contraste sobre superficie blanca
@@ -19,9 +19,9 @@ const RANGOS = [
 ];
 
 export async function reportes(outlet) {
-  const desde = h('input', { type: 'date', class: 'rounded-lg border border-slate-300 px-2 py-1.5 text-sm' });
-  const hasta = h('input', { type: 'date', class: 'rounded-lg border border-slate-300 px-2 py-1.5 text-sm' });
-  const sucursal = h('select', { class: 'rounded-lg border border-slate-300 px-2 py-1.5 text-sm' });
+  const desde = h('input', { type: 'date', class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
+  const hasta = h('input', { type: 'date', class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
+  const sucursal = h('select', { class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
   const contenido = h('div', { class: 'space-y-4' });
 
   function aplicarRango(dias) {
@@ -49,7 +49,7 @@ export async function reportes(outlet) {
     )
   );
 
-  render(outlet, h('div', { class: 'space-y-4' }, filtros, contenido));
+  render(outlet, pageHeader('Reportes', { hint: 'Solo cuenta lo que se completó y se pagó.' }), h('div', { class: 'space-y-4' }, filtros, contenido));
 
   if (can('settings.view')) {
     try {
@@ -65,7 +65,7 @@ export async function reportes(outlet) {
   }
 
   async function cargar() {
-    render(contenido, loading('Calculando…'));
+    render(contenido, skeleton({ rows: 3 }));
     const qs = query({ from_date: desde.value, to_date: hasta.value, branch_id: sucursal.value });
 
     let ventas, productos, tiempos, horas;
@@ -88,7 +88,7 @@ export async function reportes(outlet) {
 }
 
 const etiqueta = (texto, control) =>
-  h('label', { class: 'block' }, h('span', { class: 'block text-xs text-slate-600 mb-1' }, texto), control);
+  h('label', { class: 'block' }, h('span', { class: 'block text-xs text-stone-600 mb-1' }, texto), control);
 
 function panel(ventas, productos, tiempos, horas) {
   const t = ventas.totals;
@@ -97,11 +97,11 @@ function panel(ventas, productos, tiempos, horas) {
   return [
     // Un solo número protagonista por vista.
     card(
-      h('div', { class: 'text-sm text-slate-600' }, 'Ingresos del período'),
-      h('div', { class: 'text-5xl font-semibold text-slate-900 mt-1' }, money(t.revenue)),
+      h('div', { class: 'text-sm text-stone-600' }, 'Ingresos del período'),
+      h('div', { class: 'text-5xl font-semibold text-stone-900 mt-1' }, money(t.revenue)),
       h(
         'div',
-        { class: 'text-sm text-slate-500 mt-2' },
+        { class: 'text-sm text-stone-500 mt-2' },
         `${ventas.from_date} a ${ventas.to_date} · solo pedidos completados`
       )
     ),
@@ -167,9 +167,9 @@ function panel(ventas, productos, tiempos, horas) {
 
 const tarjetaDato = (titulo, valor, pie) =>
   card(
-    h('div', { class: 'text-sm text-slate-600' }, titulo),
-    h('div', { class: 'text-2xl font-semibold text-slate-900 mt-1' }, valor),
-    pie ? h('div', { class: 'text-xs text-slate-500 mt-1' }, pie) : null
+    h('div', { class: 'text-sm text-stone-600' }, titulo),
+    h('div', { class: 'text-2xl font-semibold text-stone-900 mt-1' }, valor),
+    pie ? h('div', { class: 'text-xs text-stone-500 mt-1' }, pie) : null
   );
 
 function columnas(titulo, filas, { etiquetaDe, valorDe, formato }) {
@@ -177,11 +177,11 @@ function columnas(titulo, filas, { etiquetaDe, valorDe, formato }) {
   const maximo = Math.max(...filas.map(valorDe));
 
   return card(
-    h('h3', { class: 'font-semibold text-slate-900' }, titulo),
-    h('p', { class: 'text-xs text-slate-500 mb-3 tabular-nums' }, `Máximo ${formato(maximo)}`),
+    h('h3', { class: 'font-semibold text-stone-900' }, titulo),
+    h('p', { class: 'text-xs text-stone-500 mb-3 tabular-nums' }, `Máximo ${formato(maximo)}`),
     h(
       'div',
-      { class: 'h-40 flex items-stretch gap-1 border-b border-slate-200' },
+      { class: 'h-40 flex items-stretch gap-1 border-b border-stone-200' },
       filas.map((fila) => {
         const valor = valorDe(fila);
         const alto = maximo > 0 ? Math.max((valor / maximo) * 100, 2) : 2;
@@ -197,7 +197,7 @@ function columnas(titulo, filas, { etiquetaDe, valorDe, formato }) {
               style: `height:${alto}%; background:${SERIE}`,
             })
           ),
-          h('div', { class: 'text-[10px] text-slate-500 truncate w-full text-center' }, etiquetaDe(fila))
+          h('div', { class: 'text-[10px] text-stone-500 truncate w-full text-center' }, etiquetaDe(fila))
         );
       })
     )
@@ -209,7 +209,7 @@ function barras(titulo, filas, { etiquetaDe, valorDe, formato, detalleDe }) {
   const maximo = Math.max(...filas.map(valorDe));
 
   return card(
-    h('h3', { class: 'font-semibold text-slate-900 mb-3' }, titulo),
+    h('h3', { class: 'font-semibold text-stone-900 mb-3' }, titulo),
     h(
       'div',
       { class: 'space-y-3' },
@@ -222,12 +222,12 @@ function barras(titulo, filas, { etiquetaDe, valorDe, formato, detalleDe }) {
           h(
             'div',
             { class: 'flex justify-between gap-2 text-sm' },
-            h('span', { class: 'text-slate-900 truncate' }, etiquetaDe(fila)),
+            h('span', { class: 'text-stone-900 truncate' }, etiquetaDe(fila)),
             h(
               'span',
-              { class: 'text-slate-600 tabular-nums whitespace-nowrap' },
+              { class: 'text-stone-600 tabular-nums whitespace-nowrap' },
               formato(valor),
-              detalleDe ? h('span', { class: 'text-slate-400' }, ` ${detalleDe(fila)}`) : null
+              detalleDe ? h('span', { class: 'text-stone-400' }, ` ${detalleDe(fila)}`) : null
             )
           ),
           h(
@@ -243,21 +243,21 @@ function barras(titulo, filas, { etiquetaDe, valorDe, formato, detalleDe }) {
 
 const sinDatos = (titulo) =>
   card(
-    h('h3', { class: 'font-semibold text-slate-900 mb-2' }, titulo),
-    h('p', { class: 'text-sm text-slate-500' }, 'Sin datos en este período.')
+    h('h3', { class: 'font-semibold text-stone-900 mb-2' }, titulo),
+    h('p', { class: 'text-sm text-stone-500' }, 'Sin datos en este período.')
   );
 
 function tablaDeDatos(porDia) {
   return h(
     'details',
-    { class: 'bg-white rounded-xl border border-slate-200 p-4' },
-    h('summary', { class: 'cursor-pointer font-semibold text-slate-900' }, 'Ver los datos en tabla'),
+    { class: 'bg-white rounded-xl border border-stone-200 p-4' },
+    h('summary', { class: 'cursor-pointer font-semibold text-stone-900' }, 'Ver los datos en tabla'),
     h(
       'table',
       { class: 'w-full text-sm mt-3' },
       h(
         'thead',
-        { class: 'text-left text-slate-500 border-b border-slate-200' },
+        { class: 'text-left text-stone-500 border-b border-stone-200' },
         h(
           'tr',
           {},
@@ -273,13 +273,13 @@ function tablaDeDatos(porDia) {
           ? porDia.map((r) =>
               h(
                 'tr',
-                { class: 'border-b border-slate-100' },
+                { class: 'border-b border-stone-100' },
                 h('td', { class: 'py-1' }, r.day),
                 h('td', { class: 'py-1 text-right' }, number(r.orders)),
                 h('td', { class: 'py-1 text-right' }, money(r.revenue))
               )
             )
-          : h('tr', {}, h('td', { colspan: '3', class: 'py-3 text-slate-500' }, 'Sin ventas en el período.'))
+          : h('tr', {}, h('td', { colspan: '3', class: 'py-3 text-stone-500' }, 'Sin ventas en el período.'))
       )
     )
   );

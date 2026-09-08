@@ -1,50 +1,49 @@
 // Toma de pedidos y caja del mostrador.
 //
-// Es la pantalla que más se usa y suele tocarse en una tableta, así que los
-// productos son botones grandes y lo que el restaurante no usa (mesas,
-// propina) directamente no aparece: lo dice su configuración, no un if.
+// Es la pantalla que más se usa y suele tocarse en una tableta, de pie: los
+// productos son objetivos grandes, el total está siempre visible y lo que el
+// restaurante no usa (mesas, propina) no aparece, porque lo dice su
+// configuración y no un condicional en el código.
 
 import { api } from '../api.js';
 import { money, moneyExact } from '../format.js';
+import { icon } from '../icons.js';
 import { me } from '../session.js';
-import { badge, button, card, empty, errorBox, h, input, loading, render, toast } from '../ui.js';
+import { badge, button, card, empty, errorBox, h, input, render, skeleton, toast } from '../ui.js';
 import { canal } from './cocina.js';
 
 export async function pedidos(outlet) {
   const contenido = h('div');
-  let pestana = 'nuevo';
-
-  const pestanas = h('div', { class: 'flex gap-2 mb-4' });
+  const pestanas = h('div', { class: 'flex gap-1 p-1 bg-stone-200/60 rounded-xl w-fit mb-4' });
+  let activa = 'nuevo';
 
   function pintarPestanas() {
     render(
       pestanas,
       [
-        ['nuevo', 'Nuevo pedido'],
-        ['dia', 'Pedidos del día'],
-      ].map(([clave, etiqueta]) =>
+        ['nuevo', 'Nuevo pedido', 'mas'],
+        ['dia', 'Pedidos del día', 'pedidos'],
+      ].map(([clave, etiqueta, ico]) =>
         h(
           'button',
           {
-            class: `px-4 py-2 rounded-lg text-sm font-medium ${
-              pestana === clave ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200'
+            class: `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+              activa === clave ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'
             }`,
             onClick: () => {
-              pestana = clave;
+              activa = clave;
               pintarPestanas();
               pintar();
             },
           },
+          icon(ico, { size: 16 }),
           etiqueta
         )
       )
     );
   }
 
-  function pintar() {
-    if (pestana === 'nuevo') vistaNuevo(contenido);
-    else vistaDelDia(contenido);
-  }
+  const pintar = () => (activa === 'nuevo' ? vistaNuevo(contenido) : vistaDelDia(contenido));
 
   render(outlet, pestanas, contenido);
   pintarPestanas();
@@ -56,7 +55,7 @@ export async function pedidos(outlet) {
 // =========================================================
 
 async function vistaNuevo(host) {
-  render(host, loading('Cargando el menú…'));
+  render(host, skeleton({ rows: 2 }));
 
   let menu;
   try {
@@ -69,21 +68,21 @@ async function vistaNuevo(host) {
   const carrito = [];
   let filtro = '';
 
-  const panelMenu = h('div', { class: 'lg:col-span-2 space-y-4' });
-  const panelCarrito = h('aside', { class: 'space-y-3' });
+  const panelMenu = h('div', { class: 'space-y-4' });
 
   const buscador = input({
     type: 'search',
     placeholder: 'Buscar un producto…',
+    class: 'campo pl-10',
     oninput: (e) => {
       filtro = e.target.value.trim().toLowerCase();
       pintarMenu();
     },
   });
 
-  // --- selección de canal, visible y no escondida en un desplegable ---
+  // --- canal: botones visibles, no un desplegable donde se olvida ---
   let canalActivo = contexto.channels[0];
-  const selectorCanal = h('div', { class: 'flex flex-wrap gap-2' });
+  const selectorCanal = h('div', { class: 'flex flex-wrap gap-1.5' });
   function pintarCanal() {
     render(
       selectorCanal,
@@ -91,10 +90,10 @@ async function vistaNuevo(host) {
         h(
           'button',
           {
-            class: `px-3 py-1.5 rounded-lg text-sm font-medium border ${
+            class: `px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
               c === canalActivo
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'bg-white text-slate-600 border-slate-300 hover:border-slate-900'
+                ? 'bg-stone-900 text-white border-stone-900'
+                : 'bg-white text-stone-600 border-stone-300 hover:border-stone-900'
             }`,
             onClick: () => {
               canalActivo = c;
@@ -110,52 +109,59 @@ async function vistaNuevo(host) {
 
   const mesa = input({ placeholder: 'Ej. M1' });
   const telefono = input({ placeholder: 'Teléfono', type: 'tel' });
-  const nombre = input({ placeholder: 'Nombre' });
+  const nombre = input({ placeholder: 'Nombre del cliente' });
   const domicilio = input({ type: 'number', min: '0', value: '0' });
   const descuento = input({ type: 'number', min: '0', value: '0' });
   const propina = input({ type: 'number', min: '0', value: '0' });
-  const notas = h('textarea', {
-    rows: '2',
-    placeholder: 'Notas para la cocina',
-    class: 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm',
-  });
+  const notas = h('textarea', { rows: '2', placeholder: 'Notas para la cocina', class: 'campo' });
 
   [domicilio, descuento, propina].forEach((el) => el.addEventListener('change', recalcular));
 
-  const lineas = h('div', { class: 'divide-y divide-slate-100' });
-  const totales = h('div', { class: 'space-y-1 text-sm' });
-  const crear = button('Crear pedido', { onClick: enviar, class: 'w-full bg-slate-900 text-white rounded-lg py-3 font-medium hover:bg-slate-800 disabled:opacity-40' });
+  const lineas = h('div', { class: 'divide-y divide-stone-100' });
+  const totales = h('div', { class: 'space-y-1.5 text-sm' });
+  const contador = h('span');
+  const crear = button('Crear pedido', { onClick: enviar, iconName: 'check', full: true });
 
   // ---------- menú ----------
 
   function pintarMenu() {
     const categorias = menu
-      .map((cat) => ({
-        ...cat,
-        items: cat.items.filter((i) => !filtro || i.name.toLowerCase().includes(filtro)),
-      }))
+      .map((cat) => ({ ...cat, items: cat.items.filter((i) => !filtro || i.name.toLowerCase().includes(filtro)) }))
       .filter((cat) => cat.items.length);
 
     if (!menu.length) {
       return render(
         panelMenu,
-        card(empty('Este restaurante todavía no tiene menú', 'Agrega categorías y productos desde la pantalla Menú.'))
+        h(
+          'div',
+          { class: 'superficie' },
+          empty(
+            'Este restaurante todavía no tiene menú',
+            'Agrega categorías y productos desde la pantalla Menú para empezar a vender.',
+            button('Ir al menú', { variant: 'secondary', iconName: 'menu', onClick: () => (location.hash = '#/menu') }),
+            'menu'
+          )
+        )
       );
     }
     if (!categorias.length) {
-      return render(panelMenu, card(empty('Ningún producto coincide', `No encontramos “${filtro}”.`)));
+      return render(
+        panelMenu,
+        h('div', { class: 'superficie' }, empty('Ningún producto coincide', `No encontramos “${filtro}”.`, null, 'buscar'))
+      );
     }
 
     render(
       panelMenu,
       categorias.map((cat) =>
         card(
-          h('h2', { class: 'font-semibold text-slate-900 mb-3' }, cat.name),
           h(
             'div',
-            { class: 'grid grid-cols-2 sm:grid-cols-3 gap-2' },
-            cat.items.map((item) => botonProducto(item))
-          )
+            { class: 'flex items-center gap-2 mb-3' },
+            h('h2', { class: 'font-semibold text-stone-900' }, cat.name),
+            h('span', { class: 'text-xs text-stone-400' }, `${cat.items.length}`)
+          ),
+          h('div', { class: 'grid grid-cols-2 sm:grid-cols-3 gap-2' }, cat.items.map(botonProducto))
         )
       )
     );
@@ -164,21 +170,21 @@ async function vistaNuevo(host) {
   function botonProducto(item) {
     return h(
       'button',
-      {
-        disabled: !item.is_available,
-        class: `text-left border rounded-lg p-3 min-h-[76px] transition ${
-          item.is_available
-            ? 'border-slate-200 hover:border-slate-900 hover:bg-slate-50'
-            : 'border-slate-200 opacity-50 cursor-not-allowed'
-        }`,
-        onClick: () => elegir(item),
-      },
-      h('div', { class: 'font-medium text-sm text-slate-900' }, item.name),
-      h('div', { class: 'text-sm text-slate-500 mt-1' }, money(item.price)),
-      !item.is_available ? h('div', { class: 'text-xs text-red-600 mt-1' }, 'Agotado') : null,
-      item.modifier_groups.length
-        ? h('div', { class: 'text-xs text-slate-400 mt-1' }, 'Requiere elegir opciones')
-        : null
+      { class: 'producto', disabled: !item.is_available, onClick: () => elegir(item) },
+      h(
+        'div',
+        {},
+        h('div', { class: 'font-medium text-sm text-stone-900 leading-snug' }, item.name),
+        item.modifier_groups.length
+          ? h('div', { class: 'text-[11px] text-stone-400 mt-0.5' }, 'Con opciones')
+          : null
+      ),
+      h(
+        'div',
+        { class: 'flex items-center justify-between mt-2' },
+        h('span', { class: 'text-sm font-semibold text-amber-800' }, money(item.price)),
+        !item.is_available ? badge('Agotado', 'danger') : null
+      )
     );
   }
 
@@ -209,9 +215,23 @@ async function vistaNuevo(host) {
 
   function pintarCarrito() {
     crear.disabled = carrito.length === 0;
+    const unidades = carrito.reduce((suma, l) => suma + l.cantidad, 0);
+    render(contador, unidades ? badge(`${unidades}`, 'warn') : null);
 
     if (!carrito.length) {
-      render(lineas, h('p', { class: 'py-8 text-center text-sm text-slate-400' }, 'Todavía no agregaste productos'));
+      render(
+        lineas,
+        h(
+          'div',
+          { class: 'py-8 text-center' },
+          h(
+            'div',
+            { class: 'inline-flex items-center justify-center w-10 h-10 rounded-full bg-stone-100 text-stone-300 mb-2' },
+            icon('pedidos', { size: 20 })
+          ),
+          h('p', { class: 'text-sm text-stone-400' }, 'Toca un producto para empezar')
+        )
+      );
       render(totales);
       return;
     }
@@ -225,17 +245,17 @@ async function vistaNuevo(host) {
           h(
             'div',
             { class: 'flex-1 min-w-0' },
-            h('div', { class: 'text-sm font-medium text-slate-900' }, linea.item.name),
+            h('div', { class: 'text-sm font-medium text-stone-900' }, linea.item.name),
             linea.modificadores.length
-              ? h('div', { class: 'text-xs text-slate-500' }, linea.modificadores.map((m) => m.name).join(', '))
+              ? h('div', { class: 'text-xs text-stone-500' }, linea.modificadores.map((m) => m.name).join(', '))
               : null
           ),
           h(
             'div',
             { class: 'flex items-center gap-1 shrink-0' },
-            pasoCantidad('−', () => cambiarCantidad(linea.clave, -1)),
-            h('span', { class: 'w-7 text-center text-sm font-medium tabular-nums' }, linea.cantidad),
-            pasoCantidad('+', () => cambiarCantidad(linea.clave, 1))
+            paso('menos', () => cambiarCantidad(linea.clave, -1)),
+            h('span', { class: 'w-7 text-center text-sm font-semibold tabular-nums' }, linea.cantidad),
+            paso('mas', () => cambiarCantidad(linea.clave, 1))
           )
         )
       )
@@ -243,13 +263,15 @@ async function vistaNuevo(host) {
     recalcular();
   }
 
-  function pasoCantidad(signo, onClick) {
-    return h(
+  const paso = (ico, onClick) =>
+    h(
       'button',
-      { class: 'w-8 h-8 rounded-lg border border-slate-300 text-slate-600 hover:border-slate-900', onClick },
-      signo
+      {
+        class: 'w-9 h-9 inline-flex items-center justify-center rounded-lg border border-stone-300 text-stone-600 hover:border-stone-900 hover:text-stone-900 active:scale-95 transition',
+        onClick,
+      },
+      icon(ico, { size: 16 })
     );
-  }
 
   // ---------- totales ----------
   // Los calcula el backend. El frontend nunca repite esa aritmética
@@ -259,6 +281,7 @@ async function vistaNuevo(host) {
   function recalcular() {
     clearTimeout(temporizador);
     if (!carrito.length) return render(totales);
+
     temporizador = setTimeout(async () => {
       try {
         const t = await api.post('/orders/preview', cuerpo());
@@ -271,9 +294,9 @@ async function vistaNuevo(host) {
           Number(t.tip) ? fila('Propina', money(t.tip)) : null,
           h(
             'div',
-            { class: 'flex justify-between font-semibold text-slate-900 text-base pt-2 mt-1 border-t border-slate-200' },
-            h('span', {}, 'Total'),
-            h('span', {}, money(t.total))
+            { class: 'flex justify-between items-baseline pt-2.5 mt-1.5 border-t border-stone-200' },
+            h('span', { class: 'font-medium text-stone-700' }, 'Total'),
+            h('span', { class: 'text-2xl font-bold tracking-tight text-stone-900' }, money(t.total))
           )
         );
       } catch (error) {
@@ -283,7 +306,7 @@ async function vistaNuevo(host) {
   }
 
   const fila = (etiqueta, valor) =>
-    h('div', { class: 'flex justify-between text-slate-600' }, h('span', {}, etiqueta), h('span', {}, valor));
+    h('div', { class: 'flex justify-between text-stone-500' }, h('span', {}, etiqueta), h('span', { class: 'tabular-nums' }, valor));
 
   function cuerpo() {
     return {
@@ -305,7 +328,6 @@ async function vistaNuevo(host) {
 
   async function enviar() {
     crear.disabled = true;
-    crear.textContent = 'Creando…';
     try {
       const pedido = await api.post('/orders', cuerpo());
       toast(`Pedido ${pedido.order_number} creado por ${money(pedido.total)}`, 'ok');
@@ -316,7 +338,6 @@ async function vistaNuevo(host) {
     } catch (error) {
       toast(error.message);
     } finally {
-      crear.textContent = 'Crear pedido';
       crear.disabled = carrito.length === 0;
     }
   }
@@ -328,16 +349,36 @@ async function vistaNuevo(host) {
     h(
       'div',
       { class: 'grid grid-cols-1 lg:grid-cols-3 gap-4' },
-      h('div', { class: 'lg:col-span-2 space-y-4' }, card(buscador), panelMenu),
+      h(
+        'div',
+        { class: 'lg:col-span-2 space-y-4' },
+        h(
+          'div',
+          { class: 'relative' },
+          h('span', { class: 'absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none' }, icon('buscar', { size: 18 })),
+          buscador
+        ),
+        panelMenu
+      ),
       h(
         'aside',
-        { class: 'space-y-3 h-fit lg:sticky lg:top-4' },
+        { class: 'space-y-3 h-fit lg:sticky lg:top-[4.5rem]' },
         card(
-          h('h2', { class: 'font-semibold text-slate-900 mb-3' }, 'Pedido'),
-          h('div', { class: 'text-xs font-medium text-slate-600 mb-1.5' }, 'Canal'),
+          h(
+            'div',
+            { class: 'flex items-center justify-between mb-3' },
+            h('h2', { class: 'font-semibold text-stone-900' }, 'Pedido'),
+            contador
+          ),
+          h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Canal'),
           selectorCanal,
           contexto.uses_tables
-            ? h('div', { class: 'mt-3' }, h('div', { class: 'text-xs font-medium text-slate-600 mb-1.5' }, 'Mesa'), mesa)
+            ? h(
+                'div',
+                { class: 'mt-3' },
+                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Mesa'),
+                mesa
+              )
             : null,
           h('div', { class: 'mt-3' }, lineas),
           totales,
@@ -345,8 +386,13 @@ async function vistaNuevo(host) {
         ),
         h(
           'details',
-          { class: 'bg-white rounded-xl border border-slate-200 p-4' },
-          h('summary', { class: 'cursor-pointer text-sm font-medium text-slate-700' }, 'Cliente y ajustes'),
+          { class: 'superficie p-4' },
+          h(
+            'summary',
+            { class: 'flex items-center gap-2 cursor-pointer text-sm font-medium text-stone-700' },
+            icon('usuario', { size: 16 }),
+            'Cliente y ajustes'
+          ),
           h(
             'div',
             { class: 'mt-3 space-y-2' },
@@ -372,13 +418,13 @@ async function vistaNuevo(host) {
 }
 
 const campoNumero = (etiqueta, control) =>
-  h('label', { class: 'block' }, h('span', { class: 'text-xs text-slate-600' }, etiqueta), control);
+  h('label', { class: 'block' }, h('span', { class: 'text-xs text-stone-500' }, etiqueta), control);
 
 // ---------- modificadores ----------
 
 function abrirModificadores(item, alConfirmar) {
-  const cuerpo = h('div', { class: 'p-4 space-y-4' });
-  const seleccion = new Map(); // grupo -> Set de modificadores
+  const cuerpo = h('div', { class: 'p-4 space-y-5' });
+  const seleccion = new Map();
 
   for (const grupo of item.modifier_groups) {
     const unico = grupo.max_select === 1;
@@ -391,23 +437,24 @@ function abrirModificadores(item, alConfirmar) {
         h(
           'div',
           { class: 'flex items-baseline justify-between mb-2' },
-          h('span', { class: 'font-medium text-sm text-slate-900' }, grupo.name),
-          h(
-            'span',
-            { class: 'text-xs text-slate-500' },
-            grupo.is_required ? 'Obligatorio' : `Hasta ${grupo.max_select}`
-          )
+          h('span', { class: 'font-medium text-sm text-stone-900' }, grupo.name),
+          grupo.is_required ? badge('Obligatorio', 'warn') : h('span', { class: 'text-xs text-stone-500' }, `Hasta ${grupo.max_select}`)
         ),
         h(
           'div',
-          { class: 'space-y-1' },
+          { class: 'space-y-0.5' },
           grupo.modifiers.map((m) =>
             h(
               'label',
-              { class: `flex items-center gap-2 text-sm py-1 ${m.is_available ? '' : 'opacity-40'}` },
+              {
+                class: `flex items-center gap-2.5 text-sm py-2 px-2 -mx-2 rounded-lg cursor-pointer hover:bg-stone-50 ${
+                  m.is_available ? '' : 'opacity-40 cursor-not-allowed'
+                }`,
+              },
               h('input', {
                 type: unico ? 'radio' : 'checkbox',
                 name: `g-${grupo.id}`,
+                class: 'w-4 h-4 accent-amber-700',
                 disabled: !m.is_available,
                 onChange: (e) => {
                   const elegidos = seleccion.get(grupo.id);
@@ -417,7 +464,9 @@ function abrirModificadores(item, alConfirmar) {
                 },
               }),
               h('span', { class: 'flex-1' }, m.name),
-              Number(m.price_delta) ? h('span', { class: 'text-slate-500' }, `+ ${money(m.price_delta)}`) : null
+              Number(m.price_delta)
+                ? h('span', { class: 'text-sm font-medium text-amber-800' }, `+ ${money(m.price_delta)}`)
+                : null
             )
           )
         )
@@ -429,20 +478,30 @@ function abrirModificadores(item, alConfirmar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
-      { class: 'bg-white rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto' },
-      h('div', { class: 'p-4 border-b border-slate-200' }, h('h3', { class: 'font-semibold text-slate-900' }, item.name)),
+      { class: 'aparece bg-white rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl' },
+      h(
+        'div',
+        { class: 'p-4 border-b border-stone-200 flex items-center justify-between gap-2 sticky top-0 bg-white' },
+        h('h3', { class: 'font-semibold text-stone-900' }, item.name),
+        h(
+          'button',
+          { class: 'text-stone-400 hover:text-stone-900 p-1', onClick: cerrar, 'aria-label': 'Cerrar' },
+          icon('cerrar', { size: 20 })
+        )
+      ),
       cuerpo,
       h(
         'div',
-        { class: 'p-4 border-t border-slate-200 flex gap-2 sticky bottom-0 bg-white' },
-        button('Cancelar', { variant: 'secondary', onClick: cerrar, class: 'flex-1 rounded-lg px-4 py-2 text-sm font-medium border border-slate-300 text-slate-700' }),
+        { class: 'p-4 border-t border-stone-200 flex gap-2 sticky bottom-0 bg-white' },
+        button('Cancelar', { variant: 'secondary', onClick: cerrar, full: true }),
         button('Agregar', {
-          class: 'flex-1 rounded-lg px-4 py-2 text-sm font-medium bg-slate-900 text-white',
+          iconName: 'mas',
+          full: true,
           onClick: () => {
             alConfirmar([...seleccion.values()].flatMap((s) => [...s]));
             cerrar();
@@ -460,7 +519,7 @@ function abrirModificadores(item, alConfirmar) {
 // =========================================================
 
 async function vistaDelDia(host) {
-  render(host, loading('Cargando pedidos…'));
+  render(host, skeleton({ rows: 3 }));
 
   let pedidos;
   try {
@@ -470,21 +529,18 @@ async function vistaDelDia(host) {
   }
 
   if (!pedidos.length) {
-    return render(host, card(empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.')));
+    return render(
+      host,
+      h('div', { class: 'superficie' }, empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.', null, 'pedidos'))
+    );
   }
 
   // El saldo lo sabe el backend; aquí no se resta nada.
-  const saldos = await Promise.all(
-    pedidos.map((p) => api.get(`/orders/${p.id}/balance`).catch(() => null))
-  );
+  const saldos = await Promise.all(pedidos.map((p) => api.get(`/orders/${p.id}/balance`).catch(() => null)));
 
   render(
     host,
-    h(
-      'div',
-      { class: 'space-y-3' },
-      pedidos.map((pedido, i) => tarjetaPedido(pedido, saldos[i], () => vistaDelDia(host)))
-    )
+    h('div', { class: 'space-y-3' }, pedidos.map((p, i) => tarjetaPedido(p, saldos[i], () => vistaDelDia(host))))
   );
 }
 
@@ -494,56 +550,62 @@ function tarjetaPedido(pedido, saldo, refrescar) {
   return card(
     h(
       'div',
-      { class: 'flex flex-wrap items-start justify-between gap-2' },
+      { class: 'flex flex-wrap items-start justify-between gap-3' },
       h(
         'div',
-        {},
+        { class: 'min-w-0' },
         h(
           'div',
           { class: 'flex items-center gap-2' },
-          h('span', { class: 'font-semibold text-slate-900' }, pedido.order_number),
+          h('span', { class: 'font-semibold text-stone-900 tabular-nums' }, pedido.order_number),
           badge(canal(pedido.channel))
         ),
         h(
           'div',
-          { class: 'text-sm text-slate-600 mt-1' },
+          { class: 'text-sm text-stone-600 mt-1' },
           pedido.items.map((i) => `${i.quantity}× ${i.name_snapshot}`).join(', ')
         )
       ),
       h(
         'div',
-        { class: 'text-right' },
-        h('div', { class: 'font-semibold text-slate-900' }, money(pedido.total)),
+        { class: 'text-right shrink-0' },
+        h('div', { class: 'font-semibold text-stone-900 tabular-nums' }, money(pedido.total)),
         saldo
           ? pendiente
-            ? h('div', { class: 'text-xs text-amber-600' }, `Falta ${money(saldo.pending)}`)
-            : h('div', { class: 'text-xs text-emerald-600' }, 'Pagado')
+            ? h('div', { class: 'text-xs text-amber-700 mt-0.5' }, `Falta ${money(saldo.pending)}`)
+            : badge('Pagado', 'ok', 'check')
           : null
       )
     ),
     pendiente && me().permissions.includes('payments.register')
       ? h(
           'div',
-          { class: 'mt-3 flex flex-wrap gap-2' },
-          [
-            ['cash', 'efectivo'],
-            ['card', 'tarjeta'],
-            ['transfer', 'transferencia'],
-          ].map(([metodo, etiqueta]) =>
-            button(`Cobrar ${money(saldo.pending)} en ${etiqueta}`, {
-              variant: 'secondary',
-              onClick: async (event) => {
-                event.currentTarget.disabled = true;
-                try {
-                  await api.post(`/orders/${pedido.id}/payments`, { method: metodo, amount: saldo.pending });
-                  toast('Pago registrado', 'ok');
-                  refrescar();
-                } catch (error) {
-                  toast(error.message);
-                  event.currentTarget.disabled = false;
-                }
-              },
-            })
+          { class: 'mt-3 pt-3 border-t border-stone-100' },
+          h('div', { class: 'text-xs font-medium text-stone-500 mb-2' }, `Cobrar ${money(saldo.pending)}`),
+          h(
+            'div',
+            { class: 'flex flex-wrap gap-2' },
+            [
+              ['cash', 'Efectivo', 'dinero'],
+              ['card', 'Tarjeta', 'etiqueta'],
+              ['transfer', 'Transferencia', 'domicilio'],
+            ].map(([metodo, etiqueta, ico]) =>
+              button(etiqueta, {
+                variant: 'secondary',
+                iconName: ico,
+                onClick: async (event) => {
+                  event.currentTarget.disabled = true;
+                  try {
+                    await api.post(`/orders/${pedido.id}/payments`, { method: metodo, amount: saldo.pending });
+                    toast('Pago registrado', 'ok');
+                    refrescar();
+                  } catch (error) {
+                    toast(error.message);
+                    event.currentTarget.disabled = false;
+                  }
+                },
+              })
+            )
           )
         )
       : null

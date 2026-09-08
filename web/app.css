@@ -1,0 +1,222 @@
+/* Lenguaje visual de la aplicación.
+ *
+ * Dos decisiones de fondo:
+ *
+ * 1. Neutros cálidos (stone) en vez de fríos (slate). Es un producto de
+ *    hospitalidad que se mira ocho horas seguidas; el gris azulado se siente
+ *    clínico y cansa.
+ * 2. Un solo acento, y usado poco. El ámbar aparece en lo activo, en el foco
+ *    y en la cifra que importa. Los botones principales siguen siendo casi
+ *    negros: sobre blanco es el contraste más alto y no compite con nada.
+ *    Un acento que se usa en todo deja de señalar.
+ */
+
+:root {
+  --lienzo: #f5f5f4; /* stone-100 */
+  --superficie: #ffffff;
+  --borde: #e7e5e4; /* stone-200 */
+  --borde-fuerte: #d6d3d1; /* stone-300 */
+
+  --tinta: #1c1917; /* stone-900 */
+  --tinta-media: #57534e; /* stone-600 */
+  --tinta-suave: #a8a29e; /* stone-400 */
+
+  --acento: #b45309; /* amber-700: blanco encima pasa AA */
+  --acento-suave: #fef3c7; /* amber-100 */
+  --acento-borde: #fcd34d; /* amber-300 */
+
+  --ok: #047857;
+  --ok-suave: #d1fae5;
+  --aviso: #b45309;
+  --aviso-suave: #fef3c7;
+  --peligro: #b91c1c;
+  --peligro-suave: #fee2e2;
+
+  --sombra: 0 1px 2px rgb(28 25 23 / 0.05);
+  --sombra-alta: 0 4px 12px -2px rgb(28 25 23 / 0.12);
+  --radio: 0.75rem;
+}
+
+body {
+  background: var(--lienzo);
+  color: var(--tinta);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Un solo anillo de foco en toda la aplicación, visible pero no estridente.
+   Solo aparece con teclado, para no ensuciar el uso táctil. */
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Se usa en tableta, de pie: los objetivos táctiles no bajan de 44px y no se
+   dispara el zoom de iOS al enfocar un campo. */
+button,
+[role='button'] {
+  touch-action: manipulation;
+}
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+@media (min-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 0.875rem;
+  }
+}
+
+/* ---------- piezas ---------- */
+
+.superficie {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+}
+
+.campo {
+  width: 100%;
+  background: var(--superficie);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.campo:focus {
+  outline: none;
+  border-color: var(--acento);
+  box-shadow: 0 0 0 3px var(--acento-suave);
+}
+
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 0.625rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: transform 0.08s, background-color 0.15s, border-color 0.15s;
+}
+/* Respuesta táctil: el botón cede al presionarlo. */
+.boton:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.boton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.boton-principal {
+  background: var(--tinta);
+  color: #fff;
+}
+.boton-principal:hover:not(:disabled) {
+  background: #292524;
+}
+
+.boton-secundario {
+  background: var(--superficie);
+  color: var(--tinta-media);
+  border: 1px solid var(--borde-fuerte);
+}
+.boton-secundario:hover:not(:disabled) {
+  border-color: var(--tinta);
+  color: var(--tinta);
+}
+
+.boton-peligro {
+  background: var(--superficie);
+  color: var(--peligro);
+  border: 1px solid #fca5a5;
+}
+.boton-peligro:hover:not(:disabled) {
+  background: var(--peligro-suave);
+}
+
+/* Producto del mostrador: objetivo grande y respuesta clara al tocarlo. */
+.producto {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 92px;
+  padding: 0.75rem;
+  text-align: left;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 0.625rem;
+  transition: transform 0.08s, border-color 0.15s, box-shadow 0.15s;
+}
+.producto:hover:not(:disabled) {
+  border-color: var(--acento-borde);
+  box-shadow: var(--sombra-alta);
+}
+.producto:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.producto:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- carga ---------- */
+/* Esqueletos en vez de un texto de "cargando": la página no salta cuando
+   llegan los datos porque el espacio ya estaba reservado. */
+
+.esqueleto {
+  background: linear-gradient(90deg, #ececea 25%, #f5f5f4 50%, #ececea 75%);
+  background-size: 200% 100%;
+  animation: brillo 1.4s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+@keyframes brillo {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.aparece {
+  animation: aparecer 0.18s ease-out;
+}
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Quien prefiere menos movimiento no debería pelear con la interfaz. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- cocina ---------- */
+/* La demora se lee por color y por grosor de borde, para distinguirla desde
+   lejos y sin depender solo del color. */
+
+.ticket {
+  border-left-width: 4px;
+}
+.ticket-fresco {
+  border-left-color: var(--ok);
+}
+.ticket-atento {
+  border-left-color: var(--aviso);
+}
+.ticket-tarde {
+  border-left-color: var(--peligro);
+  box-shadow: 0 0 0 1px var(--peligro-suave), var(--sombra-alta);
+}

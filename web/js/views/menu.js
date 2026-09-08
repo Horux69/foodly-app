@@ -8,11 +8,11 @@ import { api } from '../api.js';
 import { money, percent } from '../format.js';
 import { can } from '../session.js';
 import {
-  badge, button, card, confirm, empty, errorBox, field, h, input, loading, render, select, titledCard, toast,
+  badge, button, card, confirm, empty, errorBox, field, h, input, pageHeader, render, select, skeleton, titledCard, toast,
 } from '../ui.js';
 
 export async function menu(outlet) {
-  render(outlet, loading('Cargando el catálogo…'));
+  render(outlet, skeleton({ rows: 3 }));
 
   let catalogo;
   let impuestos = [];
@@ -55,26 +55,26 @@ export async function menu(outlet) {
           h(
             'div',
             { class: 'flex items-center gap-2 mb-3' },
-            h('h2', { class: 'font-semibold text-slate-900' }, cat.name),
+            h('h2', { class: 'font-semibold text-stone-900' }, cat.name),
             !cat.is_active ? badge('Inactiva', 'warn') : null,
-            h('span', { class: 'text-xs text-slate-500' }, `${items.length} producto${items.length === 1 ? '' : 's'}`)
+            h('span', { class: 'text-xs text-stone-500' }, `${items.length} producto${items.length === 1 ? '' : 's'}`)
           ),
           items.length
-            ? h('div', { class: 'divide-y divide-slate-100' }, items.map(fila))
-            : h('p', { class: 'text-sm text-slate-500' }, 'Sin productos en esta categoría.')
+            ? h('div', { class: 'divide-y divide-stone-100' }, items.map(fila))
+            : h('p', { class: 'text-sm text-stone-500' }, 'Sin productos en esta categoría.')
         );
       })
     );
   }
 
   function fila(item) {
-    const precio = input({ type: 'number', min: '0', value: item.base_price, class: 'w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-sm tabular-nums' });
+    const precio = input({ type: 'number', min: '0', value: item.base_price, class: 'w-28 rounded-lg border border-stone-300 px-2 py-1.5 text-sm tabular-nums' });
     const impuesto = select(
       [
         { value: '', label: 'Exento', selected: !item.tax_rate_id },
         ...impuestos.map((t) => ({ value: t.id, label: t.name, selected: t.id === item.tax_rate_id })),
       ],
-      { class: 'rounded-lg border border-slate-300 px-2 py-1.5 text-sm' }
+      { class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' }
     );
 
     return h(
@@ -85,12 +85,12 @@ export async function menu(outlet) {
         { class: 'flex-1 min-w-[180px]' },
         h(
           'div',
-          { class: 'font-medium text-sm text-slate-900 flex items-center gap-2' },
+          { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
           item.name,
           item.is_archived ? badge('Archivado') : null,
           !item.is_available && !item.is_archived ? badge('Agotado', 'warn') : null
         ),
-        h('div', { class: 'text-xs text-slate-500' }, `${money(item.base_price)} · ${nombreImpuesto(item.tax_rate_id)}`)
+        h('div', { class: 'text-xs text-stone-500' }, `${money(item.base_price)} · ${nombreImpuesto(item.tax_rate_id)}`)
       ),
       precio,
       impuesto,
@@ -177,7 +177,7 @@ export async function menu(outlet) {
     h(
       'div',
       { class: 'space-y-4' },
-      h('h1', { class: 'text-lg font-semibold text-slate-900' }, 'Menú'),
+      pageHeader('Menú', { hint: 'Lo que aquí cambies se refleja de inmediato en la pantalla de venta.' }),
 
       titledCard(
         'Nueva categoría',
@@ -244,10 +244,10 @@ export async function menu(outlet) {
 
       h(
         'label',
-        { class: 'flex items-center gap-2 text-sm text-slate-600 px-1' },
+        { class: 'flex items-center gap-2 text-sm text-stone-600 px-1' },
         h('input', {
           type: 'checkbox',
-          class: 'w-4 h-4 rounded border-slate-300',
+          class: 'w-4 h-4 rounded border-stone-300',
           onChange: (e) => {
             verArchivados = e.target.checked;
             pintar();

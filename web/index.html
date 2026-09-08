@@ -3,33 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#b45309" />
     <title>Plataforma de restaurantes</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      /* Objetivos táctiles cómodos: esto se usa en tabletas, de pie y con
-         prisa, no con un mouse. */
-      button,
-      [role='button'] {
-        touch-action: manipulation;
-      }
-      input,
-      select,
-      textarea {
-        font-size: 16px; /* evita que iOS haga zoom al enfocar un campo */
-      }
-      @media (min-width: 640px) {
-        input,
-        select,
-        textarea {
-          font-size: 0.875rem;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="/app.css" />
   </head>
-  <body class="bg-slate-100 min-h-screen text-slate-900">
+  <body class="min-h-screen">
     <div id="cabecera"></div>
-    <main id="vista" class="max-w-7xl mx-auto p-4"></main>
-    <div id="toast-host" class="fixed bottom-4 right-4 z-50"></div>
+    <!-- pb-20 deja aire para la barra de navegación inferior en móvil -->
+    <main id="vista" class="max-w-7xl mx-auto p-4 pb-20 md:pb-4"></main>
+    <div id="barra-inferior"></div>
+    <div id="toast-host" class="fixed bottom-20 md:bottom-4 right-4 z-50"></div>
 
     <script type="module" src="/js/app.js"></script>
     <noscript>
