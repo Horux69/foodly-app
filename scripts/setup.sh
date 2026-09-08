@@ -11,6 +11,16 @@ until docker compose exec -T db pg_isready -U resto >/dev/null 2>&1; do sleep 1;
 echo ">> Aplicando esquema"
 docker compose exec -T db psql -U resto -d resto_platform < db/migrations/001_initial_schema.sql
 
+echo ">> Aplicando politicas RLS"
+docker compose exec -T db psql -U resto -d resto_platform < db/migrations/002_rls_hardening.sql
+
+echo ">> Habilitando el rol de aplicacion"
+# La clave vive en el entorno, no en el repositorio. Este rol no es dueño de
+# las tablas: eso es justamente lo que hace que las politicas RLS lo alcancen.
+APP_DB_PASSWORD="${APP_DB_PASSWORD:-resto_app_dev}"
+docker compose exec -T db psql -U resto -d resto_platform \
+  -c "ALTER ROLE resto_app WITH LOGIN PASSWORD '${APP_DB_PASSWORD}';"
+
 echo ">> Sembrando permisos"
 docker compose exec -T db psql -U resto -d resto_platform < db/seeds/001_defaults.sql
 

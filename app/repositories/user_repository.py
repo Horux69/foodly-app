@@ -1,18 +1,25 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.role import Role
 from app.models.user import User
 
 
-def get_by_email(db: Session, email: str) -> User | None:
-    """Busca un usuario por email, sin filtrar por tenant.
+def find_tenant_for_login(db: Session, email: str) -> uuid.UUID | None:
+    """Resuelve a que empresa pertenece un email, antes de tener tenant.
 
-    Unico punto de la aplicacion que consulta `users` sin tenant_id conocido:
-    en login todavia no existe un token del que extraerlo. Ver app/services/auth.py.
+    Es la unica consulta del sistema que mira a traves de las empresas, y por
+    eso vive en una funcion SECURITY DEFINER de la base (ver la migracion 002)
+    que solo devuelve el tenant_id. Con ese dato la aplicacion fija el
+    contexto y todo lo demas vuelve a pasar por RLS.
     """
+    return db.scalar(text("SELECT auth_tenant_for_email(:email)"), {"email": email})
+
+
+def get_by_email(db: Session, email: str) -> User | None:
+    """Busca un usuario por email dentro del tenant ya fijado en la sesion."""
     stmt = (
         select(User)
         .options(selectinload(User.role).selectinload(Role.permissions))

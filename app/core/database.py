@@ -5,8 +5,14 @@ from sqlalchemy.orm import Session, sessionmaker, DeclarativeBase
 
 from app.core.config import settings
 
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(settings.APP_DATABASE_URL or settings.DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+# Conexion administrativa, dueña de las tablas. Solo para lo que es
+# inherentemente previo a un tenant: migraciones y alta de empresas. Nunca
+# para servir una request, que debe quedar sujeta a las politicas RLS.
+admin_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+AdminSessionLocal = sessionmaker(bind=admin_engine, autoflush=False, autocommit=False)
 
 
 class Base(DeclarativeBase):

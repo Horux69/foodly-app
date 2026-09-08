@@ -31,7 +31,7 @@ from app.repositories import branch_repository, role_repository, user_repository
 from app.services.tenant_provisioning import create_tenant
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-SCHEMA = ROOT / "db" / "migrations" / "001_initial_schema.sql"
+MIGRATIONS = sorted((ROOT / "db" / "migrations").glob("*.sql"))
 PERMISSIONS_SEED = ROOT / "db" / "seeds" / "001_defaults.sql"
 
 TEST_DB_SUFFIX = "_test"
@@ -63,7 +63,8 @@ def engine():
 
     test_engine = create_engine(_test_database_url())
     with test_engine.begin() as conn:
-        conn.execute(text(SCHEMA.read_text(encoding="utf-8")))
+        for migration in MIGRATIONS:
+            conn.execute(text(migration.read_text(encoding="utf-8")))
         conn.execute(text(PERMISSIONS_SEED.read_text(encoding="utf-8")))
     yield test_engine
     test_engine.dispose()

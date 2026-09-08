@@ -31,6 +31,12 @@ el camino: el canal `whatsapp` y `customers.phone` existen para eso.
    replicar esa lógica en controladores.
 3. **RLS de Postgres como red de seguridad.** Cada request ejecuta
    `SET LOCAL app.current_tenant` vía `app/core/database.py:set_tenant_context`.
+   La app se conecta con `APP_DATABASE_URL` (rol `resto_app`), que **no** es
+   dueño de las tablas: si lo fuera, Postgres saltearía las políticas y no
+   protegerían nada. `DATABASE_URL` es la conexión administrativa y se usa
+   solo para migraciones y alta de empresas. La única consulta que cruza
+   empresas es `auth_tenant_for_email` (login), acotada a devolver un
+   `tenant_id`.
 4. **Nunca `if tenant_id == 'X'` en el código.** Las reglas variables van en
    `tenants.settings` (JSONB) o en tablas de configuración con `tenant_id`. Si
    un restaurante nuevo exige tocar código para operar, el diseño falló.
@@ -100,14 +106,11 @@ modelos ya existen; faltan servicios y endpoints. Ver `docs/functional-scope.md`
 Pendientes conocidos:
 
 - El frontend no tiene pruebas automatizadas.
-- La app se conecta a Postgres como dueña de las tablas, así que hoy las
-  políticas RLS no la restringen (Postgres las salta para el owner salvo con
-  `FORCE ROW LEVEL SECURITY`). El aislamiento real lo dan los filtros por
-  `tenant_id`, cubiertos en `tests/integration/test_tenant_isolation.py`. Para
-  que la red de seguridad exista de verdad hay que correr la app con un rol que
-  no sea dueño de las tablas.
-- El login busca el usuario por email sin tenant: si dos empresas registran el
-  mismo correo, queda ambiguo. Se resolvería con subdominio o slug de empresa.
+- El login resuelve la empresa a partir del email: si dos empresas registran el
+  mismo correo, queda ambiguo (gana el primero). Se resolvería con subdominio o
+  slug de empresa en la pantalla de login.
+- No hay control de concurrencia sobre un mismo pedido: dos cajeros que avancen
+  el estado a la vez podrían pisarse.
 
 ## Convenciones
 

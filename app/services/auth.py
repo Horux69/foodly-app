@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from app.core.database import set_tenant_context
 from app.core.security import create_access_token, verify_password
 from app.domain.tenant_settings import TenantSettings
 from app.domain.tenant_settings import parse as parse_settings
@@ -20,6 +21,14 @@ def login(db: Session, *, email: str, password: str) -> str:
     usuario encontrado, y de ahi en adelante viaja siempre dentro del token
     (nunca se vuelve a pedir al cliente, ver deps.py:get_context).
     """
+    # Dos pasos a proposito: primero se averigua el tenant del email (unica
+    # consulta que cruza empresas, acotada a devolver solo eso), y recien
+    # despues se busca al usuario ya con el contexto puesto, bajo RLS.
+    tenant_id = user_repository.find_tenant_for_login(db, email)
+    if tenant_id is None:
+        raise AuthError("Credenciales invalidas")
+    set_tenant_context(db, str(tenant_id))
+
     user = user_repository.get_by_email(db, email)
     if user is None or not verify_password(password, user.password_hash):
         raise AuthError("Credenciales invalidas")

@@ -20,7 +20,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.database import SessionLocal  # noqa: E402
+# Conexion administrativa: crear una empresa es previo a que exista tenant
+# alguno, asi que no puede pasar por el rol restringido que sirve requests.
+from app.core.database import AdminSessionLocal  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.domain.tenant_settings import DEFAULTS_BY_BUSINESS_TYPE  # noqa: E402
 from app.repositories import branch_repository, role_repository, user_repository  # noqa: E402
@@ -49,7 +51,7 @@ def main() -> int:
         print("La clave del administrador debe tener al menos 8 caracteres", file=sys.stderr)
         return 1
 
-    db = SessionLocal()
+    db = AdminSessionLocal()
     try:
         tenant = create_tenant(
             db, name=args.name, business_type=args.business_type, currency=args.currency
