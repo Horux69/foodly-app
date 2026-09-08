@@ -114,6 +114,7 @@ no tener lógica de negocio propia.
 cd php && php -S localhost:8000 -t public public/index.php   # app en :8000
 
 cd php && vendor/bin/phpunit    # pruebas del dominio
+npm install && npm test         # pruebas del frontend (Vitest + jsdom)
 cd php && php bin/create_tenant.php "Nombre" --branch="Sede" --branch-code=SED \
     --admin-email=dueno@x.com --admin-password="clave-larga"
 ```
@@ -168,14 +169,20 @@ Pendientes conocidos:
   `users.role_id`, `orders.status_id`, `order_items.menu_item_id`, entre otras),
   así que Postgres se traba. Dar de baja un restaurante hoy exige borrar a mano
   en orden. Se arregla con una migración que defina `ON DELETE` en esas claves.
-- **El frontend no tiene pruebas automatizadas, y ya costó caro**: la pantalla
-  de login estuvo rota desde `c697b9e` hasta `99e54ea` por un
-  `[rail, topbar, barraInferior].forEach(render)` — `forEach` pasa
-  `(elemento, indice, array)` y `render(el, ...children)` tomaba el resto como
-  hijos, así que intentaba meter el rail dentro de sí mismo. Nadie lo vio
-  porque la rama solo corre con la sesión cerrada, y en desarrollo siempre
-  había token en `localStorage`. Cualquier prueba que cargara la app sin token
-  lo habría atrapado.
+- **El frontend tiene arnés de pruebas, pero cubre poco todavía.**
+  `web/tests/` corre con Vitest sobre jsdom y monta la aplicación real —el
+  esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
+  compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
+  Lo cubierto hoy es el arranque sin sesión y con sesión. Cada pantalla nueva
+  debería llegar con la suya.
+
+  Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta
+  `99e54ea` por un `[rail, topbar, barraInferior].forEach(render)` — `forEach`
+  pasa `(elemento, indice, array)` y `render(el, ...children)` tomaba el resto
+  como hijos, así que intentaba meter el rail dentro de sí mismo. Nadie lo vio
+  porque esa rama solo corre con la sesión cerrada, y en desarrollo siempre
+  había token en `localStorage`. La primera prueba del arnés es justo esa, y
+  se comprobó que falla al reintroducir el `forEach`.
 - El login resuelve la empresa a partir del email: si dos empresas registran el
   mismo correo, queda ambiguo (gana el primero). Se resolvería con subdominio o
   slug de empresa en la pantalla de login.
