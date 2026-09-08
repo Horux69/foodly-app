@@ -448,7 +448,12 @@ final class OrderService
 
         $balances = [];
         foreach ($orders as $order) {
-            $balances[$order->id] = PaymentBalance::compute($order->totalCents, [$paid[$order->id] ?? 0]);
+            $movimientos = $paid[$order->id] ?? ['paid' => 0, 'refunded' => 0];
+            $balances[$order->id] = PaymentBalance::compute(
+                $order->totalCents,
+                [$movimientos['paid']],
+                [$movimientos['refunded']],
+            );
         }
 
         // La maquina de estados se arma una vez para toda la pagina, no una

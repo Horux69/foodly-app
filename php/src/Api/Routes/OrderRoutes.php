@@ -28,6 +28,10 @@ final class OrderRoutes
         $router->post('/orders/{order_id:uuid}/payments', fn ($p) => PaymentController::register($p));
         $router->get('/orders/{order_id:uuid}/payments', fn ($p) => PaymentController::list($p));
         $router->get('/orders/{order_id:uuid}/balance', fn ($p) => PaymentController::balance($p));
+        $router->post(
+            '/orders/{order_id:uuid}/payments/{payment_id:uuid}/refund',
+            fn ($p) => PaymentController::refund($p),
+        );
 
         $router->get('/kitchen/orders', fn () => KitchenController::board());
     }

@@ -266,6 +266,8 @@ final class OrderController
         return [
             'total' => Money::toDecimalString($b->totalCents),
             'paid' => Money::toDecimalString($b->paidCents),
+            'refunded' => Money::toDecimalString($b->refundedCents),
+            'net_paid' => Money::toDecimalString($b->netPaidCents),
             'pending' => Money::toDecimalString($b->pendingCents),
             'is_settled' => $b->isSettled,
         ];

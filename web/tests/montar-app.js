@@ -42,10 +42,14 @@ export async function montarApp({ token = null, hash = '', respuestas = {} } = {
     const completa = String(url).replace('/api/v1', '');
     const ruta = completa.split('?')[0];
 
+    // El exacto gana; entre los patrones `/*`, el más largo, para que
+    // '/customers/*' no se coma una ruta más específica declarada aparte.
     const clave =
       ruta in respuestas
         ? ruta
-        : Object.keys(respuestas).find((k) => k.endsWith('/*') && ruta.startsWith(k.slice(0, -1)));
+        : Object.keys(respuestas)
+            .filter((k) => k.endsWith('/*') && ruta.startsWith(k.slice(0, -1)))
+            .sort((a, b) => b.length - a.length)[0];
     if (clave === undefined) {
       throw new Error(`La prueba no esperaba una llamada a ${completa}`);
     }

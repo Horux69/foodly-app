@@ -292,31 +292,51 @@ function formularioCobro(pedido, recargar) {
   );
 }
 
+/**
+ * El libro de caja del pedido: lo que entró y lo que salió.
+ *
+ * Un reembolso no borra ni edita el cobro: es una fila que apunta a él. Por
+ * eso aquí se ven las dos, y el cobro revertido queda tachado en vez de
+ * desaparecer — la caja necesita saber que ese cobro existió.
+ */
 function bloquePagos(pedido, pagos, recargar) {
   const saldo = pedido.balance;
+  const cobros = pagos.filter((p) => !p.refund_of_payment_id);
+  const devoluciones = pagos.filter((p) => p.refund_of_payment_id);
+
+  const devueltoDe = (cobroId) =>
+    devoluciones
+      .filter((r) => r.refund_of_payment_id === cobroId && r.status === 'paid')
+      .reduce((suma, r) => suma + Number(r.amount), 0);
+
   return section('Pagos', {
     body: h(
       'div',
       { class: 'text-[13.5px] space-y-2' },
-      pagos.length
+      cobros.length
+        ? h('div', { class: 'space-y-1' }, cobros.map((p) => filaCobro(pedido, p, devueltoDe(p.id), recargar)))
+        : h('p', { class: 'text-stone-500' }, 'Sin cobros registrados.'),
+
+      devoluciones.length
         ? h(
             'div',
-            { class: 'space-y-1' },
-            pagos.map((p) =>
+            { class: 'space-y-1 pt-2 border-t border-[--linea]' },
+            devoluciones.map((r) =>
               h(
                 'div',
-                { class: 'flex justify-between items-center' },
+                { class: 'flex justify-between items-start gap-2' },
                 h(
-                  'span',
-                  { class: 'text-stone-600' },
-                  metodoPago(p.method),
-                  p.status !== 'paid' ? h('span', { class: 'ml-1.5' }, badge(p.status, 'warn')) : null
+                  'div',
+                  { class: 'min-w-0' },
+                  h('span', { class: 'text-stone-600' }, `Reembolso · ${metodoPago(r.method)}`),
+                  r.note ? h('div', { class: 'text-[12px] text-stone-500' }, r.note) : null
                 ),
-                h('span', { class: 'tabular-nums' }, money(p.amount))
+                h('span', { class: 'tabular-nums text-red-700 shrink-0' }, `− ${money(r.amount)}`)
               )
             )
           )
-        : h('p', { class: 'text-stone-500' }, 'Sin cobros registrados.'),
+        : null,
+
       h(
         'div',
         { class: 'flex justify-between pt-2 border-t border-[--linea]' },
@@ -328,6 +348,98 @@ function bloquePagos(pedido, pagos, recargar) {
       formularioCobro(pedido, recargar)
     ),
   });
+}
+
+function filaCobro(pedido, cobro, devuelto, recargar) {
+  const revertido = cobro.status === 'refunded';
+  const puedeDevolver = can('payments.refund') && cobro.status === 'paid' && devuelto < Number(cobro.amount);
+
+  return h(
+    'div',
+    { class: 'flex justify-between items-center gap-2' },
+    h(
+      'span',
+      { class: `text-stone-600 ${revertido ? 'line-through text-stone-400' : ''}` },
+      metodoPago(cobro.method),
+      revertido ? h('span', { class: 'ml-1.5' }, badge('Reembolsado', 'danger')) : null,
+      !revertido && devuelto ? h('span', { class: 'ml-1.5 text-[12px] text-stone-500' }, `(devuelto ${money(devuelto)})`) : null
+    ),
+    h(
+      'span',
+      { class: 'flex items-center gap-2 shrink-0' },
+      h('span', { class: `tabular-nums ${revertido ? 'line-through text-stone-400' : ''}` }, money(cobro.amount)),
+      puedeDevolver
+        ? button('Reembolsar', { variant: 'subtle', onClick: () => pedirReembolso(pedido, cobro, devuelto, recargar) })
+        : null
+    )
+  );
+}
+
+/**
+ * Un reembolso sin motivo no es historia, es un número suelto: por eso el
+ * motivo se pide aquí y viaja a `payments.note`.
+ */
+function pedirReembolso(pedido, cobro, devuelto, recargar) {
+  const restante = (Number(cobro.amount) - devuelto).toFixed(2);
+
+  const monto = input({
+    type: 'number',
+    min: '0',
+    step: '0.01',
+    value: restante,
+    class: 'campo tabular-nums',
+    'aria-label': 'Monto a reembolsar',
+  });
+  const motivo = input({ placeholder: 'Por qué se devuelve', maxlength: '255', 'aria-label': 'Motivo' });
+
+  const cerrar = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', alTeclear);
+  };
+  const alTeclear = (e) => e.key === 'Escape' && cerrar();
+
+  const confirmar = button('Reembolsar', {
+    variant: 'danger',
+    onClick: async () => {
+      confirmar.disabled = true;
+      try {
+        await api.post(`/orders/${pedido.id}/payments/${cobro.id}/refund`, {
+          amount: Number(monto.value),
+          note: motivo.value.trim() || null,
+        });
+        cerrar();
+        toast('Reembolso registrado', 'ok');
+        await recargar();
+      } catch (error) {
+        toast(error.message);
+        confirmar.disabled = false;
+      }
+    },
+  });
+
+  const overlay = h(
+    'div',
+    {
+      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      onClick: (e) => e.target === overlay && cerrar(),
+    },
+    h(
+      'div',
+      { class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full p-5 shadow-xl border border-[--linea]', role: 'dialog', 'aria-modal': 'true' },
+      h('h3', { class: 'text-[15px] font-semibold' }, `Reembolsar ${metodoPago(cobro.method)}`),
+      h(
+        'p',
+        { class: 'text-[13px] text-stone-600 mt-1.5 leading-relaxed' },
+        `De este cobro de ${money(cobro.amount)} quedan ${money(restante)} por devolver. Se devuelve por el mismo medio y el cobro no se borra: queda registrado con su reembolso.`
+      ),
+      h('div', { class: 'space-y-2 mt-4' }, monto, motivo),
+      h('div', { class: 'flex justify-end gap-2 mt-5' }, button('Cancelar', { variant: 'secondary', onClick: cerrar }), confirmar)
+    )
+  );
+
+  document.body.append(overlay);
+  document.addEventListener('keydown', alTeclear);
+  monto.focus();
 }
 
 /**

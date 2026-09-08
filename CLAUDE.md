@@ -167,10 +167,27 @@ Sobre eso se construyeron dos fases de trabajo en la web:
   de reparto en Administración, detalle de pedido con bitácora, precio por
   sucursal en el menú y edición de los permisos de un rol.
 
-**Siguiente**: la fase 2 del plan de obra —cerrar el ciclo del dinero: cobro
-parcial y por varios métodos, división de cuenta, reembolsos (`payments.refund`
-sigue sin endpoint), cancelación con motivo, cierre de turno y arqueo
-(`cash.close` tampoco lo usa nadie) y los reportes de cierre.
+- **Fase 2 (cerrar el ciclo del dinero)**, en curso y partida en trozos. Hecho
+  el primero: cobro parcial y por varios métodos (F2.1) y reembolsos (F2.3).
+
+Sobre los reembolsos, tres detalles que conviene no deshacer:
+
+- **Un reembolso no borra ni edita el cobro**: es una fila nueva de `payments`
+  que apunta a él (`refund_of_payment_id`). La caja necesita saber qué entró y
+  qué salió, y un `UPDATE` sobre el cobro borraría justo eso.
+- **El cobro original cuenta aunque esté marcado `refunded`.** Ese estado es la
+  etiqueta de "ya se revirtió"; quien lo revierte es su fila de reembolso.
+  Descontarlo también dejaría el saldo al doble.
+- **La cadena tiene un solo eslabón**: un reembolso no se reembolsa. Para
+  deshacerlo se vuelve a cobrar.
+
+**Siguiente**: el resto de la fase 2 —división de cuenta (F2.2, sobre F2.1),
+cancelación con motivo (F2.4), cierre de turno y arqueo (F2.5, `cash.close`
+sigue sin endpoint) y los reportes de cierre (F2.6).
+
+Antes de F2.4 hay una decisión de negocio pendiente: **si un pedido con pagos
+debe exigir reembolso antes de poder cancelarse.** Ata F2.3 con F2.4 y no la
+resuelve el código.
 
 Pendientes conocidos:
 
@@ -186,10 +203,10 @@ Pendientes conocidos:
   `web/tests/` corre con Vitest sobre jsdom y monta la aplicación real —el
   esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
-  Cubre el arranque con y sin sesión, la pantalla de clientes y el tablero de
-  domicilios. Faltan la toma de pedido con modificadores obligatorios, el
-  avance de estado en cocina y el cobro. Cada pantalla nueva debería llegar
-  con la suya.
+  Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
+  domicilios y el cobro y reembolso desde el detalle del pedido. Faltan la
+  toma de pedido con modificadores obligatorios y el avance de estado en
+  cocina. Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta
   `99e54ea` por un `[rail, topbar, barraInferior].forEach(render)` — `forEach`
@@ -201,8 +218,6 @@ Pendientes conocidos:
 - El login resuelve la empresa a partir del email: si dos empresas registran el
   mismo correo, queda ambiguo (gana el primero). Se resolvería con subdominio o
   slug de empresa en la pantalla de login.
-- Falta reembolsos: el permiso `payments.refund` existe pero ningún endpoint lo
-  usa, así que caja no puede revertir un cobro.
 - Un combo (varios productos completos a precio de paquete) no se puede
   modelar: los modificadores suman o restan sobre una línea, no "son" otro
   producto con su propia receta.

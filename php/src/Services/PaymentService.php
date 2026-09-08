@@ -6,6 +6,8 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Domain\PaymentBalance;
+use App\Domain\RefundError;
+use App\Domain\RefundRules;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Repositories\OrderRepository;
@@ -18,14 +20,32 @@ final class PaymentService
 
     public static function getBalanceForOrder(Order $order): PaymentBalance
     {
-        $payments = (new PaymentRepository(Database::app()))->listForOrder($order->id);
+        return self::balanceFrom($order, (new PaymentRepository(Database::app()))->listForOrder($order->id));
+    }
+
+    /**
+     * Separa cobros de reembolsos y deja que el dominio haga la resta.
+     *
+     * Un cobro cuenta aunque este marcado 'refunded': ese estado es solo la
+     * etiqueta de "ya se revirtio", y quien lo revierte es su fila de
+     * reembolso. Descontarlo tambien seria restarlo dos veces.
+     *
+     * @param Payment[] $payments todas las filas del pedido
+     */
+    private static function balanceFrom(Order $order, array $payments): PaymentBalance
+    {
         $paid = [];
+        $refunded = [];
         foreach ($payments as $payment) {
-            if ($payment->status === 'paid') {
+            if ($payment->isRefund()) {
+                if ($payment->status === 'paid') {
+                    $refunded[] = $payment->amountCents;
+                }
+            } elseif (in_array($payment->status, ['paid', 'refunded'], true)) {
                 $paid[] = $payment->amountCents;
             }
         }
-        return PaymentBalance::compute($order->totalCents, $paid);
+        return PaymentBalance::compute($order->totalCents, $paid, $refunded);
     }
 
     public static function getBalance(string $tenantId, string $orderId): PaymentBalance
@@ -54,6 +74,7 @@ final class PaymentService
         int $amountCents,
         ?string $externalReference = null,
         ?string $idempotencyKey = null,
+        ?string $createdBy = null,
     ): Payment {
         $pdo = Database::app();
         $order = (new OrderRepository($pdo))->getById($tenantId, $orderId);
@@ -97,6 +118,7 @@ final class PaymentService
                 $result->externalReference,
                 $idempotencyKey,
                 $result->paidAt,
+                createdBy: $createdBy,
             );
         } catch (\PDOException $e) {
             $pdo->exec('ROLLBACK TO SAVEPOINT registrar_pago');
@@ -111,5 +133,89 @@ final class PaymentService
         $pdo->exec('RELEASE SAVEPOINT registrar_pago');
 
         return $payment;
+    }
+
+    /**
+     * Devuelve plata de un cobro.
+     *
+     * No edita ni borra el cobro original: escribe una fila nueva que apunta
+     * a el. La caja necesita saber que entro y que salio, y un UPDATE sobre
+     * el cobro borraria justo eso.
+     *
+     * Sin importe, se devuelve todo lo que quede por devolver de ese cobro,
+     * que es el caso comun —un cobro mal hecho se anula entero.
+     */
+    public static function refundPayment(
+        string $tenantId,
+        string $orderId,
+        string $paymentId,
+        ?int $amountCents = null,
+        ?string $note = null,
+        ?string $createdBy = null,
+    ): Payment {
+        $pdo = Database::app();
+        $order = (new OrderRepository($pdo))->getById($tenantId, $orderId);
+        if ($order === null) {
+            throw new PaymentError('Pedido no encontrado');
+        }
+
+        $payments = new PaymentRepository($pdo);
+        $todos = $payments->listForOrder($order->id);
+
+        // Se busca dentro de los pagos del pedido y no por id suelto: asi un
+        // payment_id de otro pedido —o de otra empresa— no existe desde aqui.
+        $original = null;
+        foreach ($todos as $payment) {
+            if ($payment->id === $paymentId) {
+                $original = $payment;
+            }
+        }
+        if ($original === null) {
+            throw new PaymentError('Ese cobro no pertenece a este pedido');
+        }
+        if ($original->isRefund()) {
+            // La cadena tiene un solo eslabon: para deshacer un reembolso se
+            // vuelve a cobrar, no se reembolsa el reembolso.
+            throw new PaymentError('Un reembolso no se puede reembolsar');
+        }
+        if ($original->status !== 'paid') {
+            throw new PaymentError("Solo se puede reembolsar un cobro confirmado (este esta '{$original->status}')");
+        }
+
+        $yaDevuelto = [];
+        foreach ($todos as $payment) {
+            if ($payment->refundOfPaymentId === $original->id && $payment->status === 'paid') {
+                $yaDevuelto[] = $payment->amountCents;
+            }
+        }
+
+        $amountCents ??= RefundRules::refundableCents($original->amountCents, $yaDevuelto);
+        try {
+            RefundRules::validate($original->amountCents, $yaDevuelto, $amountCents);
+        } catch (RefundError $e) {
+            throw new PaymentError($e->getMessage());
+        }
+
+        // Se devuelve por el mismo medio por el que entro: quien pago con
+        // tarjeta no recibe efectivo de la caja.
+        $refund = $payments->create(
+            $order->id,
+            $original->method,
+            'paid',
+            $amountCents,
+            $original->externalReference,
+            null,
+            (new \DateTimeImmutable('now'))->format(DATE_ATOM),
+            createdBy: $createdBy,
+            note: $note,
+            refundOfPaymentId: $original->id,
+        );
+
+        // Si ya no queda nada por devolver, el cobro original queda marcado.
+        if (RefundRules::refundableCents($original->amountCents, [...$yaDevuelto, $amountCents]) === 0) {
+            $payments->markRefunded($original->id);
+        }
+
+        return $refund;
     }
 }
