@@ -29,5 +29,5 @@ def validate_minimum(*, subtotal: Decimal, zone: DeliveryZoneRules) -> None:
     if subtotal < zone.min_order:
         faltante = zone.min_order - subtotal
         raise DeliveryError(
-            f"La zona '{zone.name}' pide un minimo de {zone.min_order}: faltan {faltante}"
+            f"La zona '{zone.name}' pide un mínimo de {zone.min_order}: faltan {faltante}"
         )

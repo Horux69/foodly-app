@@ -99,18 +99,28 @@ pedidos, KDS, menú, administración y reportes.
 Un restaurante nuevo se da de alta con `scripts/create_tenant.py` y se configura
 entero desde la web, sin SQL ni código.
 
-**Siguiente**: módulos 6 y 7 (domicilios y clientes) — `delivery_zones` con
-tarifa y mínimo, asignación de repartidor, gestión de clientes. Sus tablas y
-modelos ya existen; faltan servicios y endpoints. Ver `docs/functional-scope.md`.
+Los nueve módulos del alcance funcional están construidos. Domicilios y
+clientes cierran el MVP: zonas con tarifa y mínimo, repartidor, seguimiento de
+la entrega, y una base de clientes que se llena sola con el teléfono de cada
+pedido (la llave que usará el agente de WhatsApp).
+
+**Siguiente**: no hay un módulo pendiente. Lo que queda son los pendientes de
+abajo y, cuando se decida, la fase de WhatsApp.
 
 Pendientes conocidos:
 
+- **Un tenant no se puede borrar.** Varias claves foráneas apuntan a tablas que
+  el borrado en cascada intenta vaciar primero (`menu_items.tax_rate_id`,
+  `users.role_id`, `orders.status_id`, `order_items.menu_item_id`, entre otras),
+  así que Postgres se traba. Dar de baja un restaurante hoy exige borrar a mano
+  en orden. Se arregla con una migración que defina `ON DELETE` en esas claves.
 - El frontend no tiene pruebas automatizadas.
 - El login resuelve la empresa a partir del email: si dos empresas registran el
   mismo correo, queda ambiguo (gana el primero). Se resolvería con subdominio o
   slug de empresa en la pantalla de login.
 - No hay control de concurrencia sobre un mismo pedido: dos cajeros que avancen
   el estado a la vez podrían pisarse.
+- Domicilios y clientes no tienen pantallas propias: se manejan por API.
 
 ## Convenciones
 

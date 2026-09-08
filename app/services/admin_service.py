@@ -82,7 +82,7 @@ def create_branch(
     phone: str | None = None,
 ) -> Branch:
     if branch_repository.get_by_code(db, tenant_id, code) is not None:
-        raise AdminError(f"Ya existe una sucursal con el codigo '{code}'")
+        raise AdminError(f"Ya existe una sucursal con el código '{code}'")
 
     branch = branch_repository.create(
         db, tenant_id=tenant_id, name=name, code=code, timezone=timezone, address=address, phone=phone
@@ -169,10 +169,10 @@ def create_table(
     tenant = _tenant(db, tenant_id)
     settings = parse(tenant.settings, business_type=tenant.business_type)
     if not settings.uses_tables:
-        raise AdminError("Este restaurante no maneja mesas: activalo en la configuracion")
+        raise AdminError("Este restaurante no maneja mesas: actívalo en la configuración")
 
     if table_repository.get_by_code(db, branch_id=branch.id, code=code) is not None:
-        raise AdminError(f"Ya existe una mesa con el codigo '{code}' en esta sucursal")
+        raise AdminError(f"Ya existe una mesa con el código '{code}' en esta sucursal")
 
     table = table_repository.create(db, branch_id=branch.id, code=code, capacity=capacity)
     db.commit()
@@ -198,7 +198,7 @@ def _resolve_permissions(db: Session, codes: list[str]):
 
 def create_role(db: Session, *, tenant_id: uuid.UUID, code: str, name: str, permissions: list[str]) -> Role:
     if role_repository.get_by_code(db, tenant_id, code) is not None:
-        raise AdminError(f"Ya existe un rol con el codigo '{code}'")
+        raise AdminError(f"Ya existe un rol con el código '{code}'")
 
     role = role_repository.create(db, tenant_id=tenant_id, code=code, name=name)
     role.permissions = _resolve_permissions(db, permissions)

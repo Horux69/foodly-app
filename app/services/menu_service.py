@@ -142,7 +142,7 @@ def create_item(
 ) -> MenuItem:
     category = menu_repository.get_category(db, tenant_id, category_id)
     if category is None:
-        raise MenuError("La categoria no existe para este tenant")
+        raise MenuError("La categoría no existe para este tenant")
 
     item = menu_repository.create_item(
         db,
@@ -173,7 +173,7 @@ def update_item(
 
     if "category_id" in changes:
         if menu_repository.get_category(db, tenant_id, changes["category_id"]) is None:
-            raise MenuError("La categoria no existe para este tenant")
+            raise MenuError("La categoría no existe para este tenant")
 
     # tax_rate_id en null es intencional: significa exento. Solo se valida
     # cuando viene un id, para no sustituirlo por el default del tenant.

@@ -70,7 +70,7 @@ def test_producto_agotado_no_se_puede_pedir(client, demo, headers):
         client, headers, items=[{"menu_item_id": str(demo["item"].id), "quantity": 1}]
     )
     assert response.status_code == 422
-    assert "no esta disponible" in response.json()["detail"]
+    assert "no está disponible" in response.json()["detail"]
 
 
 def test_producto_archivado_no_se_puede_pedir(client, demo, headers):
@@ -197,7 +197,7 @@ def test_modificador_obligatorio_y_maximo(client, db, demo, headers):
         client, headers, items=[{**base, "modifier_ids": [str(grande.id), str(normal.id)]}]
     )
     assert dos.status_code == 422
-    assert "maximo" in dos.json()["detail"]
+    assert "máximo" in dos.json()["detail"]
 
     correcto = _pedir(client, headers, items=[{**base, "modifier_ids": [str(grande.id)]}])
     assert correcto.status_code == 201

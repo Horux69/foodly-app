@@ -54,11 +54,11 @@ class StatusMachine:
 
     def validate(self, from_id: str, to_id: str, permissions: list[str]) -> None:
         if self._statuses[from_id].is_final:
-            raise TransitionError("El pedido ya esta en un estado final")
+            raise TransitionError("El pedido ya está en un estado final")
 
         transition = self._transitions.get((from_id, to_id))
         if transition is None:
-            raise TransitionError("Transicion no permitida para este restaurante")
+            raise TransitionError("Transición no permitida para este restaurante")
 
         needed = transition.required_permission
         if needed and needed not in permissions:

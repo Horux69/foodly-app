@@ -25,9 +25,9 @@ def validate_selection(constraint: ModifierGroupConstraint, selected_count: int)
         raise ModifierValidationError(f"El grupo '{constraint.name}' es obligatorio")
     if selected_count < constraint.min_select:
         raise ModifierValidationError(
-            f"El grupo '{constraint.name}' requiere minimo {constraint.min_select} seleccion(es)"
+            f"El grupo '{constraint.name}' requiere mínimo {constraint.min_select} selección(es)"
         )
     if selected_count > constraint.max_select:
         raise ModifierValidationError(
-            f"El grupo '{constraint.name}' permite maximo {constraint.max_select} seleccion(es)"
+            f"El grupo '{constraint.name}' permite máximo {constraint.max_select} selección(es)"
         )

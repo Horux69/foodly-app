@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.domain.status_machine import Status, StatusMachine, Transition, TransitionError
 from app.models.order import Order
 from app.models.order_status import OrderStatus
-from app.repositories import order_repository, order_status_repository
+from app.repositories import delivery_repository, order_repository, order_status_repository
 from app.services.payment_service import get_balance_for_order
 
 
@@ -47,6 +47,27 @@ def allowed_next_statuses(db: Session, *, tenant_id: uuid.UUID, order: Order) ->
     return [statuses_by_id[s.id] for s in machine.allowed_from(str(order.status_id))]
 
 
+def _marcar_entrega(db: Session, order: Order, categoria: str) -> None:
+    """Anota cuándo salió y cuándo llegó un domicilio.
+
+    Se guía por la categoría del estado y no por su código: un restaurante
+    puede llamar 'En moto' a lo que otro llama 'En camino', y ambos son
+    'in_transit'. Los pedidos sin domicilio no tienen nada que anotar.
+    """
+    if categoria not in ("in_transit", "completed"):
+        return
+
+    info = delivery_repository.get_for_order(db, order.id)
+    if info is None:
+        return
+
+    ahora = datetime.now(timezone.utc)
+    if categoria == "in_transit" and info.dispatched_at is None:
+        info.dispatched_at = ahora
+    elif categoria == "completed" and info.delivered_at is None:
+        info.delivered_at = ahora
+
+
 def advance_status(
     db: Session,
     *,
@@ -77,10 +98,11 @@ def advance_status(
     if target.category == "completed":
         balance = get_balance_for_order(db, order)
         if not balance.is_settled:
-            raise OrderStatusError(f"El pedido no esta saldado: faltan {balance.pending}")
+            raise OrderStatusError(f"El pedido no está saldado: faltan {balance.pending}")
 
     order.status_id = target.id
     order.updated_at = datetime.now(timezone.utc)
+    _marcar_entrega(db, order, target.category)
     order_repository.add_status_history(
         db, order_id=order.id, status_id=target.id, changed_by=changed_by, note=note
     )

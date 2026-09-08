@@ -28,6 +28,9 @@ PERMISSIONS: dict[str, str] = {
     # Domicilios
     "delivery.assign": "Asignar repartidores",
     "delivery.complete": "Confirmar entregas",
+    # Clientes
+    "customers.view": "Ver la base de clientes y su historial",
+    "customers.manage": "Editar los datos de un cliente",
     # Reportes
     "reports.view": "Ver reportes",
 }

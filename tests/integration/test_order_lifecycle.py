@@ -104,7 +104,7 @@ def test_no_se_completa_un_pedido_sin_saldar(client, demo, headers, estados):
 
     response = _avanzar(client, headers, pedido["id"], estados["delivered"].id)
     assert response.status_code == 422
-    assert "no esta saldado" in response.json()["detail"]
+    assert "no está saldado" in response.json()["detail"]
 
 
 def test_un_pedido_sin_pagar_si_se_puede_cancelar(client, demo, headers, estados):

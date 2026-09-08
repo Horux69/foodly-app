@@ -16,7 +16,7 @@ from app.schemas.order import (
     OrderStatusChange,
     OrderStatusOut,
 )
-from app.services.order_service import OrderError, OrderLineInput
+from app.services.order_service import DeliveryInput, OrderError, OrderLineInput
 from app.services.order_service import create_order as create_order_use_case
 from app.services.order_service import get_order as get_order_use_case
 from app.services.order_service import list_orders as list_orders_use_case
@@ -87,6 +87,16 @@ def create_order_endpoint(
             table_code=payload.table_code,
             notes=payload.notes,
             idempotency_key=payload.idempotency_key,
+            delivery=(
+                DeliveryInput(
+                    address=payload.delivery.address,
+                    zone_id=payload.delivery.zone_id,
+                    lat=payload.delivery.lat,
+                    lng=payload.delivery.lng,
+                )
+                if payload.delivery
+                else None
+            ),
             delivery_fee=payload.delivery_fee,
             discount=payload.discount,
             tip=payload.tip,

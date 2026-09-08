@@ -34,7 +34,7 @@ def get_context(
     try:
         payload = decode_access_token(creds.credentials)
     except JWTError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token invalido")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token inválido")
 
     ctx = RequestContext(
         user_id=payload["sub"],

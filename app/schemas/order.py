@@ -3,6 +3,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.delivery import DeliveryInput
+
 
 class OrderItemCreate(BaseModel):
     menu_item_id: uuid.UUID
@@ -19,6 +21,9 @@ class OrderCreate(BaseModel):
     table_code: str | None = None
     notes: str | None = None
     idempotency_key: str | None = None
+    # Con datos de entrega el pedido es un domicilio. Si además trae zona, la
+    # tarifa la pone la zona y este `delivery_fee` se ignora.
+    delivery: DeliveryInput | None = None
     delivery_fee: Decimal = Decimal("0")
     discount: Decimal = Decimal("0")
     tip: Decimal = Decimal("0")

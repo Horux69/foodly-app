@@ -56,7 +56,7 @@ def register_payment(
 
     provider = get_provider(method)
     if provider is None:
-        raise PaymentError(f"Metodo de pago '{method}' no soportado. Disponibles: {available_methods()}")
+        raise PaymentError(f"Método de pago '{method}' no soportado. Disponibles: {available_methods()}")
 
     result = provider.charge(amount=amount, reference=external_reference)
     payment = payment_repository.create(

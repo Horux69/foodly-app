@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.domain.branch_schedule import ScheduleWindow, is_branch_open
+from app.domain.delivery import DeliveryError, DeliveryZoneRules, validate_minimum
 from app.domain.menu_pricing import resolve_effective_menu_item
 from app.domain.modifier_validation import ModifierGroupConstraint, ModifierValidationError, validate_selection
 from app.domain.order_totals import LineInput, OrderTotals, compute_totals
@@ -21,6 +22,7 @@ from app.models.order import Order
 from app.repositories import (
     branch_repository,
     customer_repository,
+    delivery_repository,
     menu_repository,
     order_repository,
     order_status_repository,
@@ -41,6 +43,14 @@ class OrderLineInput:
     notes: str | None = None
 
 
+@dataclass(frozen=True)
+class DeliveryInput:
+    address: str
+    zone_id: uuid.UUID | None = None
+    lat: Decimal | None = None
+    lng: Decimal | None = None
+
+
 def _check_branch_open(db: Session, branch, channel: str) -> None:
     schedules = branch_repository.get_schedules(db, branch.id)
     if not schedules:
@@ -57,7 +67,7 @@ def _check_branch_open(db: Session, branch, channel: str) -> None:
         for s in schedules
     ]
     if not is_branch_open(weekday=now_local.weekday(), at=now_local.time(), channel=channel, schedules=windows):
-        raise OrderError("La sucursal esta cerrada para este canal en este momento")
+        raise OrderError("La sucursal está cerrada para este canal en este momento")
 
 
 def create_order(
@@ -73,6 +83,7 @@ def create_order(
     table_code: str | None = None,
     notes: str | None = None,
     idempotency_key: str | None = None,
+    delivery: DeliveryInput | None = None,
     delivery_fee: Decimal = Decimal("0"),
     discount: Decimal = Decimal("0"),
     tip: Decimal = Decimal("0"),
@@ -123,6 +134,18 @@ def create_order(
             raise OrderError(f"La mesa '{table_code}' no existe en esta sucursal")
         table_id = table.id
 
+    # La tarifa de domicilio la pone el restaurante en su zona, no quien
+    # pide: si viene una zona, su tarifa manda sobre lo que llegue en el
+    # cuerpo de la petición.
+    zona = None
+    if delivery and delivery.zone_id:
+        zona = delivery_repository.get_zone(db, tenant_id, delivery.zone_id)
+        if zona is None:
+            raise OrderError("La zona de domicilio no existe para este tenant")
+        if not zona.is_active:
+            raise OrderError(f"La zona '{zona.name}' no está activa")
+        delivery_fee = zona.fee
+
     resolved_lines = _resolve_lines(db, tenant_id=tenant_id, branch_id=branch_id, items=items)
 
     totals = compute_totals(
@@ -131,6 +154,19 @@ def create_order(
         discount=discount,
         tip=tip,
     )
+
+    # Se valida con los totales ya calculados y antes de escribir nada: el
+    # mínimo mira el subtotal, no el total (ver app/domain/delivery.py).
+    if zona is not None:
+        try:
+            validate_minimum(
+                subtotal=totals.subtotal,
+                zone=DeliveryZoneRules(
+                    name=zona.name, fee=zona.fee, min_order=zona.min_order, est_minutes=zona.est_minutes
+                ),
+            )
+        except DeliveryError as exc:
+            raise OrderError(str(exc)) from exc
 
     order_number = order_repository.next_order_number(db, branch_id)
     order = order_repository.create(
@@ -175,6 +211,16 @@ def create_order(
                 price_delta=modifier.price_delta,
             )
 
+    if delivery is not None:
+        delivery_repository.create_info(
+            db,
+            order_id=order.id,
+            address=delivery.address,
+            zone_id=zona.id if zona else None,
+            lat=delivery.lat,
+            lng=delivery.lng,
+        )
+
     order_repository.add_status_history(
         db, order_id=order.id, status_id=initial_status.id, changed_by=created_by, note="Pedido creado"
     )
@@ -212,7 +258,7 @@ def _resolve_lines(
             override_is_available=override.is_available if override else None,
         )
         if not effective.is_available:
-            raise OrderError(f"'{item.name}' no esta disponible en esta sucursal")
+            raise OrderError(f"'{item.name}' no está disponible en esta sucursal")
 
         modifiers_by_id = {m.id: m for group in item.modifier_groups for m in group.modifiers}
         selected_ids = set(line.modifier_ids)
@@ -240,7 +286,7 @@ def _resolve_lines(
         for modifier_id in selected_ids:
             modifier = modifiers_by_id[modifier_id]
             if not modifier.is_available:
-                raise OrderError(f"El modificador '{modifier.name}' no esta disponible")
+                raise OrderError(f"El modificador '{modifier.name}' no está disponible")
             resolved_modifiers.append(modifier)
 
         tax_rate = item.tax_rate.rate if item.tax_rate else Decimal("0")

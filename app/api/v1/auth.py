@@ -17,7 +17,7 @@ def login_endpoint(payload: LoginRequest, db: Session = Depends(get_db)) -> Logi
     try:
         token = login(db, email=payload.email, password=payload.password)
     except AuthError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales invalidas")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
     return LoginResponse(access_token=token)
 
 

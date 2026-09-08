@@ -26,12 +26,12 @@ def login(db: Session, *, email: str, password: str) -> str:
     # despues se busca al usuario ya con el contexto puesto, bajo RLS.
     tenant_id = user_repository.find_tenant_for_login(db, email)
     if tenant_id is None:
-        raise AuthError("Credenciales invalidas")
+        raise AuthError("Credenciales inválidas")
     set_tenant_context(db, str(tenant_id))
 
     user = user_repository.get_by_email(db, email)
     if user is None or not verify_password(password, user.password_hash):
-        raise AuthError("Credenciales invalidas")
+        raise AuthError("Credenciales inválidas")
 
     permissions = [p.code for p in user.role.permissions]
     return create_access_token(

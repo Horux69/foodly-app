@@ -90,5 +90,5 @@ del proyecto al abrir una sesión de Claude Code.
 - [x] Módulo 8: reportes
 - [x] Módulo 9: motor de configuración por tenant
 - [x] Interfaz web: login, pedidos, KDS, menú, administración y reportes
-- [ ] Módulos 6 y 7: domicilios y clientes
+- [x] Módulos 6 y 7: domicilios y clientes
 - [ ] Fase futura: agente conversacional por WhatsApp y pagos in-chat

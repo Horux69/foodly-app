@@ -55,7 +55,7 @@ def validate(raw: dict) -> None:
             raise SettingsError("'channels' debe ser una lista con al menos un canal")
         unknown = [c for c in channels if c not in CHANNELS]
         if unknown:
-            raise SettingsError(f"Canales desconocidos: {unknown}. Validos: {list(CHANNELS)}")
+            raise SettingsError(f"Canales desconocidos: {unknown}. Válidos: {list(CHANNELS)}")
 
     for flag in ("uses_tables", "asks_tip"):
         if flag in raw and not isinstance(raw[flag], bool):

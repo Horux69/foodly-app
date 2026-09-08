@@ -23,5 +23,7 @@ INSERT INTO permissions (code, description) VALUES
   ('cash.close',              'Cerrar turno y arqueo'),
   ('delivery.assign',         'Asignar repartidores'),
   ('delivery.complete',       'Confirmar entregas'),
+  ('customers.view',          'Ver la base de clientes y su historial'),
+  ('customers.manage',        'Editar los datos de un cliente'),
   ('reports.view',            'Ver reportes')
 ON CONFLICT (code) DO NOTHING;
