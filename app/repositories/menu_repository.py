@@ -11,7 +11,11 @@ from app.models.modifier import Modifier, ModifierGroup
 def list_categories_with_items(db: Session, tenant_id: uuid.UUID) -> list[MenuCategory]:
     stmt = (
         select(MenuCategory)
-        .options(joinedload(MenuCategory.items))
+        .options(
+            joinedload(MenuCategory.items)
+            .joinedload(MenuItem.modifier_groups)
+            .joinedload(ModifierGroup.modifiers)
+        )
         .where(MenuCategory.tenant_id == tenant_id, MenuCategory.is_active.is_(True))
         .order_by(MenuCategory.sort_order)
     )

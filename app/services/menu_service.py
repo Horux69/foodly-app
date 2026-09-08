@@ -14,12 +14,31 @@ class MenuError(Exception):
 
 
 @dataclass(frozen=True)
+class ModifierView:
+    id: uuid.UUID
+    name: str
+    price_delta: Decimal
+    is_available: bool
+
+
+@dataclass(frozen=True)
+class ModifierGroupView:
+    id: uuid.UUID
+    name: str
+    min_select: int
+    max_select: int
+    is_required: bool
+    modifiers: list[ModifierView]
+
+
+@dataclass(frozen=True)
 class MenuItemView:
     id: uuid.UUID
     name: str
     description: str | None
     price: Decimal
     is_available: bool
+    modifier_groups: list[ModifierGroupView]
 
 
 @dataclass(frozen=True)
@@ -58,6 +77,25 @@ def get_menu(db: Session, *, tenant_id: uuid.UUID, branch_id: uuid.UUID | None) 
                     description=item.description,
                     price=effective.price,
                     is_available=effective.is_available,
+                    modifier_groups=[
+                        ModifierGroupView(
+                            id=group.id,
+                            name=group.name,
+                            min_select=group.min_select,
+                            max_select=group.max_select,
+                            is_required=group.is_required,
+                            modifiers=[
+                                ModifierView(
+                                    id=m.id,
+                                    name=m.name,
+                                    price_delta=m.price_delta,
+                                    is_available=m.is_available,
+                                )
+                                for m in group.modifiers
+                            ],
+                        )
+                        for group in item.modifier_groups
+                    ],
                 )
             )
         result.append(MenuCategoryView(id=category.id, name=category.name, items=items))

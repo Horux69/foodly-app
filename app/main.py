@@ -1,8 +1,13 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.api.v1.router import api_router
+
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 app = FastAPI(
     title="Plataforma de Restaurantes",
@@ -24,3 +29,8 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 @app.get("/health", tags=["system"])
 def health() -> dict:
     return {"status": "ok", "environment": settings.ENVIRONMENT}
+
+
+# El frontend se sirve desde el mismo origen que la API: sin CORS de por
+# medio y sin paso de build. Va al final para no tapar /health ni /api.
+app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

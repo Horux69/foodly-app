@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cocina</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen">
+    <div id="nav"></div>
+
+    <main class="max-w-7xl mx-auto p-4">
+      <div class="flex items-center justify-between mb-4">
+        <h1 class="text-lg font-semibold text-slate-900">Tablero de cocina</h1>
+        <span id="updated" class="text-xs text-slate-500"></span>
+      </div>
+      <div id="board" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+    </main>
+
+    <div id="toast" class="hidden"></div>
+
+    <script src="/app.js"></script>
+    <script>
+      let me = null;
+
+      // El color sale de la categoria y no del code: cada restaurante nombra
+      // sus estados distinto, la categoria es la parte normalizada.
+      const CATEGORY_STYLES = {
+        new: 'bg-slate-100 text-slate-700',
+        kitchen: 'bg-amber-100 text-amber-800',
+        ready: 'bg-emerald-100 text-emerald-800',
+      };
+
+      function minutesSince(iso) {
+        return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+      }
+
+      async function load() {
+        const board = document.getElementById('board');
+        let orders;
+        try {
+          orders = await api('/kitchen/orders');
+        } catch (err) {
+          toast(err.message);
+          return;
+        }
+
+        document.getElementById('updated').textContent =
+          `Actualizado ${new Date().toLocaleTimeString('es-CO')}`;
+
+        if (!orders.length) {
+          board.innerHTML =
+            '<p class="text-slate-500 text-sm col-span-full">No hay pedidos en curso.</p>';
+          return;
+        }
+
+        board.innerHTML = orders
+          .map((order) => {
+            const waiting = minutesSince(order.created_at);
+            // Pasados 15 minutos el pedido se marca: es la senal que la
+            // cocina necesita ver de lejos.
+            const urgent = waiting >= 15;
+            return `
+            <article class="bg-white rounded-xl border ${urgent ? 'border-red-300' : 'border-slate-200'} p-4 flex flex-col gap-3">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <div class="font-semibold text-slate-900">${order.order_number}</div>
+                  <div class="text-xs text-slate-500">
+                    ${order.channel}${order.table_code ? ` · mesa ${order.table_code}` : ''}
+                  </div>
+                </div>
+                <div class="text-right">
+                  <span class="inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                    CATEGORY_STYLES[order.status.category] || 'bg-slate-100 text-slate-700'
+                  }">${order.status.name}</span>
+                  <div class="text-xs mt-1 ${urgent ? 'text-red-600 font-medium' : 'text-slate-500'}">${waiting} min</div>
+                </div>
+              </div>
+
+              <ul class="text-sm space-y-1">
+                ${order.items
+                  .map(
+                    (item) => `
+                  <li>
+                    <span class="font-medium text-slate-900">${item.quantity}x ${item.name_snapshot}</span>
+                    ${item.modifiers.length ? `<div class="text-xs text-slate-500 pl-4">${item.modifiers.join(', ')}</div>` : ''}
+                    ${item.notes ? `<div class="text-xs text-amber-700 pl-4">${item.notes}</div>` : ''}
+                  </li>`
+                  )
+                  .join('')}
+              </ul>
+
+              <div class="flex flex-wrap gap-2 mt-auto pt-1">
+                ${order.next_statuses
+                  .map(
+                    (status) => `
+                  <button onclick="advance('${order.id}', '${status.id}')"
+                    class="text-sm rounded-lg px-3 py-1.5 font-medium ${
+                      status.category === 'cancelled'
+                        ? 'border border-red-200 text-red-700 hover:bg-red-50'
+                        : 'bg-slate-900 text-white hover:bg-slate-800'
+                    }">${status.name}</button>`
+                  )
+                  .join('')}
+              </div>
+            </article>`;
+          })
+          .join('');
+      }
+
+      async function advance(orderId, statusId) {
+        try {
+          await api(`/orders/${orderId}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ to_status_id: statusId }),
+          });
+          load();
+        } catch (err) {
+          // Aqui aterrizan las reglas del backend: falta de permiso para esa
+          // transicion, o un pedido que no se puede completar sin saldar.
+          toast(err.message);
+        }
+      }
+
+      async function init() {
+        me = await requireSession();
+        setCurrency(me.currency);
+        document.getElementById('nav').innerHTML = renderNav(me, '/cocina.html');
+        await load();
+        setInterval(load, 15000);
+      }
+
+      init().catch((err) => toast(err.message));
+    </script>
+  </body>
+</html>

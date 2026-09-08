@@ -43,12 +43,29 @@ class MenuItemUpdate(BaseModel):
     is_archived: bool | None = None
 
 
+class ModifierOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    price_delta: Decimal
+    is_available: bool
+
+
+class ModifierGroupOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    min_select: int
+    max_select: int
+    is_required: bool
+    modifiers: list[ModifierOut]
+
+
 class MenuItemOut(BaseModel):
     id: uuid.UUID
     name: str
     description: str | None
     price: Decimal
     is_available: bool
+    modifier_groups: list[ModifierGroupOut] = []
 
 
 class MenuCategoryWithItemsOut(BaseModel):

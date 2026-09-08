@@ -42,6 +42,15 @@ class OrderItemOut(BaseModel):
     modifiers: list[OrderItemModifierOut]
 
 
+class OrderPreviewOut(BaseModel):
+    subtotal: Decimal
+    tax_total: Decimal
+    delivery_fee: Decimal
+    discount: Decimal
+    tip: Decimal
+    total: Decimal
+
+
 class OrderStatusOut(BaseModel):
     id: uuid.UUID
     code: str

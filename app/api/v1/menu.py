@@ -16,6 +16,8 @@ from app.schemas.menu import (
     MenuItemCreate,
     MenuItemOut,
     MenuItemUpdate,
+    ModifierGroupOut,
+    ModifierOut,
 )
 from app.services.menu_service import (
     MenuError,
@@ -41,7 +43,35 @@ def get_menu_endpoint(
         MenuCategoryWithItemsOut(
             id=c.id,
             name=c.name,
-            items=[MenuItemOut(id=i.id, name=i.name, description=i.description, price=i.price, is_available=i.is_available) for i in c.items],
+            items=[
+                MenuItemOut(
+                    id=i.id,
+                    name=i.name,
+                    description=i.description,
+                    price=i.price,
+                    is_available=i.is_available,
+                    modifier_groups=[
+                        ModifierGroupOut(
+                            id=g.id,
+                            name=g.name,
+                            min_select=g.min_select,
+                            max_select=g.max_select,
+                            is_required=g.is_required,
+                            modifiers=[
+                                ModifierOut(
+                                    id=m.id,
+                                    name=m.name,
+                                    price_delta=m.price_delta,
+                                    is_available=m.is_available,
+                                )
+                                for m in g.modifiers
+                            ],
+                        )
+                        for g in i.modifier_groups
+                    ],
+                )
+                for i in c.items
+            ],
         )
         for c in categories
     ]

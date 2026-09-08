@@ -12,6 +12,7 @@ from app.schemas.order import (
     OrderItemModifierOut,
     OrderItemOut,
     OrderOut,
+    OrderPreviewOut,
     OrderStatusChange,
     OrderStatusOut,
 )
@@ -19,6 +20,7 @@ from app.services.order_service import OrderError, OrderLineInput
 from app.services.order_service import create_order as create_order_use_case
 from app.services.order_service import get_order as get_order_use_case
 from app.services.order_service import list_orders as list_orders_use_case
+from app.services.order_service import preview_totals as preview_totals_use_case
 from app.services.order_status_service import OrderStatusError, advance_status, allowed_next_statuses
 
 router = APIRouter()
@@ -92,6 +94,45 @@ def create_order_endpoint(
     except OrderError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return _to_order_out(order)
+
+
+@router.post("/preview", response_model=OrderPreviewOut)
+def preview_order_endpoint(
+    payload: OrderCreate,
+    ctx: Annotated[RequestContext, Depends(require("orders.create"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> OrderPreviewOut:
+    """Totales sin crear el pedido, para que la pantalla de venta los muestre
+    sin repetir la aritmetica del dominio."""
+    if ctx.branch_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El usuario no tiene una sucursal asignada")
+
+    try:
+        totals = preview_totals_use_case(
+            db,
+            tenant_id=uuid.UUID(ctx.tenant_id),
+            branch_id=uuid.UUID(ctx.branch_id),
+            items=[
+                OrderLineInput(
+                    menu_item_id=i.menu_item_id, quantity=i.quantity, modifier_ids=i.modifier_ids, notes=i.notes
+                )
+                for i in payload.items
+            ],
+            delivery_fee=payload.delivery_fee,
+            discount=payload.discount,
+            tip=payload.tip,
+        )
+    except OrderError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    return OrderPreviewOut(
+        subtotal=totals.subtotal,
+        tax_total=totals.tax_total,
+        delivery_fee=totals.delivery_fee,
+        discount=totals.discount,
+        tip=totals.tip,
+        total=totals.total,
+    )
 
 
 @router.get("/{order_id}", response_model=OrderOut)

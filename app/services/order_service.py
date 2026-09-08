@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.domain.branch_schedule import ScheduleWindow, is_branch_open
 from app.domain.menu_pricing import resolve_effective_menu_item
 from app.domain.modifier_validation import ModifierGroupConstraint, ModifierValidationError, validate_selection
-from app.domain.order_totals import LineInput, compute_totals
+from app.domain.order_totals import LineInput, OrderTotals, compute_totals
 from app.domain.tenant_settings import parse as parse_settings
 from app.models.order import Order
 from app.repositories import (
@@ -123,7 +123,82 @@ def create_order(
             raise OrderError(f"La mesa '{table_code}' no existe en esta sucursal")
         table_id = table.id
 
-    resolved_lines = []  # (menu_item, OrderLineInput, [resolved modifiers], LineInput)
+    resolved_lines = _resolve_lines(db, tenant_id=tenant_id, branch_id=branch_id, items=items)
+
+    totals = compute_totals(
+        [line.line_input for line in resolved_lines],
+        delivery_fee=delivery_fee,
+        discount=discount,
+        tip=tip,
+    )
+
+    order_number = order_repository.next_order_number(db, branch_id)
+    order = order_repository.create(
+        db,
+        tenant_id=tenant_id,
+        branch_id=branch_id,
+        status_id=initial_status.id,
+        order_number=order_number,
+        channel=channel,
+        customer_id=customer_id,
+        table_id=table_id,
+        created_by=created_by,
+        idempotency_key=idempotency_key,
+        notes=notes,
+        subtotal=totals.subtotal,
+        tax_total=totals.tax_total,
+        delivery_fee=totals.delivery_fee,
+        discount=totals.discount,
+        tip=totals.tip,
+        total=totals.total,
+    )
+
+    for resolved, line_result in zip(resolved_lines, totals.lines, strict=True):
+        order_item = order_repository.add_item(
+            db,
+            order_id=order.id,
+            menu_item_id=resolved.item.id,
+            name_snapshot=resolved.item.name,
+            quantity=resolved.line.quantity,
+            unit_price=resolved.line_input.unit_price,
+            tax_rate=resolved.line_input.tax_rate,
+            tax_amount=line_result.tax_amount,
+            line_total=line_result.line_total,
+            notes=resolved.line.notes,
+        )
+        for modifier in resolved.modifiers:
+            order_repository.add_item_modifier(
+                db,
+                order_item_id=order_item.id,
+                modifier_id=modifier.id,
+                name_snapshot=modifier.name,
+                price_delta=modifier.price_delta,
+            )
+
+    order_repository.add_status_history(
+        db, order_id=order.id, status_id=initial_status.id, changed_by=created_by, note="Pedido creado"
+    )
+
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@dataclass(frozen=True)
+class _ResolvedLine:
+    item: object
+    line: OrderLineInput
+    modifiers: list
+    line_input: LineInput
+
+
+def _resolve_lines(
+    db: Session, *, tenant_id: uuid.UUID, branch_id: uuid.UUID, items: list[OrderLineInput]
+) -> list[_ResolvedLine]:
+    """Resuelve precio efectivo, valida disponibilidad y modificadores, y deja
+    cada linea lista para que el dominio calcule. Lo comparten la creacion del
+    pedido y la previsualizacion de totales."""
+    resolved_lines: list[_ResolvedLine] = []
     for line in items:
         item = menu_repository.get_item_with_modifiers(db, tenant_id, line.menu_item_id)
         if item is None or item.is_archived:
@@ -178,65 +253,40 @@ def create_order(
             tax_included_in_price=tax_included,
             modifier_deltas=[m.price_delta for m in resolved_modifiers],
         )
-        resolved_lines.append((item, line, resolved_modifiers, line_input))
+        resolved_lines.append(
+            _ResolvedLine(item=item, line=line, modifiers=resolved_modifiers, line_input=line_input)
+        )
 
-    totals = compute_totals(
-        [line_input for _, _, _, line_input in resolved_lines],
+    return resolved_lines
+
+
+def preview_totals(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    branch_id: uuid.UUID,
+    items: list[OrderLineInput],
+    delivery_fee: Decimal = Decimal("0"),
+    discount: Decimal = Decimal("0"),
+    tip: Decimal = Decimal("0"),
+) -> OrderTotals:
+    """Totales de un pedido que aun no existe.
+
+    Existe para que el frontend muestre el total sin recalcularlo: la
+    aritmetica sigue viviendo solo en domain/order_totals (principio 5).
+    No valida canal ni horario, que hacen a si el pedido se puede vender y
+    no a cuanto cuesta.
+    """
+    if not items:
+        raise OrderError("El pedido necesita al menos un producto")
+
+    resolved_lines = _resolve_lines(db, tenant_id=tenant_id, branch_id=branch_id, items=items)
+    return compute_totals(
+        [line.line_input for line in resolved_lines],
         delivery_fee=delivery_fee,
         discount=discount,
         tip=tip,
     )
-
-    order_number = order_repository.next_order_number(db, branch_id)
-    order = order_repository.create(
-        db,
-        tenant_id=tenant_id,
-        branch_id=branch_id,
-        status_id=initial_status.id,
-        order_number=order_number,
-        channel=channel,
-        customer_id=customer_id,
-        table_id=table_id,
-        created_by=created_by,
-        idempotency_key=idempotency_key,
-        notes=notes,
-        subtotal=totals.subtotal,
-        tax_total=totals.tax_total,
-        delivery_fee=totals.delivery_fee,
-        discount=totals.discount,
-        tip=totals.tip,
-        total=totals.total,
-    )
-
-    for (item, line, resolved_modifiers, line_input), line_result in zip(resolved_lines, totals.lines, strict=True):
-        order_item = order_repository.add_item(
-            db,
-            order_id=order.id,
-            menu_item_id=item.id,
-            name_snapshot=item.name,
-            quantity=line.quantity,
-            unit_price=line_input.unit_price,
-            tax_rate=line_input.tax_rate,
-            tax_amount=line_result.tax_amount,
-            line_total=line_result.line_total,
-            notes=line.notes,
-        )
-        for modifier in resolved_modifiers:
-            order_repository.add_item_modifier(
-                db,
-                order_item_id=order_item.id,
-                modifier_id=modifier.id,
-                name_snapshot=modifier.name,
-                price_delta=modifier.price_delta,
-            )
-
-    order_repository.add_status_history(
-        db, order_id=order.id, status_id=initial_status.id, changed_by=created_by, note="Pedido creado"
-    )
-
-    db.commit()
-    db.refresh(order)
-    return order
 
 
 def get_order(db: Session, *, tenant_id: uuid.UUID, order_id: uuid.UUID) -> Order | None:

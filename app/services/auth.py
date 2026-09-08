@@ -1,7 +1,14 @@
+import uuid
+
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, verify_password
-from app.repositories import user_repository
+from app.domain.tenant_settings import TenantSettings
+from app.domain.tenant_settings import parse as parse_settings
+from app.models.branch import Branch
+from app.models.tenant import Tenant
+from app.models.user import User
+from app.repositories import branch_repository, tenant_repository, user_repository
 
 
 class AuthError(Exception):
@@ -25,3 +32,19 @@ def login(db: Session, *, email: str, password: str) -> str:
         role_code=user.role.code,
         permissions=permissions,
     )
+
+
+def get_me(
+    db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID
+) -> tuple[User, Branch | None, Tenant, TenantSettings]:
+    user = user_repository.get(db, tenant_id, user_id)
+    if user is None:
+        raise AuthError("El usuario ya no existe")
+
+    tenant = tenant_repository.get(db, tenant_id)
+    if tenant is None:
+        raise AuthError("El tenant ya no existe")
+
+    branch = branch_repository.get(db, tenant_id, user.branch_id) if user.branch_id else None
+    settings = parse_settings(tenant.settings, business_type=tenant.business_type)
+    return user, branch, tenant, settings
