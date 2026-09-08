@@ -1,0 +1,84 @@
+// Navegación sin recargar la página.
+//
+// Usa el hash (#/pedidos) y no la History API a propósito: así el servidor
+// puede seguir sirviendo un único index.html sin ninguna regla de reescritura.
+//
+// Cada ruta declara el permiso que necesita. La navegación no es seguridad
+// —el backend rechaza por su cuenta— pero evita ofrecerle a alguien una
+// pantalla que va a rebotar.
+
+import { toast } from './ui.js';
+import { can } from './session.js';
+
+const rutas = new Map();
+let outlet = null;
+let alCambiar = () => {};
+let vistaActiva = null;
+
+export function define(routes) {
+  for (const route of routes) rutas.set(route.path, route);
+}
+
+export function start(elemento, onChange) {
+  outlet = elemento;
+  alCambiar = onChange;
+  window.addEventListener('hashchange', resolver);
+  resolver();
+}
+
+export function go(path, { replace = false } = {}) {
+  const destino = `#/${path}`;
+  if (window.location.hash === destino) return resolver();
+  if (replace) window.location.replace(destino);
+  else window.location.hash = destino;
+}
+
+export function current() {
+  return window.location.hash.replace(/^#\/?/, '').split('?')[0] || '';
+}
+
+/** Primera ruta que el usuario sí puede abrir, para no dejarlo en el vacío. */
+export function firstAllowed() {
+  for (const route of rutas.values()) {
+    if (!route.public && (!route.permission || can(route.permission))) return route.path;
+  }
+  return null;
+}
+
+export function menuRoutes() {
+  return [...rutas.values()].filter((r) => r.label && (!r.permission || can(r.permission)));
+}
+
+async function resolver() {
+  const path = current();
+  const route = rutas.get(path);
+
+  if (!route) {
+    const destino = firstAllowed() ?? 'ingresar';
+    return go(destino, { replace: true });
+  }
+
+  // Cada vista puede dejar cosas corriendo (auto-refresco, temporizadores).
+  // Se les avisa al salir para que no sigan trabajando en segundo plano.
+  if (vistaActiva?.destroy) {
+    try {
+      vistaActiva.destroy();
+    } catch {
+      // una vista mal terminada no debe impedir entrar a la siguiente
+    }
+  }
+  vistaActiva = null;
+
+  if (route.permission && !can(route.permission)) {
+    toast('No tienes permiso para esa pantalla');
+    return go(firstAllowed() ?? 'ingresar', { replace: true });
+  }
+
+  alCambiar(route);
+
+  try {
+    vistaActiva = (await route.view(outlet)) ?? null;
+  } catch (error) {
+    toast(error.message);
+  }
+}

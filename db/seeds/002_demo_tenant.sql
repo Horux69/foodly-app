@@ -31,7 +31,7 @@ BEGIN
   INSERT INTO order_statuses (tenant_id, code, name, category, sort_order)
     VALUES (t_id, 'paid', 'Pagado', 'new', 2) RETURNING id INTO st_paid;
   INSERT INTO order_statuses (tenant_id, code, name, category, sort_order)
-    VALUES (t_id, 'preparing', 'Preparacion', 'kitchen', 3) RETURNING id INTO st_prep;
+    VALUES (t_id, 'preparing', 'Preparación', 'kitchen', 3) RETURNING id INTO st_prep;
   INSERT INTO order_statuses (tenant_id, code, name, category, sort_order)
     VALUES (t_id, 'ready', 'Listo', 'ready', 4) RETURNING id INTO st_ready;
   INSERT INTO order_statuses (tenant_id, code, name, category, sort_order, is_final)
@@ -69,6 +69,6 @@ BEGIN
 
   INSERT INTO menu_items (category_id, tax_rate_id, name, base_price, prep_minutes)
   VALUES
-    (cat_id, tax_id, 'Hamburguesa clasica', 18000, 10),
+    (cat_id, tax_id, 'Hamburguesa clásica', 18000, 10),
     (cat_id, tax_id, 'Hamburguesa doble carne', 26000, 14);
 END $$;

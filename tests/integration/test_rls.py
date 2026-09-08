@@ -163,6 +163,66 @@ def test_la_funcion_de_login_solo_revela_el_tenant(db, datos):
     assert inexistente is None
 
 
+def test_el_contexto_sobrevive_a_un_commit(engine):
+    """`set_config(..., true)` muere con la transacción, así que después de un
+    commit la sesión se quedaba sin tenant y no encontraba ni la fila que
+    acababa de escribir. Es el bug que rompía todo POST bajo RLS.
+
+    Este test no usa el fixture `db` ni `make_tenant`: allí los commits son
+    savepoints dentro de una transacción que nunca se cierra, y justamente por
+    eso esta clase de error le pasa por debajo al resto de la suite. Aquí los
+    commits son de verdad, y por eso hay que limpiar a mano.
+    """
+    from sqlalchemy import create_engine, text as sql
+    from sqlalchemy.orm import Session as SesionReal
+
+    from app.core.database import set_tenant_context
+    from app.repositories import menu_repository
+    from app.services.tenant_provisioning import create_tenant
+
+    url = _url_del_rol_de_aplicacion()
+    if url is None:
+        pytest.skip("Sin APP_DATABASE_URL configurada")
+
+    # La empresa se crea con el rol dueño: dar de alta un tenant es previo a
+    # que exista contexto alguno, igual que en producción.
+    dueña = SesionReal(bind=engine)
+    tenant_id = None
+    motor_app = create_engine(url)
+    try:
+        tenant_id = create_tenant(dueña, name="Commit RLS", business_type="fast_food").id
+
+        sesion = SesionReal(bind=motor_app)
+        try:
+            set_tenant_context(sesion, str(tenant_id))
+            categoria = menu_repository.create_category(sesion, tenant_id=tenant_id, name="Antes")
+            sesion.commit()
+
+            # Aquí fallaba: tras el commit la consulta iba sin tenant.
+            sesion.refresh(categoria)
+            assert categoria.name == "Antes"
+            assert menu_repository.list_all_categories(sesion, tenant_id)
+        finally:
+            sesion.close()
+    finally:
+        motor_app.dispose()
+        if tenant_id:
+            dueña.execute(sql("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id})
+            dueña.commit()
+        dueña.close()
+
+
+def _url_del_rol_de_aplicacion() -> str | None:
+    from app.core.config import settings
+
+    from .conftest import _test_database_url
+
+    if not settings.APP_DATABASE_URL:
+        return None
+    credenciales = settings.APP_DATABASE_URL.rpartition("/")[0]
+    return f"{credenciales}/{_test_database_url().rpartition('/')[2]}"
+
+
 def test_el_login_por_api_sigue_funcionando_bajo_rls(client, datos):
     """La funcion de escape existe para esto: sin ella el login se quedaria
     sin filas y nadie podria entrar."""
