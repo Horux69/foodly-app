@@ -404,6 +404,25 @@ final class OrderService
     }
 
     /**
+     * La bitacora del pedido.
+     *
+     * Pasa por el pedido y no directo a la tabla para no responder la
+     * historia de un pedido de otra empresa: el WHERE por tenant lo hace
+     * getById, y RLS respalda por debajo.
+     *
+     * @return \App\Models\OrderStatusEvent[]
+     */
+    public static function statusHistory(string $tenantId, string $orderId): array
+    {
+        $pdo = Database::app();
+        $order = (new OrderRepository($pdo))->getById($tenantId, $orderId);
+        if ($order === null) {
+            throw new OrderError('Pedido no encontrado');
+        }
+        return (new OrderRepository($pdo))->statusHistory($order->id);
+    }
+
+    /**
      * Una pagina de la lista de pedidos, con el saldo de cada uno resuelto
      * de una vez.
      *

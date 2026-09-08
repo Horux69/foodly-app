@@ -26,6 +26,7 @@ import {
   toast,
 } from '../ui.js';
 import { canal } from './cocina.js';
+import { abrirPedido, tonoEstado } from './pedido-detalle.js';
 
 export async function pedidos(outlet) {
   const contenido = h('div');
@@ -727,15 +728,13 @@ function abrirModificadores(item, alConfirmar) {
 // categoría es la parte que la plataforma entiende igual en todas.
 const CATEGORIAS = [
   { valor: '', etiqueta: 'Todos los estados' },
-  { valor: 'new', etiqueta: 'Nuevos', tono: 'neutral' },
-  { valor: 'kitchen', etiqueta: 'En cocina', tono: 'warn' },
-  { valor: 'ready', etiqueta: 'Listos', tono: 'ok' },
-  { valor: 'in_transit', etiqueta: 'En camino', tono: 'info' },
-  { valor: 'completed', etiqueta: 'Completados', tono: 'ok' },
-  { valor: 'cancelled', etiqueta: 'Cancelados', tono: 'danger' },
+  { valor: 'new', etiqueta: 'Nuevos' },
+  { valor: 'kitchen', etiqueta: 'En cocina' },
+  { valor: 'ready', etiqueta: 'Listos' },
+  { valor: 'in_transit', etiqueta: 'En camino' },
+  { valor: 'completed', etiqueta: 'Completados' },
+  { valor: 'cancelled', etiqueta: 'Cancelados' },
 ];
-
-const tonoDe = (categoria) => CATEGORIAS.find((c) => c.valor === categoria)?.tono ?? 'neutral';
 
 const ESPERA_BUSQUEDA_MS = 300;
 
@@ -905,8 +904,15 @@ function tarjetaPedido(pedido, refrescar) {
         h(
           'div',
           { class: 'flex items-center gap-2 flex-wrap' },
-          h('span', { class: 'font-semibold text-stone-900 tabular-nums' }, pedido.order_number),
-          pedido.status ? badge(pedido.status.name, tonoDe(pedido.status.category)) : null,
+          h(
+          'button',
+          {
+            class: 'font-semibold text-stone-900 tabular-nums hover:underline',
+            onClick: () => abrirPedido(pedido.id, { alCambiar: refrescar }),
+          },
+          pedido.order_number
+        ),
+          pedido.status ? badge(pedido.status.name, tonoEstado(pedido.status.category)) : null,
           badge(canal(pedido.channel)),
           pedido.table_code ? badge(`Mesa ${pedido.table_code}`) : null
         ),

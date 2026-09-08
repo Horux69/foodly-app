@@ -8,6 +8,7 @@ use App\Api\ApiException;
 use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
+use App\Core\Database;
 use App\Core\Money;
 use App\Domain\PaymentBalance;
 use App\Models\Order;
@@ -18,7 +19,9 @@ use App\Services\OrderLineInput;
 use App\Services\OrderListFilters;
 use App\Services\OrderService;
 use App\Services\OrderStatusError;
+use App\Repositories\DeliveryRepository;
 use App\Services\OrderStatusService;
+use App\Services\PaymentService;
 
 /** Equivalente PHP de app/api/v1/orders.py. */
 final class OrderController
@@ -212,6 +215,14 @@ final class OrderController
         ];
     }
 
+    /**
+     * El pedido con todo lo que el panel de detalle necesita para pintarse.
+     *
+     * El saldo y la entrega viajan dentro y no en dos peticiones aparte, por
+     * la misma razon que en la lista: abrir un pedido no deberia costar
+     * cuatro llamadas. La aritmetica del saldo sigue siendo de
+     * Domain\PaymentBalance.
+     */
     public static function get(array $params): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
@@ -219,7 +230,35 @@ final class OrderController
         if ($order === null) {
             throw new ApiException(404, 'Pedido no encontrado');
         }
-        return self::orderOut($order);
+
+        $delivery = (new DeliveryRepository(Database::app()))->getForOrder($order->id);
+
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+            // Solo los domicilios tienen entrega; su presencia es lo que
+            // convierte al pedido en uno.
+            'delivery' => $delivery === null ? null : DeliveryController::infoOut($delivery),
+        ];
+    }
+
+    /** Quien movio el pedido, cuando y con que nota. */
+    public static function history(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.view');
+
+        try {
+            $events = OrderService::statusHistory($ctx->tenantId, $params['order_id']);
+        } catch (OrderError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
+
+        return array_map(static fn ($e) => [
+            'id' => $e->id,
+            'status' => self::statusOut($e->status),
+            'changed_by_name' => $e->changedByName,
+            'note' => $e->note,
+            'changed_at' => $e->changedAt,
+        ], $events);
     }
 
     public static function balanceOut(PaymentBalance $b): array

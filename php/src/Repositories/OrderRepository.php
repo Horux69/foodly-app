@@ -8,6 +8,7 @@ use App\Core\Money;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemModifier;
+use App\Models\OrderStatusEvent;
 use App\Models\OrderStatusRow;
 use App\Services\OrderCursor;
 use App\Services\OrderListFilters;
@@ -345,6 +346,33 @@ final class OrderRepository
             'name_snapshot' => $nameSnapshot,
             'price_delta' => Money::toDecimalString($priceDeltaCents),
         ]);
+    }
+
+    /**
+     * La bitacora del pedido, del primer estado al ultimo.
+     *
+     * Se escribia desde siempre y solo la leia el reporte de tiempos: nadie
+     * podia ver quien movio que. El nombre del usuario se resuelve con LEFT
+     * JOIN porque changed_by es ON DELETE SET NULL —un empleado que ya no
+     * esta no debe borrar la historia del pedido.
+     *
+     * @return OrderStatusEvent[]
+     */
+    public function statusHistory(string $orderId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT h.id, h.note, h.changed_at, u.name AS changed_by_name,
+                    s.id AS s_id, s.code AS s_code, s.name AS s_name, s.category AS s_category,
+                    s.color AS s_color, s.sort_order AS s_sort_order,
+                    s.is_initial AS s_is_initial, s.is_final AS s_is_final
+               FROM order_status_history h
+               JOIN order_statuses s ON s.id = h.status_id
+               LEFT JOIN users u ON u.id = h.changed_by
+              WHERE h.order_id = :order_id
+              ORDER BY h.changed_at, h.id'
+        );
+        $stmt->execute(['order_id' => $orderId]);
+        return array_map(OrderStatusEvent::fromRow(...), $stmt->fetchAll());
     }
 
     public function addStatusHistory(string $orderId, string $statusId, ?string $changedBy, ?string $note): void

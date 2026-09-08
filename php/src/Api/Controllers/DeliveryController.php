@@ -30,7 +30,8 @@ final class DeliveryController
         ];
     }
 
-    private static function infoOut(DeliveryInfo $i): array
+    /** Publico porque el detalle del pedido embebe la entrega con esta misma forma. */
+    public static function infoOut(DeliveryInfo $i): array
     {
         return [
             'order_id' => $i->orderId,

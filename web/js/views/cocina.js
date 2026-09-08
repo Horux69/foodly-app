@@ -14,6 +14,7 @@ import { elapsed, minutesSince, time } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery } from '../session.js';
 import { badge, button, empty, errorBox, h, render, skeleton, toast } from '../ui.js';
+import { abrirPedido } from './pedido-detalle.js';
 
 const REFRESCO_MS = 15000;
 const ATENTO_MINUTOS = 10;
@@ -137,7 +138,15 @@ function ticket(pedido, refrescar) {
       h(
         'div',
         { class: 'min-w-0' },
-        h('div', { class: 'text-2xl font-bold tracking-tight text-stone-900 tabular-nums' }, pedido.order_number),
+        h(
+          'button',
+          {
+            class: 'text-2xl font-bold tracking-tight text-stone-900 tabular-nums hover:underline',
+            title: 'Ver el detalle',
+            onClick: () => abrirPedido(pedido.id, { alCambiar: refrescar }),
+          },
+          pedido.order_number
+        ),
         h(
           'div',
           { class: 'flex items-center gap-1.5 text-xs text-stone-500 mt-0.5' },

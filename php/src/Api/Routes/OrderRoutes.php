@@ -22,6 +22,7 @@ final class OrderRoutes
         $router->get('/orders', fn () => OrderController::list());
         $router->get('/orders/{order_id:uuid}', fn ($p) => OrderController::get($p));
         $router->get('/orders/{order_id:uuid}/next-statuses', fn ($p) => OrderController::nextStatuses($p));
+        $router->get('/orders/{order_id:uuid}/history', fn ($p) => OrderController::history($p));
         $router->post('/orders/{order_id:uuid}/status', fn ($p) => OrderController::changeStatus($p));
 
         $router->post('/orders/{order_id:uuid}/payments', fn ($p) => PaymentController::register($p));
