@@ -27,6 +27,25 @@ def get_overrides_for_branch(db: Session, branch_id: uuid.UUID) -> dict[uuid.UUI
     return {o.menu_item_id: o for o in db.scalars(stmt)}
 
 
+def list_all_categories(db: Session, tenant_id: uuid.UUID) -> list[MenuCategory]:
+    """Incluye las inactivas: la pantalla de administracion tiene que verlas
+    para poder reactivarlas."""
+    stmt = select(MenuCategory).where(MenuCategory.tenant_id == tenant_id).order_by(MenuCategory.sort_order)
+    return list(db.scalars(stmt))
+
+
+def list_all_items(db: Session, tenant_id: uuid.UUID) -> list[MenuItem]:
+    """Catalogo crudo para administracion: precio base sin overrides y con
+    los archivados incluidos. La vista operativa usa list_categories_with_items."""
+    stmt = (
+        select(MenuItem)
+        .join(MenuCategory, MenuItem.category_id == MenuCategory.id)
+        .where(MenuCategory.tenant_id == tenant_id)
+        .order_by(MenuCategory.sort_order, MenuItem.sort_order)
+    )
+    return list(db.scalars(stmt))
+
+
 def get_category(db: Session, tenant_id: uuid.UUID, category_id: uuid.UUID) -> MenuCategory | None:
     stmt = select(MenuCategory).where(MenuCategory.tenant_id == tenant_id, MenuCategory.id == category_id)
     return db.scalars(stmt).first()

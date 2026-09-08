@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen">
+    <div id="nav"></div>
+
+    <main class="max-w-5xl mx-auto p-4 space-y-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <h2 class="font-semibold text-slate-900 mb-3">Nueva categoria</h2>
+        <div class="flex flex-wrap gap-2">
+          <input id="cat-name" placeholder="Nombre" class="flex-1 min-w-[200px] rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <input id="cat-order" type="number" value="0" title="Orden" class="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <button id="cat-add" class="bg-slate-900 text-white rounded-lg px-4 py-2 text-sm font-medium">Crear</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <h2 class="font-semibold text-slate-900 mb-3">Nuevo producto</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <select id="item-cat" class="rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+          <input id="item-name" placeholder="Nombre" class="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <input id="item-price" type="number" min="0" placeholder="Precio base" class="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <select id="item-tax" class="rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+          <input id="item-desc" placeholder="Descripcion" class="sm:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <button id="item-add" class="mt-2 bg-slate-900 text-white rounded-lg px-4 py-2 text-sm font-medium">Crear producto</button>
+      </div>
+
+      <label class="flex items-center gap-2 text-sm text-slate-600">
+        <input type="checkbox" id="show-archived" />
+        Mostrar archivados
+      </label>
+
+      <div id="catalog" class="space-y-4"></div>
+    </main>
+
+    <div id="toast" class="hidden"></div>
+
+    <script src="/app.js"></script>
+    <script>
+      let me = null;
+      let catalog = { categories: [], items: [] };
+      let taxes = [];
+
+      async function refresh() {
+        catalog = await api('/menu/catalog');
+        document.getElementById('item-cat').innerHTML = catalog.categories
+          .map((c) => `<option value="${c.id}">${c.name}</option>`)
+          .join('');
+        render();
+      }
+
+      function taxLabel(id) {
+        const tax = taxes.find((t) => t.id === id);
+        if (!tax) return 'exento';
+        return `${tax.name} (${(Number(tax.rate) * 100).toFixed(1)}%)`;
+      }
+
+      function render() {
+        const showArchived = document.getElementById('show-archived').checked;
+        const el = document.getElementById('catalog');
+
+        if (!catalog.categories.length) {
+          el.innerHTML =
+            '<div class="bg-white rounded-xl border border-slate-200 p-6 text-sm text-slate-500">Todavia no hay categorias.</div>';
+          return;
+        }
+
+        el.innerHTML = catalog.categories
+          .map((cat) => {
+            const items = catalog.items.filter(
+              (i) => i.category_id === cat.id && (showArchived || !i.is_archived)
+            );
+            return `
+            <div class="bg-white rounded-xl border border-slate-200 p-4">
+              <h3 class="font-semibold text-slate-900 mb-3">${cat.name}</h3>
+              ${
+                items.length
+                  ? `<div class="divide-y divide-slate-100">${items.map(itemRow).join('')}</div>`
+                  : '<p class="text-sm text-slate-500">Sin productos.</p>'
+              }
+            </div>`;
+          })
+          .join('');
+      }
+
+      function itemRow(item) {
+        return `
+          <div class="py-3 flex flex-wrap items-center gap-3 ${item.is_archived ? 'opacity-50' : ''}">
+            <div class="flex-1 min-w-[180px]">
+              <div class="font-medium text-sm text-slate-900">
+                ${item.name}
+                ${item.is_archived ? '<span class="text-xs text-slate-500">(archivado)</span>' : ''}
+              </div>
+              <div class="text-xs text-slate-500">${taxLabel(item.tax_rate_id)}</div>
+            </div>
+            <input type="number" min="0" value="${item.base_price}" data-price="${item.id}"
+              class="w-28 rounded-lg border border-slate-300 px-2 py-1 text-sm tabular-nums" />
+            <select data-tax="${item.id}" class="rounded-lg border border-slate-300 px-2 py-1 text-sm">
+              <option value="">Exento</option>
+              ${taxes
+                .map(
+                  (t) =>
+                    `<option value="${t.id}" ${t.id === item.tax_rate_id ? 'selected' : ''}>${t.name}</option>`
+                )
+                .join('')}
+            </select>
+            <button data-save="${item.id}" class="text-sm border border-slate-300 rounded-lg px-3 py-1 hover:border-slate-900">Guardar</button>
+            <button data-avail="${item.id}" class="text-sm rounded-lg px-3 py-1 ${
+              item.is_available
+                ? 'border border-amber-300 text-amber-700 hover:bg-amber-50'
+                : 'border border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+            }">${item.is_available ? 'Agotar' : 'Reactivar'}</button>
+            <button data-archive="${item.id}" data-value="${!item.is_archived}"
+              class="text-sm border border-slate-300 rounded-lg px-3 py-1 hover:border-slate-900">
+              ${item.is_archived ? 'Desarchivar' : 'Archivar'}
+            </button>
+          </div>`;
+      }
+
+      // Delegacion: el catalogo se vuelve a pintar entero en cada cambio, asi
+      // que enganchar listeners por fila se perderia en cada render.
+      document.addEventListener('click', async (event) => {
+        const target = event.target;
+        try {
+          if (target.dataset.save) {
+            const id = target.dataset.save;
+            const price = document.querySelector(`[data-price="${id}"]`).value;
+            const tax = document.querySelector(`[data-tax="${id}"]`).value;
+            await api(`/menu/items/${id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ base_price: Number(price), tax_rate_id: tax || null }),
+            });
+            toast('Producto actualizado', 'ok');
+            await refresh();
+          } else if (target.dataset.avail) {
+            const item = catalog.items.find((i) => i.id === target.dataset.avail);
+            await api(`/menu/items/${item.id}/availability`, {
+              method: 'PATCH',
+              body: JSON.stringify({ is_available: !item.is_available }),
+            });
+            await refresh();
+          } else if (target.dataset.archive) {
+            await api(`/menu/items/${target.dataset.archive}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ is_archived: target.dataset.value === 'true' }),
+            });
+            await refresh();
+          }
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+
+      document.getElementById('cat-add').addEventListener('click', async () => {
+        try {
+          await api('/menu/categories', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: document.getElementById('cat-name').value,
+              sort_order: Number(document.getElementById('cat-order').value || 0),
+            }),
+          });
+          document.getElementById('cat-name').value = '';
+          toast('Categoria creada', 'ok');
+          await refresh();
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+
+      document.getElementById('item-add').addEventListener('click', async () => {
+        try {
+          const tax = document.getElementById('item-tax').value;
+          await api('/menu/items', {
+            method: 'POST',
+            body: JSON.stringify({
+              category_id: document.getElementById('item-cat').value,
+              name: document.getElementById('item-name').value,
+              base_price: Number(document.getElementById('item-price').value || 0),
+              description: document.getElementById('item-desc').value || null,
+              tax_rate_id: tax || null,
+            }),
+          });
+          document.getElementById('item-name').value = '';
+          document.getElementById('item-price').value = '';
+          document.getElementById('item-desc').value = '';
+          toast('Producto creado', 'ok');
+          await refresh();
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+
+      document.getElementById('show-archived').addEventListener('change', render);
+
+      async function init() {
+        me = await requireSession();
+        setCurrency(me.currency);
+        document.getElementById('nav').innerHTML = renderNav(me, '/menu.html');
+
+        if (can(me, 'settings.view')) {
+          taxes = await api('/tax-rates');
+        }
+        // Sin impuesto elegido el backend hereda el default del tenant.
+        document.getElementById('item-tax').innerHTML =
+          '<option value="">Impuesto por defecto</option>' +
+          taxes.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+
+        await refresh();
+      }
+
+      init().catch((err) => toast(err.message));
+    </script>
+  </body>
+</html>

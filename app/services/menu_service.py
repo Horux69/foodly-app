@@ -102,6 +102,14 @@ def get_menu(db: Session, *, tenant_id: uuid.UUID, branch_id: uuid.UUID | None) 
     return result
 
 
+def get_catalog(db: Session, *, tenant_id: uuid.UUID) -> tuple[list[MenuCategory], list[MenuItem]]:
+    """Catalogo para administrar, no para vender."""
+    return (
+        menu_repository.list_all_categories(db, tenant_id),
+        menu_repository.list_all_items(db, tenant_id),
+    )
+
+
 def create_category(db: Session, *, tenant_id: uuid.UUID, name: str, sort_order: int = 0) -> MenuCategory:
     category = menu_repository.create_category(db, tenant_id=tenant_id, name=name, sort_order=sort_order)
     db.commit()

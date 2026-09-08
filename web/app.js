@@ -88,6 +88,9 @@ function renderNav(me, active) {
   const links = [
     { href: '/pedidos.html', label: 'Pedidos', permission: 'orders.create' },
     { href: '/cocina.html', label: 'Cocina', permission: 'orders.view' },
+    { href: '/menu.html', label: 'Menu', permission: 'menu.edit' },
+    { href: '/reportes.html', label: 'Reportes', permission: 'reports.view' },
+    { href: '/admin.html', label: 'Admin', permission: 'settings.view' },
   ].filter((l) => can(me, l.permission));
 
   const items = links

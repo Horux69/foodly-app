@@ -9,6 +9,9 @@ from app.core.database import get_db
 from app.schemas.menu import (
     BranchMenuOverrideIn,
     BranchMenuOverrideOut,
+    CatalogCategoryOut,
+    CatalogItemOut,
+    CatalogOut,
     MenuCategoryCreate,
     MenuCategoryOut,
     MenuCategoryWithItemsOut,
@@ -23,6 +26,7 @@ from app.services.menu_service import (
     MenuError,
     create_category,
     create_item,
+    get_catalog,
     get_menu,
     set_branch_override,
     set_item_availability,
@@ -75,6 +79,20 @@ def get_menu_endpoint(
         )
         for c in categories
     ]
+
+
+@router.get("/catalog", response_model=CatalogOut)
+def get_catalog_endpoint(
+    ctx: Annotated[RequestContext, Depends(require("menu.view"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> CatalogOut:
+    """Catalogo crudo para administrar: precio base sin overrides de sucursal
+    y con los productos archivados incluidos."""
+    categories, items = get_catalog(db, tenant_id=uuid.UUID(ctx.tenant_id))
+    return CatalogOut(
+        categories=[CatalogCategoryOut.model_validate(c) for c in categories],
+        items=[CatalogItemOut.model_validate(i) for i in items],
+    )
 
 
 @router.post("/categories", response_model=MenuCategoryOut, status_code=status.HTTP_201_CREATED)

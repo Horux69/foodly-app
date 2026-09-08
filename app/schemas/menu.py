@@ -74,6 +74,35 @@ class MenuCategoryWithItemsOut(BaseModel):
     items: list[MenuItemOut]
 
 
+class CatalogCategoryOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    sort_order: int
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class CatalogItemOut(BaseModel):
+    id: uuid.UUID
+    category_id: uuid.UUID
+    name: str
+    description: str | None
+    base_price: Decimal
+    tax_rate_id: uuid.UUID | None
+    prep_minutes: int | None
+    is_available: bool
+    is_archived: bool
+    sort_order: int
+
+    model_config = {"from_attributes": True}
+
+
+class CatalogOut(BaseModel):
+    categories: list[CatalogCategoryOut]
+    items: list[CatalogItemOut]
+
+
 class MenuItemAvailabilityUpdate(BaseModel):
     is_available: bool
 
