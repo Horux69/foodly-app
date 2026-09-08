@@ -42,7 +42,11 @@ final class MenuController
 
     public static function getMenu(): array
     {
-        $ctx = Deps::require(Deps::getContext(), 'menu.view');
+        // Tambien con orders.create: no se puede tomar un pedido sin ver la
+        // carta. Exigir 'menu.view' aparte convierte cada rol de cajero mal
+        // armado en una pantalla de venta rota, y el sintoma es un 403 donde
+        // deberian estar los productos.
+        $ctx = Deps::requireAny(Deps::getContext(), 'menu.view', 'orders.create');
         $categories = MenuService::getMenu($ctx->tenantId, Deps::activeBranchIdOrNull($ctx));
 
         return array_map(static fn (MenuCategoryView $c) => [
