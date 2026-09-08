@@ -17,6 +17,7 @@ use App\Domain\ModifierValidationError;
 use App\Domain\OrderTotals;
 use App\Domain\OrderTotalsCalculator;
 use App\Domain\OrderTotalsError;
+use App\Domain\PaymentBalance;
 use App\Domain\ScheduleWindow;
 use App\Domain\TenantSettings;
 use App\Models\Branch;
@@ -29,6 +30,7 @@ use App\Repositories\DeliveryRepository;
 use App\Repositories\MenuRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\OrderStatusRepository;
+use App\Repositories\PaymentRepository;
 use App\Repositories\TableRepository;
 use App\Repositories\TenantRepository;
 
@@ -359,9 +361,34 @@ final class OrderService
         return (new OrderRepository(Database::app()))->getById($tenantId, $orderId);
     }
 
-    /** @return Order[] */
-    public static function listOrders(string $tenantId, string $branchId): array
+    /**
+     * Una pagina de la lista de pedidos, con el saldo de cada uno resuelto
+     * de una vez.
+     *
+     * El saldo va aqui y no en una peticion por pedido: la pantalla pedia
+     * uno por fila, hasta 51 llamadas para pintarse. La resta sigue siendo
+     * de Domain\PaymentBalance, que es la unica fuente de verdad sobre si un
+     * pedido esta saldado; lo que cambia es cuantas veces se va a la base.
+     */
+    public static function listOrders(string $tenantId, string $branchId, OrderListFilters $filters): OrderListPage
     {
-        return (new OrderRepository(Database::app()))->listForBranch($tenantId, $branchId);
+        $pdo = Database::app();
+        $orders = (new OrderRepository($pdo))->listForBranch($tenantId, $branchId, $filters);
+
+        // El repositorio devuelve una fila de mas justamente para esto: si
+        // llego, hay pagina siguiente y el cursor sale del ultimo que si se
+        // muestra.
+        $hayMas = count($orders) > $filters->limit;
+        $orders = array_slice($orders, 0, $filters->limit);
+        $nextCursor = $hayMas && $orders !== [] ? OrderCursor::encode($orders[count($orders) - 1]) : null;
+
+        $paid = (new PaymentRepository($pdo))->paidTotalsForOrders(array_map(static fn ($o) => $o->id, $orders));
+
+        $balances = [];
+        foreach ($orders as $order) {
+            $balances[$order->id] = PaymentBalance::compute($order->totalCents, [$paid[$order->id] ?? 0]);
+        }
+
+        return new OrderListPage($orders, $balances, $nextCursor);
     }
 }

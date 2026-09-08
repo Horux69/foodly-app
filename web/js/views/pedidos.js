@@ -6,16 +6,35 @@
 // configuración y no un condicional en el código.
 
 import { api, uuid } from '../api.js';
-import { money, moneyExact } from '../format.js';
+import { date, money, moneyExact, time } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery, me } from '../session.js';
-import { badge, button, card, empty, errorBox, h, input, render, section, skeleton, tabs, toast } from '../ui.js';
+import {
+  badge,
+  button,
+  card,
+  clear,
+  empty,
+  errorBox,
+  h,
+  input,
+  loading,
+  render,
+  select,
+  skeleton,
+  tabs,
+  toast,
+} from '../ui.js';
 import { canal } from './cocina.js';
 
 export async function pedidos(outlet) {
   const contenido = h('div');
   const barra = h('div');
   let activa = 'nuevo';
+  // Cada pestaña puede dejar algo corriendo (la espera del buscador, el
+  // temporizador de totales). Se apaga al cambiar de pestaña y al salir de
+  // la pantalla, igual que el enrutador hace con las vistas.
+  let vivaActual = null;
 
   const ITEMS = [
     { key: 'nuevo', label: 'Nuevo pedido' },
@@ -33,11 +52,20 @@ export async function pedidos(outlet) {
     );
   }
 
-  const pintar = () => (activa === 'nuevo' ? vistaNuevo(contenido) : vistaDelDia(contenido));
+  async function pintar() {
+    vivaActual?.destroy?.();
+    vivaActual = (await (activa === 'nuevo' ? vistaNuevo(contenido) : vistaDelDia(contenido))) ?? null;
+  }
 
   render(outlet, barra, contenido);
   pintarPestanas();
-  pintar();
+  await pintar();
+
+  return {
+    destroy() {
+      vivaActual?.destroy?.();
+    },
+  };
 }
 
 // =========================================================
@@ -413,6 +441,12 @@ async function vistaNuevo(host) {
   pintarCanal();
   pintarMenu();
   pintarCarrito();
+
+  return {
+    destroy() {
+      clearTimeout(temporizador);
+    },
+  };
 }
 
 const campoNumero = (etiqueta, control) =>
@@ -516,34 +550,171 @@ function abrirModificadores(item, alConfirmar) {
 // Pedidos del día
 // =========================================================
 
-async function vistaDelDia(host) {
-  render(host, skeleton({ rows: 3 }));
+// El filtro va por categoría de estado, nunca por código: cada restaurante
+// bautiza sus estados como quiere ("En plancha", "En preparación") pero la
+// categoría es la parte que la plataforma entiende igual en todas.
+const CATEGORIAS = [
+  { valor: '', etiqueta: 'Todos los estados' },
+  { valor: 'new', etiqueta: 'Nuevos', tono: 'neutral' },
+  { valor: 'kitchen', etiqueta: 'En cocina', tono: 'warn' },
+  { valor: 'ready', etiqueta: 'Listos', tono: 'ok' },
+  { valor: 'in_transit', etiqueta: 'En camino', tono: 'info' },
+  { valor: 'completed', etiqueta: 'Completados', tono: 'ok' },
+  { valor: 'cancelled', etiqueta: 'Cancelados', tono: 'danger' },
+];
 
-  let pedidos;
-  try {
-    pedidos = await api.get(`/orders${branchQuery()}`);
-  } catch (error) {
-    return render(host, errorBox(error.message, () => vistaDelDia(host)));
+const tonoDe = (categoria) => CATEGORIAS.find((c) => c.valor === categoria)?.tono ?? 'neutral';
+
+const ESPERA_BUSQUEDA_MS = 300;
+
+/**
+ * La lista de pedidos.
+ *
+ * Antes traía los 50 últimos sin filtro y pedía el saldo de cada uno por
+ * separado: hasta 51 peticiones para pintar una pantalla. Ahora el saldo
+ * viene dentro de cada fila y la ventana la deciden los filtros, así que un
+ * restaurante con 400 pedidos al día puede encontrar uno.
+ */
+function vistaDelDia(host) {
+  const filtros = { q: '', status_category: '', channel: '', from_date: '', to_date: '' };
+  let cursor = null;
+  let cargando = false;
+  let temporizadorBusqueda = null;
+
+  const lista = h('div', { class: 'space-y-3' });
+  const pie = h('div', { class: 'flex justify-center' });
+
+  const buscador = input({
+    type: 'search',
+    placeholder: 'Número de pedido o teléfono',
+    class: 'campo pl-10',
+    // Con espera: un mostrador teclea "3001234567" y no hacen falta diez
+    // consultas para llegar al mismo resultado.
+    oninput: () => {
+      clearTimeout(temporizadorBusqueda);
+      temporizadorBusqueda = setTimeout(() => {
+        filtros.q = buscador.value.trim();
+        recargar();
+      }, ESPERA_BUSQUEDA_MS);
+    },
+  });
+
+  const estado = select(
+    CATEGORIAS.map((c) => ({ value: c.valor, label: c.etiqueta })),
+    { class: 'campo w-auto', 'aria-label': 'Estado', onChange: (e) => cambiar('status_category', e.target.value) }
+  );
+
+  const canalFiltro = select(
+    [{ value: '', label: 'Todos los canales' }, ...me().channels.map((c) => ({ value: c, label: canal(c) }))],
+    { class: 'campo w-auto', 'aria-label': 'Canal', onChange: (e) => cambiar('channel', e.target.value) }
+  );
+
+  const desde = input({ type: 'date', class: 'campo w-auto', 'aria-label': 'Desde', onChange: (e) => cambiar('from_date', e.target.value) });
+  const hasta = input({ type: 'date', class: 'campo w-auto', 'aria-label': 'Hasta', onChange: (e) => cambiar('to_date', e.target.value) });
+
+  const limpiar = button('Limpiar', {
+    variant: 'subtle',
+    onClick: () => {
+      Object.keys(filtros).forEach((k) => (filtros[k] = ''));
+      buscador.value = '';
+      [estado, canalFiltro, desde, hasta].forEach((el) => (el.value = ''));
+      recargar();
+    },
+  });
+
+  function cambiar(clave, valor) {
+    filtros[clave] = valor;
+    recargar();
   }
 
-  if (!pedidos.length) {
-    return render(
-      host,
-      h('div', { class: 'seccion' }, empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.', null, 'pedidos'))
-    );
-  }
-
-  // El saldo lo sabe el backend; aquí no se resta nada.
-  const saldos = await Promise.all(pedidos.map((p) => api.get(`/orders/${p.id}/balance`).catch(() => null)));
+  const hayFiltros = () => Object.values(filtros).some(Boolean);
 
   render(
     host,
-    h('div', { class: 'space-y-3' }, pedidos.map((p, i) => tarjetaPedido(p, saldos[i], () => vistaDelDia(host))))
+    h(
+      'div',
+      { class: 'space-y-4' },
+      h(
+        'div',
+        { class: 'flex flex-wrap items-center gap-2' },
+        h(
+          'div',
+          { class: 'relative flex-1 min-w-[220px]' },
+          h('span', { class: 'absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none' }, icon('buscar', { size: 18 })),
+          buscador
+        ),
+        estado,
+        canalFiltro,
+        desde,
+        hasta,
+        limpiar
+      ),
+      lista,
+      pie
+    )
   );
+
+  async function cargar({ reemplazar }) {
+    if (cargando) return;
+    cargando = true;
+    render(pie, loading(reemplazar ? 'Cargando…' : 'Trayendo más…'));
+
+    let pagina;
+    try {
+      pagina = await api.get(`/orders${branchQuery({ ...filtros, cursor })}`);
+    } catch (error) {
+      cargando = false;
+      render(pie);
+      if (reemplazar) render(lista, errorBox(error.message, () => cargar({ reemplazar: true })));
+      else render(pie, errorBox(error.message, () => cargar({ reemplazar: false })));
+      return;
+    }
+
+    if (reemplazar) clear(lista);
+    cursor = pagina.next_cursor;
+    cargando = false;
+
+    for (const pedido of pagina.items) lista.append(tarjetaPedido(pedido, recargar));
+
+    if (!lista.childElementCount) {
+      render(
+        lista,
+        h(
+          'div',
+          { class: 'seccion' },
+          hayFiltros()
+            ? empty('Ningún pedido coincide', 'Prueba con otro estado, otro canal u otras fechas.', null, 'buscar')
+            : empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.', null, 'pedidos')
+        )
+      );
+    }
+
+    render(
+      pie,
+      cursor ? button('Cargar más', { variant: 'secondary', onClick: () => cargar({ reemplazar: false }) }) : null
+    );
+  }
+
+  function recargar() {
+    cursor = null;
+    render(lista, skeleton({ rows: 3 }));
+    return cargar({ reemplazar: true });
+  }
+
+  recargar();
+
+  return {
+    destroy() {
+      clearTimeout(temporizadorBusqueda);
+    },
+  };
 }
 
-function tarjetaPedido(pedido, saldo, refrescar) {
-  const pendiente = saldo && !saldo.is_settled;
+function tarjetaPedido(pedido, refrescar) {
+  // El saldo llega dentro del pedido: la resta la hizo Domain\PaymentBalance,
+  // aquí no se calcula nada.
+  const saldo = pedido.balance;
+  const pendiente = !saldo.is_settled;
 
   // Una llave por tarjeta, compartida por los tres métodos. Es a propósito:
   // si el cobro en efectivo se registró pero la respuesta se perdió, tocar
@@ -561,25 +732,26 @@ function tarjetaPedido(pedido, saldo, refrescar) {
         { class: 'min-w-0' },
         h(
           'div',
-          { class: 'flex items-center gap-2' },
+          { class: 'flex items-center gap-2 flex-wrap' },
           h('span', { class: 'font-semibold text-stone-900 tabular-nums' }, pedido.order_number),
-          badge(canal(pedido.channel))
+          pedido.status ? badge(pedido.status.name, tonoDe(pedido.status.category)) : null,
+          badge(canal(pedido.channel)),
+          pedido.table_code ? badge(`Mesa ${pedido.table_code}`) : null
         ),
         h(
           'div',
           { class: 'text-sm text-stone-600 mt-1' },
           pedido.items.map((i) => `${i.quantity}× ${i.name_snapshot}`).join(', ')
-        )
+        ),
+        h('div', { class: 'text-xs text-stone-400 mt-0.5' }, `${date(pedido.created_at)} · ${time(pedido.created_at)}`)
       ),
       h(
         'div',
         { class: 'text-right shrink-0' },
         h('div', { class: 'font-semibold text-stone-900 tabular-nums' }, money(pedido.total)),
-        saldo
-          ? pendiente
-            ? h('div', { class: 'text-xs text-amber-700 mt-0.5' }, `Falta ${money(saldo.pending)}`)
-            : badge('Pagado', 'ok', 'check')
-          : null
+        pendiente
+          ? h('div', { class: 'text-xs text-amber-700 mt-0.5' }, `Falta ${money(saldo.pending)}`)
+          : badge('Pagado', 'ok', 'check')
       )
     ),
     pendiente && me().permissions.includes('payments.register')

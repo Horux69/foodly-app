@@ -18,3 +18,6 @@ htmlcov/
 .vscode/
 postgres-data/
 *.log
+
+# Herramientas de desarrollo del frontend: la SPA se sirve sin paso de build
+node_modules/

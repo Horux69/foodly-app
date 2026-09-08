@@ -9,11 +9,13 @@ use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
 use App\Core\Money;
+use App\Domain\PaymentBalance;
 use App\Models\Order;
 use App\Models\OrderStatusRow;
 use App\Services\DeliveryInput;
 use App\Services\OrderError;
 use App\Services\OrderLineInput;
+use App\Services\OrderListFilters;
 use App\Services\OrderService;
 use App\Services\OrderStatusError;
 use App\Services\OrderStatusService;
@@ -27,6 +29,9 @@ final class OrderController
             'id' => $order->id,
             'order_number' => $order->orderNumber,
             'channel' => $order->channel,
+            'created_at' => $order->createdAt,
+            'table_code' => $order->tableCode,
+            'status' => $order->status !== null ? self::statusOut($order->status) : null,
             'subtotal' => Money::toDecimalString($order->subtotalCents),
             'tax_total' => Money::toDecimalString($order->taxTotalCents),
             'delivery_fee' => Money::toDecimalString($order->deliveryFeeCents),
@@ -207,11 +212,55 @@ final class OrderController
         return self::orderOut($order);
     }
 
+    public static function balanceOut(PaymentBalance $b): array
+    {
+        return [
+            'total' => Money::toDecimalString($b->totalCents),
+            'paid' => Money::toDecimalString($b->paidCents),
+            'pending' => Money::toDecimalString($b->pendingCents),
+            'is_settled' => $b->isSettled,
+        ];
+    }
+
+    /**
+     * Lista paginada, filtrable y buscable.
+     *
+     * Antes devolvia un array pelado con un LIMIT 50 fijo y sin filtros, y la
+     * pantalla completaba con una peticion de saldo por pedido. Ahora
+     * devuelve un objeto con `items` y `next_cursor`, y el saldo viene
+     * dentro de cada fila.
+     */
     public static function list(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
-        $orders = OrderService::listOrders($ctx->tenantId, Deps::activeBranchId($ctx));
-        return array_map(self::orderOut(...), $orders);
+
+        try {
+            $filters = new OrderListFilters(
+                statusCategory: Request::queryString('status_category', 20),
+                channel: Request::queryString('channel', 20),
+                search: Request::queryString('q', 80),
+                fromDate: Request::queryDate('from_date'),
+                toDate: Request::queryDate('to_date'),
+                limit: Request::queryInt(
+                    'limit',
+                    default: OrderListFilters::LIMIT_DEFAULT,
+                    min: 1,
+                    max: OrderListFilters::LIMIT_MAX,
+                ),
+                cursor: Request::queryString('cursor', 200),
+            );
+            $page = OrderService::listOrders($ctx->tenantId, Deps::activeBranchId($ctx), $filters);
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return [
+            'items' => array_map(
+                static fn ($order) => self::orderOut($order) + ['balance' => self::balanceOut($page->balances[$order->id])],
+                $page->orders,
+            ),
+            'next_cursor' => $page->nextCursor,
+        ];
     }
 
     public static function nextStatuses(array $params): array

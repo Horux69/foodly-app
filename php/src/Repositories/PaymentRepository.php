@@ -22,6 +22,39 @@ final class PaymentRepository
         return array_map(Payment::fromRow(...), $stmt->fetchAll());
     }
 
+    /**
+     * Lo cobrado por cada pedido, en centavos, para una lista entera.
+     *
+     * Solo cuenta los pagos en estado 'paid', igual que
+     * PaymentService::getBalanceForOrder: un cobro pendiente o fallido no es
+     * plata que haya entrado. La resta contra el total sigue siendo del
+     * dominio (Domain\PaymentBalance); aqui solo se suma lo que entro.
+     *
+     * @param string[] $orderIds
+     * @return array<string, int>
+     */
+    public function paidTotalsForOrders(array $orderIds): array
+    {
+        if ($orderIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+        $stmt = $this->pdo->prepare(
+            "SELECT order_id, SUM(amount) AS paid
+             FROM payments
+             WHERE status = 'paid' AND order_id IN ({$placeholders})
+             GROUP BY order_id"
+        );
+        $stmt->execute(array_values($orderIds));
+
+        $totals = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $totals[$row['order_id']] = Money::fromDecimalString((string) $row['paid']);
+        }
+        return $totals;
+    }
+
     public function getByIdempotencyKey(string $orderId, string $key): ?Payment
     {
         $stmt = $this->pdo->prepare(
