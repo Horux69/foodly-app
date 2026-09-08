@@ -34,7 +34,7 @@ final class CustomerService
     /**
      * Ficha del cliente: sus datos, sus ultimos pedidos y cuanto ha gastado.
      *
-     * @return array{0: Customer, 1: \App\Models\Order[], 2: array{orders: int, spent: string}}
+     * @return array{0: Customer, 1: \App\Models\Order[], 2: array{orders: int, spent: string}, 3: ?string}
      */
     public static function detail(string $tenantId, string $customerId): array
     {
@@ -48,6 +48,7 @@ final class CustomerService
             $customer,
             $repo->ordersOf($tenantId, $customer->id),
             $repo->statsOf($tenantId, $customer->id),
+            $repo->lastAddressOf($tenantId, $customer->id),
         ];
     }
 

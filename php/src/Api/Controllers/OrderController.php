@@ -179,18 +179,25 @@ final class OrderController
         $body = Request::json();
         [$deliveryFee, $discount, $tip] = self::adjustments($body);
 
+        // La zona se acepta suelta y no dentro de 'delivery': previsualizar
+        // no necesita la direccion, solo saber que tarifa se va a cobrar.
+        $zoneId = Request::optionalUuid($body, 'zone_id');
+
         try {
-            $totals = OrderService::previewTotals(
+            $preview = OrderService::previewTotals(
                 $ctx->tenantId,
                 $branchId,
                 self::linesFrom($body),
                 $deliveryFee,
                 $discount,
                 $tip,
+                $zoneId,
             );
         } catch (OrderError $e) {
             throw new ApiException(422, $e->getMessage());
         }
+
+        $totals = $preview->totals;
 
         return [
             'subtotal' => Money::toDecimalString($totals->subtotalCents),
@@ -199,6 +206,9 @@ final class OrderController
             'discount' => Money::toDecimalString($totals->discountCents),
             'tip' => Money::toDecimalString($totals->tipCents),
             'total' => Money::toDecimalString($totals->totalCents),
+            // Ya redactado por Domain\DeliveryRules: la pantalla lo muestra,
+            // no rehace la comparacion contra el subtotal.
+            'delivery_warning' => $preview->minimumWarning,
         ];
     }
 

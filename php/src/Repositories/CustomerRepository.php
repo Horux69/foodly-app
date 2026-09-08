@@ -96,6 +96,28 @@ final class CustomerRepository
     }
 
     /**
+     * La ultima direccion a la que se le llevo un pedido.
+     *
+     * Es lo que evita volver a preguntarle la direccion a quien pide todas
+     * las semanas desde su casa —y lo que el agente de WhatsApp usara para
+     * proponerla en la conversacion.
+     */
+    public function lastAddressOf(string $tenantId, string $customerId): ?string
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT d.address
+               FROM delivery_info d
+               JOIN orders o ON o.id = d.order_id
+              WHERE o.tenant_id = :tenant_id AND o.customer_id = :customer_id
+              ORDER BY o.created_at DESC
+              LIMIT 1'
+        );
+        $stmt->execute(['tenant_id' => $tenantId, 'customer_id' => $customerId]);
+        $address = $stmt->fetchColumn();
+        return $address === false ? null : (string) $address;
+    }
+
+    /**
      * Cuanto ha pedido y cuanto ha gastado, contando solo lo completado.
      *
      * Se filtra por `order_statuses.category` y no por el codigo del estado:

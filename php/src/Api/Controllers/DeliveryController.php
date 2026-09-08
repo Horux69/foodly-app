@@ -49,7 +49,10 @@ final class DeliveryController
 
     public static function listZones(array $params): array
     {
-        $ctx = Deps::require(Deps::getContext(), 'settings.view');
+        // Tambien con orders.create: quien toma un domicilio tiene que poder
+        // elegir la zona, y no deberia hacer falta darle a la caja un
+        // permiso de administracion para eso.
+        $ctx = Deps::requireAny(Deps::getContext(), 'settings.view', 'orders.create');
         try {
             $zones = DeliveryService::listZones($ctx->tenantId, $params['branch_id']);
         } catch (DeliveryServiceError $e) {

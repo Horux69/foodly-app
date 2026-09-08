@@ -104,4 +104,23 @@ final class Deps
         }
         return $ctx;
     }
+
+    /**
+     * Basta con uno de los permisos.
+     *
+     * Para los datos que son de configuracion y de operacion a la vez: las
+     * zonas de reparto las administra quien ve la configuracion, pero
+     * tambien las necesita el cajero que esta tomando un domicilio y tiene
+     * que elegir una. Exigir 'settings.view' ahi obligaria a darle a la caja
+     * un permiso de administracion para poder vender.
+     */
+    public static function requireAny(RequestContext $ctx, string ...$permissions): RequestContext
+    {
+        foreach ($permissions as $permission) {
+            if ($ctx->has($permission)) {
+                return $ctx;
+            }
+        }
+        throw new ApiException(403, 'Falta alguno de los permisos: ' . implode(', ', $permissions));
+    }
 }

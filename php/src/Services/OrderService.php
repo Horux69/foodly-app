@@ -23,6 +23,7 @@ use App\Domain\TenantSettings;
 use App\Models\Branch;
 use App\Models\MenuItem;
 use App\Models\Modifier;
+use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Repositories\BranchRepository;
 use App\Repositories\CustomerRepository;
@@ -230,15 +231,8 @@ final class OrderService
         // La tarifa de domicilio la pone el restaurante en su zona, no quien
         // pide: si viene una zona, su tarifa manda sobre lo que llegue en el
         // cuerpo de la peticion.
-        $zone = null;
-        if ($delivery !== null && $delivery->zoneId !== null) {
-            $zone = (new DeliveryRepository($pdo))->getZone($tenantId, $delivery->zoneId);
-            if ($zone === null) {
-                throw new OrderError('La zona de domicilio no existe para este tenant');
-            }
-            if (!$zone->isActive) {
-                throw new OrderError("La zona '{$zone->name}' no esta activa");
-            }
+        $zone = self::resolveZone($tenantId, $delivery?->zoneId);
+        if ($zone !== null) {
             $deliveryFeeCents = $zone->feeCents;
         }
 
@@ -337,15 +331,25 @@ final class OrderService
         int $deliveryFeeCents = 0,
         int $discountCents = 0,
         int $tipCents = 0,
-    ): OrderTotals {
+        ?string $zoneId = null,
+    ): OrderPreview {
         if ($items === []) {
             throw new OrderError('El pedido necesita al menos un producto');
+        }
+
+        // Misma cascada que al crear: con zona, la tarifa la pone la zona y
+        // lo que venga en el cuerpo se ignora. Si aqui se mostrara el importe
+        // tecleado, la caja le diria al cliente un total que el pedido no va
+        // a tener.
+        $zone = self::resolveZone($tenantId, $zoneId);
+        if ($zone !== null) {
+            $deliveryFeeCents = $zone->feeCents;
         }
 
         $resolvedLines = self::resolveLines($tenantId, $branchId, $items);
 
         try {
-            return OrderTotalsCalculator::computeTotals(
+            $totals = OrderTotalsCalculator::computeTotals(
                 array_map(static fn (ResolvedLine $l) => $l->lineInput, $resolvedLines),
                 $deliveryFeeCents,
                 $discountCents,
@@ -353,6 +357,44 @@ final class OrderService
             );
         } catch (OrderTotalsError $e) {
             throw new OrderError($e->getMessage());
+        }
+
+        // El minimo se avisa, no se rechaza: previsualizar es preguntar
+        // cuanto cuesta, y el pedido todavia puede crecer. Quien lo rechaza
+        // es createOrder, con la misma regla y el mismo mensaje.
+        return new OrderPreview($totals, $zone, self::minimumWarning($totals->subtotalCents, $zone));
+    }
+
+    /** La zona del pedido, validada contra el tenant. */
+    private static function resolveZone(string $tenantId, ?string $zoneId): ?DeliveryZone
+    {
+        if ($zoneId === null) {
+            return null;
+        }
+        $zone = (new DeliveryRepository(Database::app()))->getZone($tenantId, $zoneId);
+        if ($zone === null) {
+            throw new OrderError('La zona de domicilio no existe para este tenant');
+        }
+        if (!$zone->isActive) {
+            throw new OrderError("La zona '{$zone->name}' no esta activa");
+        }
+        return $zone;
+    }
+
+    /** El aviso lo redacta el dominio: la comparacion vive en un solo sitio. */
+    private static function minimumWarning(int $subtotalCents, ?DeliveryZone $zone): ?string
+    {
+        if ($zone === null) {
+            return null;
+        }
+        try {
+            DeliveryRules::validateMinimum(
+                $subtotalCents,
+                new DeliveryZoneRules($zone->name, $zone->feeCents, $zone->minOrderCents, $zone->estMinutes),
+            );
+            return null;
+        } catch (DeliveryError $e) {
+            return $e->getMessage();
         }
     }
 

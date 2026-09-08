@@ -38,7 +38,7 @@ final class CustomerController
     {
         $ctx = Deps::require(Deps::getContext(), 'customers.view');
         try {
-            [$customer, $orders, $stats] = CustomerService::detail($ctx->tenantId, $params['customer_id']);
+            [$customer, $orders, $stats, $lastAddress] = CustomerService::detail($ctx->tenantId, $params['customer_id']);
         } catch (CustomerError $e) {
             throw new ApiException(404, $e->getMessage());
         }
@@ -47,6 +47,9 @@ final class CustomerController
             'customer' => self::customerOut($customer),
             'orders_completed' => $stats['orders'],
             'total_spent' => $stats['spent'],
+            // Para no volver a pedirle la direccion a quien pide todas las
+            // semanas desde su casa.
+            'last_address' => $lastAddress,
             'recent_orders' => array_map(static fn (Order $o) => [
                 'id' => $o->id,
                 'order_number' => $o->orderNumber,

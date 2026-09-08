@@ -5,10 +5,10 @@
 // restaurante no usa (mesas, propina) no aparece, porque lo dice su
 // configuración y no un condicional en el código.
 
-import { api, uuid } from '../api.js';
+import { api, query, uuid } from '../api.js';
 import { date, money, moneyExact, time } from '../format.js';
 import { icon } from '../icons.js';
-import { branchQuery, me } from '../session.js';
+import { activeBranchId, branchQuery, can, me } from '../session.js';
 import {
   badge,
   button,
@@ -72,6 +72,8 @@ export async function pedidos(outlet) {
 // Nuevo pedido
 // =========================================================
 
+const ESPERA_CLIENTE_MS = 350;
+
 async function vistaNuevo(host) {
   render(host, skeleton({ rows: 2 }));
 
@@ -133,12 +135,91 @@ async function vistaNuevo(host) {
   }
 
   const mesa = input({ placeholder: 'Ej. M1' });
-  const telefono = input({ placeholder: 'Teléfono', type: 'tel' });
   const nombre = input({ placeholder: 'Nombre del cliente' });
   const domicilio = input({ type: 'number', min: '0', value: '0' });
   const descuento = input({ type: 'number', min: '0', value: '0' });
   const propina = input({ type: 'number', min: '0', value: '0' });
   const notas = h('textarea', { rows: '2', placeholder: 'Notas para la cocina', class: 'campo' });
+
+  // --- cliente conocido ---
+  // Al teclear el teléfono se busca en la base y se ofrece lo que ya se sabe
+  // de esa persona. Es la diferencia entre teclear un pedido telefónico
+  // completo y confirmarlo.
+  const sugerencias = h('div', { class: 'space-y-1' });
+  let temporizadorCliente = null;
+
+  const telefono = input({
+    placeholder: 'Teléfono',
+    type: 'tel',
+    oninput: () => {
+      clearTimeout(temporizadorCliente);
+      render(sugerencias);
+      const termino = telefono.value.trim();
+      // Menos de tres dígitos devuelve media base: no es una sugerencia.
+      if (!can('customers.view') || termino.length < 3) return;
+      temporizadorCliente = setTimeout(() => buscarCliente(termino), ESPERA_CLIENTE_MS);
+    },
+  });
+
+  async function buscarCliente(termino) {
+    let encontrados;
+    try {
+      encontrados = await api.get(`/customers${query({ q: termino })}`);
+    } catch {
+      return; // sugerir es una comodidad: si falla, se teclea a mano
+    }
+    if (telefono.value.trim() !== termino) return; // ya siguió escribiendo
+
+    render(
+      sugerencias,
+      encontrados.slice(0, 4).map((c) =>
+        h(
+          'button',
+          {
+            class: 'w-full text-left px-2.5 py-1.5 rounded-lg border border-stone-200 hover:border-stone-900 text-sm flex items-center gap-2',
+            onClick: () => usarCliente(c),
+          },
+          icon('clientes', { size: 15, class: 'text-stone-400 shrink-0' }),
+          h('span', { class: 'font-medium truncate' }, c.name || 'Sin nombre'),
+          h('span', { class: 'text-stone-500 tabular-nums text-xs' }, c.phone)
+        )
+      )
+    );
+  }
+
+  async function usarCliente(cliente) {
+    telefono.value = cliente.phone;
+    nombre.value = cliente.name ?? '';
+    render(sugerencias);
+
+    // La última dirección solo se pide si hace falta: en un pedido de
+    // mostrador no aporta nada.
+    if (!esDomicilio.checked || direccion.value.trim() !== '') return;
+    try {
+      const detalle = await api.get(`/customers/${cliente.id}`);
+      if (detalle.last_address) direccion.value = detalle.last_address;
+    } catch {
+      // sin dirección previa se escribe a mano
+    }
+  }
+
+  // --- domicilio ---
+  // Lo que convierte un pedido en domicilio es que traiga dirección, no el
+  // canal: el restaurante puede haber bautizado sus canales como quiera
+  // (misma regla que aplica OrderController::deliveryFrom).
+  const bloqueDomicilio = h('div', { class: 'hidden space-y-2 mt-2' });
+  const direccion = input({ placeholder: 'Dirección de entrega' });
+  const zona = select([{ value: '', label: 'Sin zona' }], { onChange: recalcular });
+  const avisoZona = h('p', { class: 'text-[12px] text-stone-500' });
+
+  const esDomicilio = h('input', {
+    type: 'checkbox',
+    class: 'w-4 h-4 rounded border-stone-300 accent-amber-700',
+    onChange: () => {
+      bloqueDomicilio.classList.toggle('hidden', !esDomicilio.checked);
+      recalcular();
+    },
+  });
 
   [domicilio, descuento, propina].forEach((el) => el.addEventListener('change', recalcular));
 
@@ -309,7 +390,7 @@ async function vistaNuevo(host) {
 
     temporizador = setTimeout(async () => {
       try {
-        const t = await api.post(`/orders/preview${branchQuery()}`, cuerpo());
+        const t = await api.post(`/orders/preview${branchQuery()}`, cuerpoPreview());
         render(
           totales,
           fila('Subtotal', money(t.subtotal)),
@@ -322,7 +403,15 @@ async function vistaNuevo(host) {
             { class: 'flex justify-between items-baseline pt-2.5 mt-1.5 border-t border-stone-200' },
             h('span', { class: 'font-medium text-stone-700' }, 'Total'),
             h('span', { class: 'text-2xl font-bold tracking-tight text-stone-900' }, money(t.total))
-          )
+          ),
+          // Lo redactó Domain\DeliveryRules; aquí no se compara nada.
+          t.delivery_warning
+            ? h(
+                'p',
+                { class: 'text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[--r] px-2 py-1.5 mt-2' },
+                t.delivery_warning
+              )
+            : null
         );
       } catch (error) {
         render(totales, h('p', { class: 'text-sm text-red-600' }, error.message));
@@ -334,21 +423,40 @@ async function vistaNuevo(host) {
     h('div', { class: 'flex justify-between text-stone-500' }, h('span', {}, etiqueta), h('span', { class: 'tabular-nums' }, valor));
 
   function cuerpo() {
+    const entrega =
+      esDomicilio.checked && direccion.value.trim()
+        ? { address: direccion.value.trim(), zone_id: zona.value || null }
+        : null;
+
     return {
       channel: canalActivo,
       table_code: contexto.uses_tables ? mesa.value.trim() || null : null,
       customer_phone: telefono.value.trim() || null,
       customer_name: nombre.value.trim() || null,
       notes: notas.value.trim() || null,
+      // Con zona, la tarifa la pone la zona y el backend ignora esto: por eso
+      // el campo se deshabilita en pantalla en vez de mentir con una cifra.
       delivery_fee: Number(domicilio.value || 0),
       discount: Number(descuento.value || 0),
       tip: contexto.asks_tip ? Number(propina.value || 0) : 0,
+      delivery: entrega,
       items: carrito.map((l) => ({
         menu_item_id: l.item.id,
         quantity: l.cantidad,
         modifier_ids: l.modificadores.map((m) => m.id),
       })),
     };
+  }
+
+  /**
+   * Previsualizar no necesita la dirección, solo la zona: la tarifa y el
+   * mínimo dependen de ella y de nada más. Va suelta y no dentro de
+   * `delivery` justamente por eso —si esperara a que haya dirección escrita,
+   * el total no cambiaría al elegir la zona, que es cuando el cajero mira.
+   */
+  function cuerpoPreview() {
+    const { delivery, ...resto } = cuerpo();
+    return { ...resto, zone_id: esDomicilio.checked ? zona.value || null : null };
   }
 
   async function enviar() {
@@ -358,8 +466,9 @@ async function vistaNuevo(host) {
       toast(`Pedido ${pedido.order_number} creado por ${money(pedido.total)}`, 'ok');
       intento = uuid();
       carrito.length = 0;
-      [telefono, nombre, mesa].forEach((el) => (el.value = ''));
+      [telefono, nombre, mesa, direccion].forEach((el) => (el.value = ''));
       notas.value = '';
+      render(sugerencias);
       pintarCarrito();
     } catch (error) {
       toast(error.message);
@@ -423,7 +532,15 @@ async function vistaNuevo(host) {
             'div',
             { class: 'mt-3 space-y-2' },
             telefono,
+            sugerencias,
             nombre,
+            h(
+              'label',
+              { class: 'flex items-center gap-2 text-sm text-stone-700 cursor-pointer pt-1' },
+              esDomicilio,
+              'Es un domicilio'
+            ),
+            bloqueDomicilio,
             h(
               'div',
               { class: 'grid grid-cols-2 gap-2' },
@@ -438,13 +555,68 @@ async function vistaNuevo(host) {
     )
   );
 
+  render(
+    bloqueDomicilio,
+    direccion,
+    zona,
+    avisoZona
+  );
+
   pintarCanal();
   pintarMenu();
   pintarCarrito();
+  cargarZonas();
+
+  /**
+   * Las zonas de la sucursal activa. Solo las activas: una zona dada de baja
+   * no es un destino al que se pueda seguir repartiendo.
+   */
+  async function cargarZonas() {
+    if (!activeBranchId()) return;
+
+    let zonas;
+    try {
+      zonas = await api.get(`/branches/${activeBranchId()}/delivery-zones`);
+    } catch {
+      // Sin zonas configuradas el domicilio se cobra con el importe de al
+      // lado, que es como funcionaba hasta ahora.
+      return;
+    }
+
+    const activas = zonas.filter((z) => z.is_active);
+    if (!activas.length) {
+      render(avisoZona, 'Esta sede no tiene zonas configuradas: el envío se cobra con el importe de abajo.');
+      return;
+    }
+
+    render(
+      zona,
+      h('option', { value: '' }, 'Sin zona'),
+      activas.map((z) => h('option', { value: z.id }, `${z.name} · ${money(z.fee)}`))
+    );
+
+    const explicar = () => {
+      const elegida = activas.find((z) => z.id === zona.value);
+      // Con zona, la tarifa la pone la zona: el campo de importe se
+      // deshabilita en vez de mostrar una cifra que el backend va a ignorar.
+      domicilio.disabled = Boolean(elegida);
+      render(
+        avisoZona,
+        elegida
+          ? `La tarifa la pone la zona: ${money(elegida.fee)}.${
+              Number(elegida.min_order) ? ` Mínimo ${money(elegida.min_order)} de subtotal.` : ''
+            }`
+          : 'Sin zona, se cobra el envío que escribas abajo.'
+      );
+    };
+    zona.addEventListener('change', explicar);
+    explicar();
+  }
 
   return {
     destroy() {
       clearTimeout(temporizador);
+      clearTimeout(temporizadorCliente);
     },
   };
 }
