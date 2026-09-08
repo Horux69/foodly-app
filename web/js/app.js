@@ -5,6 +5,7 @@ import * as router from './router.js';
 import * as session from './session.js';
 import { h, render, select, toast } from './ui.js';
 import { admin } from './views/admin.js';
+import { clientes } from './views/clientes.js';
 import { cocina } from './views/cocina.js';
 import { ingresar } from './views/ingresar.js';
 import { menu } from './views/menu.js';
@@ -17,6 +18,7 @@ const RUTAS = [
   { path: 'pedidos', label: 'Pedidos', icon: 'pedidos', permission: 'orders.create', view: pedidos },
   { path: 'cocina', label: 'Cocina', icon: 'cocina', permission: 'orders.view', view: cocina },
   { path: 'menu', label: 'Menú', icon: 'menu', permission: 'menu.edit', view: menu },
+  { path: 'clientes', label: 'Clientes', icon: 'clientes', permission: 'customers.view', view: clientes },
   { path: 'reportes', label: 'Reportes', icon: 'reportes', permission: 'reports.view', view: reportes },
   { path: 'admin', label: 'Administración', icon: 'admin', permission: 'settings.view', view: admin },
   { path: 'ingresar', public: true, view: ingresar },
