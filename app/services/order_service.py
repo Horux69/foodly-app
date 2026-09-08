@@ -16,6 +16,7 @@ from app.domain.branch_schedule import ScheduleWindow, is_branch_open
 from app.domain.menu_pricing import resolve_effective_menu_item
 from app.domain.modifier_validation import ModifierGroupConstraint, ModifierValidationError, validate_selection
 from app.domain.order_totals import LineInput, compute_totals
+from app.domain.tenant_settings import parse as parse_settings
 from app.models.order import Order
 from app.repositories import (
     branch_repository,
@@ -24,6 +25,7 @@ from app.repositories import (
     order_repository,
     order_status_repository,
     table_repository,
+    tenant_repository,
 )
 
 
@@ -82,6 +84,20 @@ def create_order(
 
     if not items:
         raise OrderError("El pedido necesita al menos un producto")
+
+    tenant = tenant_repository.get(db, tenant_id)
+    if tenant is None:
+        raise OrderError("El tenant no existe")
+
+    # Modulo 9: lo que el restaurante puede vender y como sale de su
+    # configuracion, no de condicionales por tenant en el codigo.
+    settings = parse_settings(tenant.settings, business_type=tenant.business_type)
+    if not settings.allows_channel(channel):
+        raise OrderError(f"El canal '{channel}' no esta habilitado. Activos: {list(settings.channels)}")
+    if table_code and not settings.uses_tables:
+        raise OrderError("Este restaurante no maneja mesas")
+    if tip and not settings.asks_tip:
+        raise OrderError("Este restaurante no recibe propina")
 
     branch = branch_repository.get(db, tenant_id, branch_id)
     if branch is None:

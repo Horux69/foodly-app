@@ -1,6 +1,12 @@
+import uuid
+
 from sqlalchemy.orm import Session
 
 from app.models.tenant import Tenant
+
+
+def get(db: Session, tenant_id: uuid.UUID) -> Tenant | None:
+    return db.get(Tenant, tenant_id)
 
 
 def create(

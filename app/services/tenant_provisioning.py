@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.domain.tenant_settings import defaults_for, validate
 from app.models.order_status import OrderStatus, OrderStatusTransition
 from app.models.permission import Permission
 from app.models.role import Role
@@ -131,6 +132,11 @@ def create_tenant(
     db: Session, *, name: str, business_type: str = "fast_food", currency: str = "COP", settings: dict | None = None
 ) -> Tenant:
     """Crea un tenant y lo deja listo para operar: aplica alta + aprovisionamiento en una sola transaccion."""
+    if settings is None:
+        settings = defaults_for(business_type)
+    else:
+        validate(settings)
+
     tenant = tenant_repository.create(db, name=name, business_type=business_type, currency=currency, settings=settings)
     provision_tenant(db, tenant)
     db.commit()
