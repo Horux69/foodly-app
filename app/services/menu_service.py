@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.menu_pricing import resolve_effective_menu_item
 from app.models.menu import BranchMenuOverride, MenuCategory, MenuItem
-from app.repositories import branch_repository, menu_repository
+from app.repositories import branch_repository, menu_repository, tax_rate_repository
 
 
 class MenuError(Exception):
@@ -71,6 +71,18 @@ def create_category(db: Session, *, tenant_id: uuid.UUID, name: str, sort_order:
     return category
 
 
+def _resolve_tax_rate_id(db: Session, tenant_id: uuid.UUID, tax_rate_id: uuid.UUID | None) -> uuid.UUID | None:
+    """Sin impuesto explicito se hereda el default del tenant: un producto
+    nuevo debe salir cobrando lo que cobra el restaurante, no exento."""
+    if tax_rate_id is None:
+        default = tax_rate_repository.get_default(db, tenant_id)
+        return default.id if default else None
+
+    if tax_rate_repository.get(db, tenant_id, tax_rate_id) is None:
+        raise MenuError("El impuesto no existe para este tenant")
+    return tax_rate_id
+
+
 def create_item(
     db: Session,
     *,
@@ -80,6 +92,7 @@ def create_item(
     base_price: Decimal,
     description: str | None = None,
     prep_minutes: int | None = None,
+    tax_rate_id: uuid.UUID | None = None,
 ) -> MenuItem:
     category = menu_repository.get_category(db, tenant_id, category_id)
     if category is None:
@@ -92,7 +105,38 @@ def create_item(
         base_price=base_price,
         description=description,
         prep_minutes=prep_minutes,
+        tax_rate_id=_resolve_tax_rate_id(db, tenant_id, tax_rate_id),
     )
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def update_item(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    item_id: uuid.UUID,
+    changes: dict,
+) -> MenuItem:
+    """Edita un producto. El precio nuevo solo aplica a pedidos futuros: los
+    ya tomados guardan su propio unit_price congelado."""
+    item = menu_repository.get_item(db, tenant_id, item_id)
+    if item is None:
+        raise MenuError("El producto no existe para este tenant")
+
+    if "category_id" in changes:
+        if menu_repository.get_category(db, tenant_id, changes["category_id"]) is None:
+            raise MenuError("La categoria no existe para este tenant")
+
+    # tax_rate_id en null es intencional: significa exento. Solo se valida
+    # cuando viene un id, para no sustituirlo por el default del tenant.
+    if changes.get("tax_rate_id") is not None:
+        changes["tax_rate_id"] = _resolve_tax_rate_id(db, tenant_id, changes["tax_rate_id"])
+
+    for field, value in changes.items():
+        setattr(item, field, value)
+
     db.commit()
     db.refresh(item)
     return item

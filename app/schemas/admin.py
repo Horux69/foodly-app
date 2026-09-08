@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +44,26 @@ class BranchOut(BaseModel):
 
 class ActiveUpdate(BaseModel):
     is_active: bool
+
+
+class TaxRateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    # Fraccion, no porcentaje: 8% se escribe 0.08. El tope evita el error de
+    # digitacion mas comun, que es escribir 8 y cobrar 800%.
+    rate: Decimal = Field(ge=0, lt=1, description="Fraccion decimal: 0.08 es 8%")
+    included_in_price: bool = True
+    is_default: bool = False
+
+
+class TaxRateOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    rate: Decimal
+    included_in_price: bool
+    is_default: bool
+    is_active: bool
+
+    model_config = {"from_attributes": True}
 
 
 class TableCreate(BaseModel):

@@ -19,6 +19,8 @@ from app.schemas.admin import (
     RolePermissionsUpdate,
     TableCreate,
     TableOut,
+    TaxRateCreate,
+    TaxRateOut,
     TenantSettingsOut,
     TenantSettingsUpdate,
     UserCreate,
@@ -143,6 +145,55 @@ def set_branch_active_endpoint(
     except AdminError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return BranchOut.model_validate(branch)
+
+
+# ---------- Impuestos ----------
+
+
+@router.get("/tax-rates", response_model=list[TaxRateOut], tags=["configuracion"])
+def list_tax_rates_endpoint(
+    ctx: Annotated[RequestContext, Depends(require("settings.view"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[TaxRateOut]:
+    rates = admin_service.list_tax_rates(db, tenant_id=uuid.UUID(ctx.tenant_id))
+    return [TaxRateOut.model_validate(r) for r in rates]
+
+
+@router.post(
+    "/tax-rates", response_model=TaxRateOut, status_code=status.HTTP_201_CREATED, tags=["configuracion"]
+)
+def create_tax_rate_endpoint(
+    payload: TaxRateCreate,
+    ctx: Annotated[RequestContext, Depends(require("settings.edit"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> TaxRateOut:
+    try:
+        tax_rate = admin_service.create_tax_rate(
+            db,
+            tenant_id=uuid.UUID(ctx.tenant_id),
+            name=payload.name,
+            rate=payload.rate,
+            included_in_price=payload.included_in_price,
+            is_default=payload.is_default,
+        )
+    except AdminError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return TaxRateOut.model_validate(tax_rate)
+
+
+@router.put("/tax-rates/{tax_rate_id}/default", response_model=TaxRateOut, tags=["configuracion"])
+def set_default_tax_rate_endpoint(
+    tax_rate_id: uuid.UUID,
+    ctx: Annotated[RequestContext, Depends(require("settings.edit"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> TaxRateOut:
+    try:
+        tax_rate = admin_service.set_default_tax_rate(
+            db, tenant_id=uuid.UUID(ctx.tenant_id), tax_rate_id=tax_rate_id
+        )
+    except AdminError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return TaxRateOut.model_validate(tax_rate)
 
 
 # ---------- Mesas ----------

@@ -23,6 +23,24 @@ class MenuItemCreate(BaseModel):
     base_price: Decimal = Field(ge=0)
     description: str | None = None
     prep_minutes: int | None = None
+    # Sin impuesto explicito se hereda el default del tenant.
+    tax_rate_id: uuid.UUID | None = None
+
+
+class MenuItemUpdate(BaseModel):
+    """Parche parcial: solo se toca lo que venga en el cuerpo.
+
+    `tax_rate_id` en null es intencional y significa dejar el producto exento.
+    """
+
+    category_id: uuid.UUID | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    base_price: Decimal | None = Field(default=None, ge=0)
+    description: str | None = None
+    prep_minutes: int | None = None
+    tax_rate_id: uuid.UUID | None = None
+    sort_order: int | None = None
+    is_archived: bool | None = None
 
 
 class MenuItemOut(BaseModel):

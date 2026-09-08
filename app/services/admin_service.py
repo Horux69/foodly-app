@@ -6,6 +6,7 @@ usarse: asignar un rol de otra empresa seria una escalada de privilegios.
 """
 
 import uuid
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -14,12 +15,14 @@ from app.domain.tenant_settings import SettingsError, TenantSettings, parse, val
 from app.models.branch import Branch
 from app.models.role import Role
 from app.models.table import Table
+from app.models.tax_rate import TaxRate
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.repositories import (
     branch_repository,
     role_repository,
     table_repository,
+    tax_rate_repository,
     tenant_repository,
     user_repository,
 )
@@ -97,6 +100,50 @@ def set_branch_active(db: Session, *, tenant_id: uuid.UUID, branch_id: uuid.UUID
     db.commit()
     db.refresh(branch)
     return branch
+
+
+# ---------- Impuestos ----------
+
+
+def list_tax_rates(db: Session, *, tenant_id: uuid.UUID) -> list[TaxRate]:
+    return tax_rate_repository.list_for_tenant(db, tenant_id)
+
+
+def create_tax_rate(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    name: str,
+    rate: Decimal,
+    included_in_price: bool = True,
+    is_default: bool = False,
+) -> TaxRate:
+    if is_default:
+        tax_rate_repository.clear_default(db, tenant_id)
+
+    tax_rate = tax_rate_repository.create(
+        db,
+        tenant_id=tenant_id,
+        name=name,
+        rate=rate,
+        included_in_price=included_in_price,
+        is_default=is_default,
+    )
+    db.commit()
+    db.refresh(tax_rate)
+    return tax_rate
+
+
+def set_default_tax_rate(db: Session, *, tenant_id: uuid.UUID, tax_rate_id: uuid.UUID) -> TaxRate:
+    tax_rate = tax_rate_repository.get(db, tenant_id, tax_rate_id)
+    if tax_rate is None:
+        raise AdminError("El impuesto no existe para este tenant")
+
+    tax_rate_repository.clear_default(db, tenant_id)
+    tax_rate.is_default = True
+    db.commit()
+    db.refresh(tax_rate)
+    return tax_rate
 
 
 # ---------- Mesas ----------
