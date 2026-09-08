@@ -431,6 +431,122 @@ function seccionImpuestos({ impuestos }, refrescar) {
 // Equipo: usuarios y roles
 // =========================================================
 
+/**
+ * La rejilla de casillas del catálogo de permisos.
+ *
+ * La comparten el alta de un rol y la edición de uno existente: son la misma
+ * decisión —qué permisos agrupa este rol— y tenerla escrita dos veces era la
+ * forma segura de que se separaran.
+ */
+function rejillaPermisos(permisos, seleccionados = []) {
+  const casillas = permisos.map((p) => ({
+    code: p.code,
+    control: h('input', {
+      type: 'checkbox',
+      class: 'mt-0.5 w-4 h-4 rounded border-stone-300',
+      checked: seleccionados.includes(p.code),
+    }),
+    descripcion: p.description,
+  }));
+
+  const nodo = h(
+    'div',
+    { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-stone-200 rounded-lg p-2' },
+    casillas.map((p) =>
+      h(
+        'label',
+        { class: 'flex items-start gap-2 text-sm py-0.5' },
+        p.control,
+        h(
+          'span',
+          {},
+          h('span', { class: 'font-mono text-xs' }, p.code),
+          h('br'),
+          h('span', { class: 'text-xs text-stone-500' }, p.descripcion ?? '')
+        )
+      )
+    )
+  );
+
+  return { nodo, elegidos: () => casillas.filter((p) => p.control.checked).map((p) => p.code) };
+}
+
+/**
+ * Una fila de rol, con sus permisos editables.
+ *
+ * Antes un rol se creaba y quedaba congelado: `PUT /roles/{id}/permissions`
+ * existía y nadie lo llamaba, así que corregir un rol significaba crear otro
+ * y mover a la gente. Los roles del sistema no se tocan y el backend los
+ * rechaza: el rol admin es la salida de emergencia del restaurante y
+ * quitarle `users.manage` dejaría a la empresa sin nadie que pueda
+ * devolvérselo.
+ */
+function filaRol(rol, permisos, refrescar) {
+  const editor = h('div');
+  let abierto = false;
+
+  const resumen = h(
+    'div',
+    { class: 'text-xs text-stone-500 mt-1' },
+    `${rol.permissions.length} permisos: ${rol.permissions.join(', ')}`
+  );
+
+  function alternar() {
+    abierto = !abierto;
+    if (!abierto) return render(editor);
+
+    const rejilla = rejillaPermisos(permisos, rol.permissions);
+    const guardar = button('Guardar permisos', {
+      onClick: async () => {
+        guardar.disabled = true;
+        try {
+          await api.put(`/roles/${rol.id}/permissions`, { permissions: rejilla.elegidos() });
+          toast('Permisos actualizados', 'ok');
+          await refrescar();
+        } catch (error) {
+          toast(error.message);
+          guardar.disabled = false;
+        }
+      },
+    });
+
+    render(
+      editor,
+      h(
+        'div',
+        { class: 'mt-3 space-y-3' },
+        rejilla.nodo,
+        h('div', { class: 'flex gap-2' }, guardar, button('Cancelar', { variant: 'secondary', onClick: alternar }))
+      )
+    );
+  }
+
+  return h(
+    'div',
+    { class: 'py-3' },
+    h(
+      'div',
+      { class: 'flex flex-wrap items-center gap-2' },
+      h(
+        'div',
+        { class: 'flex-1 min-w-[180px]' },
+        h(
+          'div',
+          { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
+          rol.name,
+          badge(rol.code),
+          rol.is_system ? badge('Del sistema', 'info') : null
+        ),
+        resumen
+      ),
+      rol.is_system
+        ? h('span', { class: 'text-xs text-stone-400' }, 'No se puede modificar')
+        : button('Editar permisos', { variant: 'secondary', onClick: alternar })
+    ),
+    editor
+  );
+}
+
 function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
   const nombre = input({ placeholder: 'Nombre y apellido', autocomplete: 'off' });
   const correo = input({ placeholder: 'correo@restaurante.com', autocomplete: 'off' });
@@ -445,11 +561,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
 
   const rolCodigo = input({ placeholder: 'mesero' });
   const rolNombre = input({ placeholder: 'Mesero' });
-  const casillasPermisos = permisos.map((p) => ({
-    code: p.code,
-    control: h('input', { type: 'checkbox', class: 'mt-0.5 w-4 h-4 rounded border-stone-300' }),
-    descripcion: p.description,
-  }));
+  const permisosNuevoRol = rejillaPermisos(permisos);
 
   return [
     titledCard(
@@ -531,28 +643,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
 
     titledCard(
       'Roles',
-      h(
-        'div',
-        { class: 'divide-y divide-stone-100' },
-        roles.map((r) =>
-          h(
-            'div',
-            { class: 'py-3' },
-            h(
-              'div',
-              { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
-              r.name,
-              badge(r.code),
-              r.is_system ? badge('Del sistema', 'info') : null
-            ),
-            h(
-              'div',
-              { class: 'text-xs text-stone-500 mt-1' },
-              `${r.permissions.length} permisos: ${r.permissions.join(', ')}`
-            )
-          )
-        )
-      )
+      h('div', { class: 'divide-y divide-stone-100' }, roles.map((r) => filaRol(r, permisos, refrescar)))
     ),
 
     titledCard(
@@ -563,24 +654,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
         field('Código', rolCodigo),
         field('Nombre', rolNombre)
       ),
-      h(
-        'div',
-        { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-stone-200 rounded-lg p-2' },
-        casillasPermisos.map((p) =>
-          h(
-            'label',
-            { class: 'flex items-start gap-2 text-sm py-0.5' },
-            p.control,
-            h(
-              'span',
-              {},
-              h('span', { class: 'font-mono text-xs' }, p.code),
-              h('br'),
-              h('span', { class: 'text-xs text-stone-500' }, p.descripcion ?? '')
-            )
-          )
-        )
-      ),
+      permisosNuevoRol.nodo,
       h(
         'div',
         { class: 'mt-3' },
@@ -590,7 +664,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
               await api.post('/roles', {
                 code: rolCodigo.value.trim(),
                 name: rolNombre.value.trim(),
-                permissions: casillasPermisos.filter((p) => p.control.checked).map((p) => p.code),
+                permissions: permisosNuevoRol.elegidos(),
               });
               rolCodigo.value = '';
               rolNombre.value = '';
