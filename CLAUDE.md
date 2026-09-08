@@ -12,7 +12,8 @@ el camino: el canal `whatsapp` y `customers.phone` existen para eso.
 
 - PostgreSQL 16 con Row Level Security por tenant
 - Python 3.11+ / FastAPI / SQLAlchemy 2 / Pydantic 2
-- Frontend: HTML, CSS/Tailwind, JavaScript vanilla (aún no iniciado)
+- Frontend: HTML, CSS/Tailwind, JavaScript vanilla en `web/`, servido por la
+  misma app. Sin paso de build y sin framework: se edita y se recarga.
 
 ## Lee esto antes de escribir código
 
@@ -67,28 +68,46 @@ no tener lógica de negocio propia.
 
 ```bash
 ./scripts/setup.sh              # levanta Postgres, aplica esquema, siembra demo
-uvicorn app.main:app --reload   # API en :8000, docs en /docs
-pytest                          # tests de dominio
-ruff check app tests            # lint
+uvicorn app.main:app --reload   # API en :8000, docs en /docs, web en /
+pytest                          # dominio + integracion
+pytest tests/integration        # solo integracion (requiere Postgres arriba)
+ruff check app tests scripts    # lint
+
+python scripts/create_tenant.py "Nombre" --branch "Sede" --branch-code SED \
+    --admin-email dueno@x.com --admin-password "clave-larga"
 ```
+
+Los tests de integracion corren contra una base aparte (`<db>_test`) que se
+recrea en cada sesion con el esquema y las semillas reales. Si Postgres no
+esta arriba se saltan, y los de dominio siguen corriendo.
 
 Usuario de demo: `admin@demo.local` / `admin123` (solo desarrollo).
 
 ## Estado actual y siguiente paso
 
-Hecho: esquema v2, lógica de dominio (totales y máquina de estados) con tests,
-dependencias de auth, seeds.
+Hecho: módulos 1, 2, 3, 4, 5, 8 y 9. La API cubre configuración, administración
+(sucursales, mesas, impuestos, usuarios y roles), menú, pedidos, cocina, caja y
+reportes. Hay interfaz web en `web/` servida por la misma app: login, toma de
+pedidos, KDS, menú, administración y reportes.
 
-Carpetas `models/`, `schemas/`, `services/`, `repositories/` están vacías a
-propósito: se llenan módulo por módulo.
+Un restaurante nuevo se da de alta con `scripts/create_tenant.py` y se configura
+entero desde la web, sin SQL ni código.
 
-**Siguiente**: módulo 1 (configuración y administración) — modelos SQLAlchemy de
-`tenants`, `branches`, `roles`, `permissions`, `users`; provisioning de tenant
-(sembrar estados/roles/impuestos por defecto según `business_type`); endpoint de
-login que emita el JWT con tenant y permisos.
+**Siguiente**: módulos 6 y 7 (domicilios y clientes) — `delivery_zones` con
+tarifa y mínimo, asignación de repartidor, gestión de clientes. Sus tablas y
+modelos ya existen; faltan servicios y endpoints. Ver `docs/functional-scope.md`.
 
-Después: módulo 2 (menú), módulo 3 (pedidos), módulos 4 y 5 (cocina y caja),
-módulo 8 (reportes). Ver `docs/functional-scope.md`.
+Pendientes conocidos:
+
+- El frontend no tiene pruebas automatizadas.
+- La app se conecta a Postgres como dueña de las tablas, así que hoy las
+  políticas RLS no la restringen (Postgres las salta para el owner salvo con
+  `FORCE ROW LEVEL SECURITY`). El aislamiento real lo dan los filtros por
+  `tenant_id`, cubiertos en `tests/integration/test_tenant_isolation.py`. Para
+  que la red de seguridad exista de verdad hay que correr la app con un rol que
+  no sea dueño de las tablas.
+- El login busca el usuario por email sin tenant: si dos empresas registran el
+  mismo correo, queda ambiguo. Se resolvería con subdominio o slug de empresa.
 
 ## Convenciones
 

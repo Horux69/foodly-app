@@ -83,9 +83,12 @@ del proyecto al abrir una sesión de Claude Code.
 ## Roadmap
 
 - [x] Modelo de datos v2 (estados y roles configurables, impuestos, horarios)
-- [ ] Módulo 1: configuración y administración
-- [ ] Módulo 2: menú y catálogo
-- [ ] Módulo 3: toma de pedidos
-- [ ] Módulos 4 y 5: cocina (KDS) y caja
-- [ ] Módulo 8: reportes
+- [x] Módulo 1: configuración y administración
+- [x] Módulo 2: menú y catálogo
+- [x] Módulo 3: toma de pedidos
+- [x] Módulos 4 y 5: cocina (KDS) y caja
+- [x] Módulo 8: reportes
+- [x] Módulo 9: motor de configuración por tenant
+- [x] Interfaz web: login, pedidos, KDS, menú, administración y reportes
+- [ ] Módulos 6 y 7: domicilios y clientes
 - [ ] Fase futura: agente conversacional por WhatsApp y pagos in-chat
