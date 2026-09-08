@@ -170,7 +170,10 @@ function pintarEstructura(rutaActiva) {
   if (!usuario) {
     rail.classList.add('hidden');
     rail.classList.remove('md:flex');
-    [rail, topbar, barraInferior].forEach(render);
+    // Con arrow y no `forEach(render)`: forEach pasa (elemento, indice,
+    // array), y como render(el, ...children) toma el resto como hijos,
+    // terminaba intentando meter el propio rail dentro de si mismo.
+    [rail, topbar, barraInferior].forEach((el) => render(el));
     return;
   }
 
