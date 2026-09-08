@@ -5,9 +5,9 @@
 // seguridad: el backend rechaza por su cuenta lo que no corresponde.
 
 import { api } from '../api.js';
-import { percent } from '../format.js';
+import { money, percent } from '../format.js';
 import { icon } from '../icons.js';
-import { can } from '../session.js';
+import { activeBranch, can } from '../session.js';
 import {
   badge, button, card, confirm, empty, errorBox, field, h, input, loading, pageHeader, render,
   section, select, skeleton, tabs, titledCard, toast,
@@ -25,6 +25,15 @@ const SECCIONES = [
   { clave: 'config', etiqueta: 'Cómo opera', icono: 'admin', permiso: 'settings.view' },
   { clave: 'sucursales', etiqueta: 'Sucursales', icono: 'sucursal', permiso: 'settings.view' },
   { clave: 'impuestos', etiqueta: 'Impuestos', icono: 'impuesto', permiso: 'settings.view' },
+  // Aparece si el restaurante tiene el canal de domicilios activo: por
+  // configuración, no por un condicional sobre el tenant.
+  {
+    clave: 'domicilios',
+    etiqueta: 'Domicilios',
+    icono: 'domicilio',
+    permiso: 'settings.view',
+    visible: ({ ajustes }) => ajustes.channels.includes('delivery'),
+  },
   { clave: 'equipo', etiqueta: 'Equipo', icono: 'clientes', permiso: 'users.manage' },
 ];
 
@@ -62,9 +71,17 @@ export async function admin(outlet) {
       ]);
       Object.assign(estado, { roles, usuarios, permisos });
     }
+
+    // Las zonas son de cada sucursal, así que se piden por la sucursal
+    // activa: cambiar de sede en la barra lateral remonta la pantalla.
+    const sede = activeBranch();
+    estado.sede = sede;
+    estado.zonas = sede && ajustes.channels.includes('delivery')
+      ? await api.get(`/branches/${sede.id}/delivery-zones`)
+      : [];
   }
 
-  const disponibles = SECCIONES.filter((s) => can(s.permiso));
+  const disponibles = SECCIONES.filter((s) => can(s.permiso) && (s.visible?.(estado) ?? true));
   let activa = disponibles[0]?.clave;
 
   function mostrar(clave) {
@@ -86,6 +103,7 @@ export async function admin(outlet) {
     if (clave === 'config') render(panel, seccionConfig(estado, refrescar));
     else if (clave === 'sucursales') render(panel, seccionSucursales(estado, refrescar));
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
+    else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
     else render(panel, seccionEquipo(estado, refrescar));
   }
 
@@ -418,6 +436,146 @@ function seccionImpuestos({ impuestos }, refrescar) {
                   await refrescar();
                 } catch (error) {
                   toast(error.message);
+                }
+              },
+            })
+          )
+        )
+      : null,
+  ];
+}
+
+// =========================================================
+// Domicilios: zonas de reparto
+// =========================================================
+
+/**
+ * Zonas de reparto de la sucursal activa.
+ *
+ * Las dos reglas que el backend impone van escritas en la pantalla, no en un
+ * comentario: son las que generan discusiones con el restaurante, y una
+ * pantalla que no las diga las convierte en una sorpresa.
+ */
+function seccionDomicilios({ zonas, sede }, refrescar) {
+  const gestiona = can('branches.manage');
+
+  if (!sede) {
+    return card(
+      empty(
+        'Elige una sucursal',
+        'Las zonas de reparto son de cada sede. Selecciona una en la barra lateral.',
+        null,
+        'sucursal'
+      )
+    );
+  }
+
+  const nombre = input({ placeholder: 'Ej. Centro' });
+  const tarifa = input({ type: 'number', min: '0', placeholder: '5000' });
+  const minimo = input({ type: 'number', min: '0', value: '0' });
+  const minutos = input({ type: 'number', min: '1', placeholder: '30' });
+
+  return [
+    titledCard(
+      `Zonas de reparto · ${sede.name}`,
+      h(
+        'div',
+        { class: 'text-[13px] text-stone-600 space-y-1.5 mb-4 border-l-2 border-amber-300 pl-3' },
+        h(
+          'p',
+          {},
+          h('b', {}, 'La tarifa la pone la zona.'),
+          ' Si el pedido llega con una zona, se cobra el envío de la zona y se ignora el importe que venga en el pedido.'
+        ),
+        h(
+          'p',
+          {},
+          h('b', {}, 'El mínimo se mide contra el subtotal,'),
+          ' nunca contra el total: contar el envío para alcanzar el mínimo sería hacer trampa.'
+        )
+      ),
+      zonas.length
+        ? h(
+            'div',
+            { class: 'divide-y divide-stone-100' },
+            zonas.map((z) =>
+              h(
+                'div',
+                { class: 'py-3 flex flex-wrap items-center gap-3' },
+                h(
+                  'div',
+                  { class: 'flex-1 min-w-[180px]' },
+                  h(
+                    'div',
+                    { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
+                    z.name,
+                    z.is_active ? null : badge('Inactiva', 'warn')
+                  ),
+                  h(
+                    'div',
+                    { class: 'text-xs text-stone-500' },
+                    [
+                      `Envío ${money(z.fee)}`,
+                      Number(z.min_order) ? `mínimo ${money(z.min_order)} de subtotal` : 'sin mínimo',
+                      z.est_minutes ? `${z.est_minutes} min estimados` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  )
+                ),
+                gestiona
+                  ? button(z.is_active ? 'Desactivar' : 'Activar', {
+                      variant: 'secondary',
+                      onClick: async () => {
+                        try {
+                          await api.patch(`/delivery-zones/${z.id}/active`, { is_active: !z.is_active });
+                          await refrescar();
+                        } catch (error) {
+                          toast(error.message);
+                        }
+                      },
+                    })
+                  : null
+              )
+            )
+          )
+        : empty(
+            'Esta sede no tiene zonas',
+            'Sin zonas, un domicilio se cobra con el envío que traiga el pedido y sin mínimo.',
+            null,
+            'domicilio'
+          )
+    ),
+
+    gestiona
+      ? titledCard(
+          'Nueva zona',
+          h(
+            'div',
+            { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3' },
+            field('Nombre', nombre),
+            field('Tarifa de envío', tarifa, 'Lo que se cobra por llevar a esta zona.'),
+            field('Pedido mínimo', minimo, 'Medido contra el subtotal. 0 para no exigir mínimo.'),
+            field('Minutos estimados', minutos, 'Opcional. Lo que se le promete al cliente.')
+          ),
+          h(
+            'div',
+            { class: 'mt-3' },
+            button('Crear zona', {
+              onClick: async (e) => {
+                e.currentTarget.disabled = true;
+                try {
+                  await api.post(`/branches/${sede.id}/delivery-zones`, {
+                    name: nombre.value.trim(),
+                    fee: Number(tarifa.value || 0),
+                    min_order: Number(minimo.value || 0),
+                    est_minutes: minutos.value.trim() === '' ? null : Number(minutos.value),
+                  });
+                  toast('Zona creada', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  toast(error.message);
+                  e.currentTarget.disabled = false;
                 }
               },
             })
