@@ -55,6 +55,52 @@ final class Request
         return $data[$key];
     }
 
+    /**
+     * Parametro de query opcional que debe ser un UUID.
+     * Equivalente a los Query(...) tipados de FastAPI en reports.py.
+     */
+    public static function queryUuid(string $key): ?string
+    {
+        $value = $_GET[$key] ?? null;
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (!is_string($value) || !self::isUuid($value)) {
+            throw new ApiException(422, "'{$key}' debe ser un UUID valido");
+        }
+        return $value;
+    }
+
+    /** Fecha opcional en formato YYYY-MM-DD. */
+    public static function queryDate(string $key): ?string
+    {
+        $value = $_GET[$key] ?? null;
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $parsed = is_string($value) ? \DateTimeImmutable::createFromFormat('!Y-m-d', $value) : false;
+        if ($parsed === false || $parsed->format('Y-m-d') !== $value) {
+            throw new ApiException(422, "'{$key}' debe ser una fecha en formato YYYY-MM-DD");
+        }
+        return $value;
+    }
+
+    public static function queryInt(string $key, int $default, int $min, int $max): int
+    {
+        $value = $_GET[$key] ?? null;
+        if ($value === null || $value === '') {
+            return $default;
+        }
+        if (!is_string($value) || !preg_match('/^\d+$/', $value)) {
+            throw new ApiException(422, "'{$key}' debe ser un numero entero");
+        }
+        $number = (int) $value;
+        if ($number < $min || $number > $max) {
+            throw new ApiException(422, "'{$key}' debe estar entre {$min} y {$max}");
+        }
+        return $number;
+    }
+
     public static function isUuid(string $value): bool
     {
         return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1;

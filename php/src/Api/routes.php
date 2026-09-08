@@ -13,10 +13,10 @@ use App\Api\Routes\AdminRoutes;
 use App\Api\Routes\AuthRoutes;
 use App\Api\Routes\MenuRoutes;
 use App\Api\Routes\OrderRoutes;
+use App\Api\Routes\ReportRoutes;
 
 AuthRoutes::register($router);
 AdminRoutes::register($router);
 MenuRoutes::register($router);
 OrderRoutes::register($router);
-
-// Siguiente en migrarse: ReportRoutes (ver app/api/v1/router.py).
+ReportRoutes::register($router);
