@@ -9,11 +9,12 @@
 // bitácora —quién movió el pedido y cuándo—, que se escribía desde el primer
 // día y solo la leía el reporte de tiempos.
 
-import { api } from '../api.js';
+import { api, uuid } from '../api.js';
 import { date, money, time } from '../format.js';
 import { icon } from '../icons.js';
+import { can, me } from '../session.js';
 import {
-  badge, button, empty, errorBox, h, loading, render, section, toast,
+  badge, button, empty, errorBox, h, input, loading, render, section, select, toast,
 } from '../ui.js';
 import { canal } from './cocina.js';
 
@@ -93,17 +94,19 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
       return render(cuerpo, errorBox(error.message, cargar));
     }
 
+    const recargarTrasCambio = async () => {
+      cambio = true;
+      await cargar();
+    };
+
     render(
       cuerpo,
       encabezado(pedido, cerrar),
       pedido.delivery ? bloqueEntrega(pedido.delivery) : null,
       bloqueLineas(pedido),
       bloqueTotales(pedido),
-      bloquePagos(pedido, pagos),
-      bloqueAvance(pedido, siguientes, async () => {
-        cambio = true;
-        await cargar();
-      }),
+      bloquePagos(pedido, pagos, recargarTrasCambio),
+      bloqueAvance(pedido, siguientes, recargarTrasCambio),
       bloqueBitacora(bitacora)
     );
   }
@@ -217,7 +220,79 @@ function bloqueTotales(pedido) {
   });
 }
 
-function bloquePagos(pedido, pagos) {
+/**
+ * Cobrar: cuánto y con qué.
+ *
+ * Antes la web solo sabía cobrar el saldo completo con un método —mandaba
+ * `amount: saldo.pending` y ya—, así que una cuenta que se paga mitad en
+ * efectivo y mitad con tarjeta no se podía asentar. El backend aceptaba
+ * pagos parciales desde el principio: `Domain\PaymentBalance` suma lo
+ * cobrado y resta contra el total, sin exigir que un pago lo cubra entero.
+ *
+ * El monto arranca en lo que falta, que es el caso común; cambiarlo es lo
+ * que lo vuelve un cobro parcial.
+ */
+function formularioCobro(pedido, recargar) {
+  const saldo = pedido.balance;
+  const metodos = me().payment_methods ?? [];
+  if (saldo.is_settled || !can('payments.register') || !metodos.length) return null;
+
+  // Una llave por formulario pintado: si la respuesta se pierde y el cajero
+  // vuelve a tocar, el backend reconoce la llave y devuelve el cobro que ya
+  // registró en vez de cobrar dos veces.
+  const llave = uuid();
+
+  const monto = input({
+    type: 'number',
+    min: '0',
+    step: '0.01',
+    value: saldo.pending,
+    class: 'campo w-32 tabular-nums',
+    'aria-label': 'Monto a cobrar',
+  });
+
+  const metodo = select(
+    metodos.map((m) => ({ value: m, label: metodoPago(m) })),
+    { class: 'campo w-auto', 'aria-label': 'Método de pago' }
+  );
+
+  const cobrar = button('Cobrar', {
+    iconName: 'dinero',
+    onClick: async () => {
+      const importe = Number(monto.value);
+      if (!(importe > 0)) return toast('El monto debe ser mayor que cero');
+
+      cobrar.disabled = true;
+      try {
+        await api.post(`/orders/${pedido.id}/payments`, {
+          method: metodo.value,
+          amount: importe,
+          idempotency_key: llave,
+        });
+        toast('Cobro registrado', 'ok');
+        await recargar();
+      } catch (error) {
+        toast(error.message);
+        cobrar.disabled = false;
+      }
+    },
+  });
+
+  return h(
+    'div',
+    { class: 'flex flex-wrap items-center gap-2 pt-3 mt-1 border-t border-[--linea]' },
+    monto,
+    metodo,
+    cobrar,
+    // Atajo al caso común, para no obligar a reescribir la cifra si se
+    // cambió y se quiere volver a cobrar todo.
+    Number(saldo.pending) !== Number(monto.value)
+      ? null
+      : h('span', { class: 'text-[12px] text-stone-400' }, 'Cambia el monto para cobrar solo una parte')
+  );
+}
+
+function bloquePagos(pedido, pagos, recargar) {
   const saldo = pedido.balance;
   return section('Pagos', {
     body: h(
@@ -249,7 +324,8 @@ function bloquePagos(pedido, pagos) {
         saldo.is_settled
           ? badge('Saldado', 'ok', 'check')
           : h('span', { class: 'font-semibold text-amber-800 tabular-nums' }, money(saldo.pending))
-      )
+      ),
+      formularioCobro(pedido, recargar)
     ),
   });
 }

@@ -15,6 +15,7 @@ const BASE = {
   tenant_name: 'Restaurante Demo',
   currency: 'COP',
   channels: ['counter'],
+  payment_methods: ['cash', 'card', 'transfer'],
   uses_tables: false,
   asks_tip: false,
   branches: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Centro', code: 'CEN' }],

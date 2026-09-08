@@ -26,7 +26,7 @@ import {
   toast,
 } from '../ui.js';
 import { canal } from './cocina.js';
-import { abrirPedido, tonoEstado } from './pedido-detalle.js';
+import { abrirPedido, metodoPago, tonoEstado } from './pedido-detalle.js';
 
 export async function pedidos(outlet) {
   const contenido = h('div');
@@ -738,6 +738,8 @@ const CATEGORIAS = [
 
 const ESPERA_BUSQUEDA_MS = 300;
 
+const ICONO_METODO = { cash: 'dinero', card: 'etiqueta', transfer: 'domicilio' };
+
 /**
  * La lista de pedidos.
  *
@@ -940,14 +942,14 @@ function tarjetaPedido(pedido, refrescar) {
           h(
             'div',
             { class: 'flex flex-wrap gap-2' },
-            [
-              ['cash', 'Efectivo', 'dinero'],
-              ['card', 'Tarjeta', 'etiqueta'],
-              ['transfer', 'Transferencia', 'domicilio'],
-            ].map(([metodo, etiqueta, ico]) =>
-              button(etiqueta, {
+            // Los métodos los declara el backend (`PaymentProviders`) y llegan
+            // en la sesión: el día que entre una pasarela real aparece aquí
+            // sola. Este es el atajo del mostrador —cobrar todo con un
+            // toque—; el cobro parcial vive en el detalle del pedido.
+            (me().payment_methods ?? []).map((metodo) =>
+              button(metodoPago(metodo), {
                 variant: 'secondary',
-                iconName: ico,
+                iconName: ICONO_METODO[metodo] ?? 'dinero',
                 onClick: async (event) => {
                   event.currentTarget.disabled = true;
                   try {

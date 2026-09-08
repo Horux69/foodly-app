@@ -8,6 +8,7 @@ use App\Api\Deps;
 use App\Api\Request;
 use App\Services\AuthError;
 use App\Services\AuthService;
+use App\Services\PaymentProviders;
 
 final class AuthController
 {
@@ -56,6 +57,10 @@ final class AuthController
             'tenant_name' => $tenant->name,
             'currency' => $tenant->currency,
             'channels' => $settings->channels,
+            // Los metodos de cobro los define PaymentProviders, no la web:
+            // el dia que entre una pasarela real, el selector de caja la
+            // ofrece sin tocar el frontend.
+            'payment_methods' => PaymentProviders::availableMethods(),
             'uses_tables' => $settings->usesTables,
             'asks_tip' => $settings->asksTip,
         ];
