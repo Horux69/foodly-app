@@ -13,7 +13,7 @@ export async function ingresar(outlet) {
   const formulario = h(
     'form',
     {
-      class: 'superficie p-6 space-y-5',
+      class: 'seccion p-6 space-y-5',
       onSubmit: async (event) => {
         event.preventDefault();
         render(aviso);

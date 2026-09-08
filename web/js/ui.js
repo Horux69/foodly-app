@@ -2,9 +2,7 @@
 //
 // `h` reemplaza a las plantillas con innerHTML. La diferencia no es de
 // estilo: el texto entra por `textContent`, así que un producto que se llame
-// `<img onerror="...">` se ve como ese texto en vez de ejecutarse. Con
-// innerHTML, cualquiera con permiso de menú podía inyectar código en la
-// sesión de sus compañeros.
+// `<img onerror="...">` se ve como ese texto en vez de ejecutarse.
 
 import { icon } from './icons.js';
 
@@ -42,32 +40,61 @@ export function render(el, ...children) {
   return el;
 }
 
-// ---------- superficies ----------
+// ---------- estructura de página ----------
 
-export function card(...children) {
-  return h('div', { class: 'superficie p-4' }, children);
-}
-
-export function titledCard(title, ...children) {
-  return card(
-    h('h2', { class: 'text-base font-semibold text-stone-900 mb-3' }, title),
-    children
-  );
-}
-
-/** Encabezado de pantalla: título, apoyo y acciones a la derecha. */
+/** Encabezado de pantalla. Vive en la página, no dentro de una tarjeta. */
 export function pageHeader(titulo, { hint, actions } = {}) {
   return h(
     'div',
-    { class: 'flex flex-wrap items-start justify-between gap-3 mb-4' },
+    { class: 'flex flex-wrap items-end justify-between gap-3 mb-5' },
     h(
       'div',
-      {},
-      h('h1', { class: 'text-xl font-semibold tracking-tight text-stone-900' }, titulo),
-      hint ? h('p', { class: 'text-sm text-stone-500 mt-0.5' }, hint) : null
+      { class: 'min-w-0' },
+      h('h1', { class: 'text-[19px] font-semibold' }, titulo),
+      hint ? h('p', { class: 'text-[13px] text-stone-500 mt-0.5' }, hint) : null
     ),
     actions ? h('div', { class: 'flex flex-wrap gap-2' }, actions) : null
   );
+}
+
+/**
+ * Bloque de contenido con encabezado y línea. Sustituye a la tarjeta suelta:
+ * si todo es una tarjeta, ninguna jerarquiza.
+ */
+export function section(titulo, { actions, body, list, hint } = {}) {
+  return h(
+    'section',
+    { class: 'seccion' },
+    titulo
+      ? h(
+          'header',
+          {},
+          h(
+            'div',
+            { class: 'min-w-0' },
+            h('h2', {}, titulo),
+            hint ? h('p', { class: 'text-[12px] text-stone-500 normal-case font-normal mt-0.5' }, hint) : null
+          ),
+          actions ? h('div', { class: 'flex gap-2 shrink-0' }, actions) : null
+        )
+      : null,
+    body ? h('div', { class: 'cuerpo' }, body) : null,
+    list ? h('div', { class: 'lista' }, list) : null
+  );
+}
+
+/** Fila de lista: alineada, densa y con divisor, no una tarjeta más. */
+export function row(...children) {
+  return h('div', { class: 'fila' }, children);
+}
+
+/** Bloque suelto, para lo que de verdad flota (un ticket de cocina). */
+export function card(...children) {
+  return h('div', { class: 'seccion p-4' }, children);
+}
+
+export function titledCard(titulo, ...children) {
+  return section(titulo, { body: children });
 }
 
 // ---------- controles ----------
@@ -76,19 +103,20 @@ const VARIANTES = {
   primary: 'boton boton-principal',
   secondary: 'boton boton-secundario',
   danger: 'boton boton-peligro',
+  subtle: 'boton boton-sutil',
 };
 
-export function button(label, { variant = 'primary', onClick, type = 'button', iconName, full, ...rest } = {}) {
+export function button(label, { variant = 'primary', onClick, type = 'button', iconName, full, big, ...rest } = {}) {
   return h(
     'button',
     {
       type,
-      class: `${VARIANTES[variant]} ${full ? 'w-full' : ''}`,
+      class: `${VARIANTES[variant]} ${big ? 'boton-grande' : ''} ${full ? 'w-full' : ''}`,
       onClick,
       ...rest,
     },
-    iconName ? icon(iconName, { size: 18 }) : null,
-    h('span', {}, label)
+    iconName ? icon(iconName, { size: 16 }) : null,
+    label ? h('span', {}, label) : null
   );
 }
 
@@ -96,9 +124,9 @@ export function field(label, input, hint) {
   return h(
     'label',
     { class: 'block' },
-    h('span', { class: 'block text-sm font-medium text-stone-700 mb-1.5' }, label),
+    h('span', { class: 'block text-[12.5px] font-medium text-stone-600 mb-1' }, label),
     input,
-    hint ? h('span', { class: 'block text-xs text-stone-500 mt-1' }, hint) : null
+    hint ? h('span', { class: 'block text-[12px] text-stone-500 mt-1' }, hint) : null
   );
 }
 
@@ -114,47 +142,69 @@ export function select(options, props = {}) {
   );
 }
 
-/** Casilla con área de toque cómoda, no un cuadradito de 13px. */
 export function checkbox(label, props = {}) {
   return h(
     'label',
-    { class: 'flex items-center gap-2.5 text-sm text-stone-700 cursor-pointer py-1.5' },
-    h('input', { type: 'checkbox', class: 'w-4 h-4 rounded border-stone-300 accent-amber-700', ...props }),
+    { class: 'flex items-center gap-2 text-[13.5px] text-stone-700 cursor-pointer py-1' },
+    h('input', { type: 'checkbox', class: 'w-[15px] h-[15px] rounded-[3px] border-stone-300 accent-stone-900', ...props }),
     label
   );
 }
 
 const TONOS = {
-  neutral: 'bg-stone-100 text-stone-700',
-  info: 'bg-sky-50 text-sky-800',
+  neutral: 'bg-stone-100 text-stone-600',
+  info: 'bg-sky-50 text-sky-700',
   warn: 'bg-amber-50 text-amber-800',
-  ok: 'bg-emerald-50 text-emerald-800',
-  danger: 'bg-red-50 text-red-800',
+  ok: 'bg-emerald-50 text-emerald-700',
+  danger: 'bg-red-50 text-red-700',
 };
 
 export function badge(text, tone = 'neutral', iconName) {
   return h(
     'span',
-    { class: `inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${TONOS[tone]}` },
-    iconName ? icon(iconName, { size: 12 }) : null,
+    { class: `inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11.5px] font-medium ${TONOS[tone]}` },
+    iconName ? icon(iconName, { size: 11 }) : null,
     text
+  );
+}
+
+/** Pestañas de texto subrayado: menos ruido que un grupo de píldoras. */
+export function tabs(items, activa, alCambiar) {
+  return h(
+    'div',
+    { class: 'flex gap-5 border-b border-[--linea] mb-5 overflow-x-auto' },
+    items.map((item) =>
+      h(
+        'button',
+        {
+          class: `relative pb-2.5 text-[13.5px] whitespace-nowrap transition ${
+            item.key === activa ? 'text-stone-900 font-semibold' : 'text-stone-500 hover:text-stone-800'
+          }`,
+          onClick: () => alCambiar(item.key),
+        },
+        item.label,
+        item.key === activa ? h('span', { class: 'absolute -bottom-px inset-x-0 h-[2px] bg-stone-900' }) : null
+      )
+    )
   );
 }
 
 // ---------- estados ----------
 
-/** Esqueleto: reserva el espacio que van a ocupar los datos. */
 export function skeleton({ rows = 3 } = {}) {
   return h(
     'div',
-    { class: 'space-y-3' },
-    Array.from({ length: rows }, () =>
-      h(
-        'div',
-        { class: 'superficie p-4 space-y-2.5' },
-        h('div', { class: 'esqueleto h-4 w-1/3' }),
-        h('div', { class: 'esqueleto h-3 w-2/3' }),
-        h('div', { class: 'esqueleto h-3 w-1/2' })
+    { class: 'seccion' },
+    h(
+      'div',
+      { class: 'lista' },
+      Array.from({ length: rows }, () =>
+        h(
+          'div',
+          { class: 'fila' },
+          h('div', { class: 'flex-1 space-y-2' }, h('div', { class: 'esqueleto h-3.5 w-1/3' }), h('div', { class: 'esqueleto h-3 w-1/2' })),
+          h('div', { class: 'esqueleto h-7 w-20' })
+        )
       )
     )
   );
@@ -163,8 +213,8 @@ export function skeleton({ rows = 3 } = {}) {
 export function loading(text = 'Cargando…') {
   return h(
     'div',
-    { class: 'flex items-center gap-3 text-sm text-stone-500 p-8 justify-center' },
-    h('span', { class: 'w-4 h-4 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin' }),
+    { class: 'flex items-center gap-2.5 text-[13px] text-stone-500 p-8 justify-center' },
+    h('span', { class: 'w-3.5 h-3.5 border-2 border-stone-200 border-t-stone-500 rounded-full animate-spin' }),
     text
   );
 }
@@ -174,29 +224,23 @@ export function empty(title, hint, action, iconName = 'vacio') {
   return h(
     'div',
     { class: 'text-center px-6 py-12' },
-    h(
-      'div',
-      { class: 'inline-flex items-center justify-center w-12 h-12 rounded-full bg-stone-100 text-stone-400 mb-3' },
-      icon(iconName, { size: 24 })
-    ),
-    h('p', { class: 'text-stone-900 font-medium' }, title),
-    hint ? h('p', { class: 'text-sm text-stone-500 mt-1 max-w-sm mx-auto' }, hint) : null,
-    action ? h('div', { class: 'mt-5' }, action) : null
+    h('div', { class: 'inline-flex text-stone-300 mb-3' }, icon(iconName, { size: 28 })),
+    h('p', { class: 'text-[14px] font-medium text-stone-800' }, title),
+    hint ? h('p', { class: 'text-[13px] text-stone-500 mt-1 max-w-sm mx-auto' }, hint) : null,
+    action ? h('div', { class: 'mt-4 flex justify-center' }, action) : null
   );
 }
 
 export function errorBox(message, onRetry) {
   return h(
     'div',
-    { class: 'bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3' },
-    icon('alerta', { size: 20, class: 'text-red-600 mt-0.5' }),
+    { class: 'flex items-start gap-2.5 border border-red-200 bg-red-50/60 rounded-[--r-g] p-3.5' },
+    icon('alerta', { size: 17, class: 'text-red-600 mt-px' }),
     h(
       'div',
-      { class: 'flex-1' },
-      h('p', { class: 'text-sm text-red-800' }, message),
-      onRetry
-        ? h('div', { class: 'mt-3' }, button('Reintentar', { variant: 'secondary', onClick: onRetry }))
-        : null
+      { class: 'flex-1 min-w-0' },
+      h('p', { class: 'text-[13.5px] text-red-800' }, message),
+      onRetry ? h('div', { class: 'mt-2.5' }, button('Reintentar', { variant: 'secondary', onClick: onRetry })) : null
     )
   );
 }
@@ -207,9 +251,9 @@ let toastTimer = null;
 
 export function toast(message, kind = 'error') {
   const host = document.getElementById('toast-host');
-  const estilo = {
-    error: ['bg-red-600', 'alerta'],
-    ok: ['bg-emerald-700', 'check'],
+  const [fondo, ico] = {
+    error: ['bg-red-700', 'alerta'],
+    ok: ['bg-stone-900', 'check'],
     info: ['bg-stone-900', 'alerta'],
   }[kind];
 
@@ -217,11 +261,8 @@ export function toast(message, kind = 'error') {
     host,
     h(
       'div',
-      {
-        class: `aparece flex items-center gap-2.5 px-4 py-3 rounded-xl text-white shadow-lg text-sm max-w-sm ${estilo[0]}`,
-        role: 'status',
-      },
-      icon(estilo[1], { size: 18 }),
+      { class: `aparece flex items-center gap-2 px-3.5 py-2.5 rounded-[--r] text-white shadow-lg text-[13px] max-w-sm ${fondo}`, role: 'status' },
+      icon(ico, { size: 16 }),
       h('span', {}, message)
     )
   );
@@ -230,7 +271,6 @@ export function toast(message, kind = 'error') {
   toastTimer = setTimeout(() => clear(host), 4500);
 }
 
-/** Confirmación para lo que no se deshace de un clic. `await confirm(...)`. */
 export function confirm({ title, message, confirmLabel = 'Confirmar', variant = 'danger' }) {
   return new Promise((resolve) => {
     const close = (answer) => {
@@ -239,37 +279,23 @@ export function confirm({ title, message, confirmLabel = 'Confirmar', variant = 
       resolve(answer);
     };
     const onKey = (e) => e.key === 'Escape' && close(false);
-
     const confirmar = button(confirmLabel, { variant, onClick: () => close(true) });
 
     const overlay = h(
       'div',
       {
-        class: 'fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-[2px] flex items-center justify-center p-4',
+        class: 'fixed inset-0 z-50 bg-stone-900/30 flex items-center justify-center p-4',
         onClick: (e) => e.target === overlay && close(false),
       },
       h(
         'div',
-        { class: 'aparece bg-white rounded-xl max-w-sm w-full p-5 shadow-xl', role: 'dialog', 'aria-modal': 'true' },
+        { class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full p-5 shadow-xl border border-[--linea]', role: 'dialog', 'aria-modal': 'true' },
+        h('h3', { class: 'text-[15px] font-semibold' }, title),
+        message ? h('p', { class: 'text-[13.5px] text-stone-600 mt-1.5 leading-relaxed' }, message) : null,
         h(
           'div',
-          { class: 'flex items-start gap-3' },
-          h(
-            'div',
-            { class: 'inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-50 text-red-600 shrink-0' },
-            icon('alerta', { size: 18 })
-          ),
-          h(
-            'div',
-            {},
-            h('h3', { class: 'font-semibold text-stone-900' }, title),
-            message ? h('p', { class: 'text-sm text-stone-600 mt-1' }, message) : null
-          )
-        ),
-        h(
-          'div',
-          { class: 'flex gap-2 mt-5' },
-          button('Cancelar', { variant: 'secondary', onClick: () => close(false), full: true }),
+          { class: 'flex justify-end gap-2 mt-5' },
+          button('Cancelar', { variant: 'secondary', onClick: () => close(false) }),
           confirmar
         )
       )

@@ -1,58 +1,67 @@
-/* Lenguaje visual de la aplicación.
+/* Lenguaje visual.
  *
- * Dos decisiones de fondo:
+ * Se rehízo la composición porque la anterior era la genérica: cabecera,
+ * pestañas y todo metido en tarjetas blancas flotando sobre gris. Eso no
+ * jerarquiza nada —si todo es una tarjeta, ninguna destaca— y hace que
+ * cualquier producto se parezca a cualquier otro.
  *
- * 1. Neutros cálidos (stone) en vez de fríos (slate). Es un producto de
- *    hospitalidad que se mira ocho horas seguidas; el gris azulado se siente
- *    clínico y cansa.
- * 2. Un solo acento, y usado poco. El ámbar aparece en lo activo, en el foco
- *    y en la cifra que importa. Los botones principales siguen siendo casi
- *    negros: sobre blanco es el contraste más alto y no compite con nada.
- *    Un acento que se usa en todo deja de señalar.
+ * Ahora: barra lateral, contenido sobre superficie continua, y separación
+ * por líneas finas en vez de por bordes de tarjeta. La elevación queda
+ * reservada para lo que de verdad flota (diálogos) y la tarjeta para lo que
+ * de verdad es un objeto suelto (un ticket de cocina).
  */
 
 :root {
-  --lienzo: #f5f5f4; /* stone-100 */
-  --superficie: #ffffff;
-  --borde: #e7e5e4; /* stone-200 */
-  --borde-fuerte: #d6d3d1; /* stone-300 */
+  --lienzo: #fafaf9;
+  --panel: #ffffff;
+  --linea: #ebe9e6;
+  --linea-fuerte: #d6d3d1;
 
-  --tinta: #1c1917; /* stone-900 */
-  --tinta-media: #57534e; /* stone-600 */
-  --tinta-suave: #a8a29e; /* stone-400 */
+  --tinta: #1c1917;
+  --tinta-2: #57534e;
+  --tinta-3: #a8a29e;
 
-  --acento: #b45309; /* amber-700: blanco encima pasa AA */
-  --acento-suave: #fef3c7; /* amber-100 */
-  --acento-borde: #fcd34d; /* amber-300 */
+  --acento: #b45309;
+  --acento-suave: #fffbeb;
 
   --ok: #047857;
-  --ok-suave: #d1fae5;
   --aviso: #b45309;
-  --aviso-suave: #fef3c7;
   --peligro: #b91c1c;
-  --peligro-suave: #fee2e2;
 
-  --sombra: 0 1px 2px rgb(28 25 23 / 0.05);
-  --sombra-alta: 0 4px 12px -2px rgb(28 25 23 / 0.12);
-  --radio: 0.75rem;
+  /* Radio contenido: el 12px de todas partes es lo que hace que una interfaz
+     parezca una plantilla. */
+  --r: 6px;
+  --r-g: 10px;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   background: var(--lienzo);
   color: var(--tinta);
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Un solo anillo de foco en toda la aplicación, visible pero no estridente.
-   Solo aparece con teclado, para no ensuciar el uso táctil. */
-:focus-visible {
-  outline: 2px solid var(--acento);
-  outline-offset: 2px;
-  border-radius: 4px;
+/* Las cifras se leen en columna: ancho fijo para que no bailen. */
+.num {
+  font-variant-numeric: tabular-nums;
 }
 
-/* Se usa en tableta, de pie: los objetivos táctiles no bajan de 44px y no se
-   dispara el zoom de iOS al enfocar un campo. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.011em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
 button,
 [role='button'] {
   touch-action: manipulation;
@@ -60,58 +69,140 @@ button,
 input,
 select,
 textarea {
-  font-size: 16px;
+  font-size: 16px; /* evita el zoom de iOS al enfocar */
 }
 @media (min-width: 640px) {
   input,
   select,
   textarea {
-    font-size: 0.875rem;
+    font-size: 13.5px;
   }
 }
 
-/* ---------- piezas ---------- */
+/* ---------- estructura ---------- */
 
-.superficie {
-  background: var(--superficie);
-  border: 1px solid var(--borde);
-  border-radius: var(--radio);
-  box-shadow: var(--sombra);
+.rail {
+  background: var(--panel);
+  border-right: 1px solid var(--linea);
 }
+
+/* El activo se marca con una barra sólida y con peso tipográfico, no con una
+   píldora de color: se lee antes y no grita. */
+.rail-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--r);
+  color: var(--tinta-2);
+  font-size: 13.5px;
+  transition: background-color 0.12s, color 0.12s;
+}
+.rail-item:hover {
+  background: #f5f5f4;
+  color: var(--tinta);
+}
+.rail-item[aria-current='page'] {
+  background: #f5f5f4;
+  color: var(--tinta);
+  font-weight: 600;
+}
+.rail-item[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: -0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: var(--tinta);
+}
+
+/* ---------- bloques ---------- */
+/* Reemplaza a la tarjeta: sección con encabezado y una línea fina, no un
+   rectángulo flotante más. */
+
+.seccion {
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-radius: var(--r-g);
+}
+.seccion > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--linea);
+}
+.seccion > header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--tinta-2);
+}
+.seccion > .cuerpo {
+  padding: 1rem;
+}
+.seccion > .lista > * + * {
+  border-top: 1px solid var(--linea);
+}
+.fila {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+}
+.fila:hover {
+  background: #fcfcfb;
+}
+
+/* ---------- controles ---------- */
 
 .campo {
   width: 100%;
-  background: var(--superficie);
-  border: 1px solid var(--borde-fuerte);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  background: var(--panel);
+  border: 1px solid var(--linea-fuerte);
+  border-radius: var(--r);
+  padding: 0.4375rem 0.625rem;
+  color: var(--tinta);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.campo::placeholder {
+  color: var(--tinta-3);
 }
 .campo:focus {
   outline: none;
-  border-color: var(--acento);
-  box-shadow: 0 0 0 3px var(--acento-suave);
+  border-color: var(--tinta-2);
+  box-shadow: 0 0 0 3px #f5f5f4;
 }
 
 .boton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  padding: 0 1rem;
-  border-radius: 0.625rem;
-  font-weight: 600;
-  font-size: 0.875rem;
-  transition: transform 0.08s, background-color 0.15s, border-color 0.15s;
-}
-/* Respuesta táctil: el botón cede al presionarlo. */
-.boton:active:not(:disabled) {
-  transform: scale(0.97);
+  gap: 0.375rem;
+  height: 34px;
+  padding: 0 0.75rem;
+  border-radius: var(--r);
+  font-weight: 500;
+  font-size: 13.5px;
+  white-space: nowrap;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
 }
 .boton:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+/* En la pantalla de venta se toca con el dedo y de pie: ahí sí manda el
+   objetivo grande. En el resto de la aplicación gana la densidad. */
+.boton-grande {
+  height: 44px;
+  font-size: 14.5px;
+  border-radius: var(--r);
 }
 
 .boton-principal {
@@ -121,60 +212,63 @@ textarea {
 .boton-principal:hover:not(:disabled) {
   background: #292524;
 }
-
 .boton-secundario {
-  background: var(--superficie);
-  color: var(--tinta-media);
-  border: 1px solid var(--borde-fuerte);
+  background: var(--panel);
+  color: var(--tinta-2);
+  border: 1px solid var(--linea-fuerte);
 }
 .boton-secundario:hover:not(:disabled) {
-  border-color: var(--tinta);
+  border-color: var(--tinta-2);
+  color: var(--tinta);
+}
+.boton-peligro {
+  background: var(--panel);
+  color: var(--peligro);
+  border: 1px solid #fecaca;
+}
+.boton-peligro:hover:not(:disabled) {
+  background: #fef2f2;
+}
+.boton-sutil {
+  color: var(--tinta-2);
+}
+.boton-sutil:hover:not(:disabled) {
+  background: #f5f5f4;
   color: var(--tinta);
 }
 
-.boton-peligro {
-  background: var(--superficie);
-  color: var(--peligro);
-  border: 1px solid #fca5a5;
-}
-.boton-peligro:hover:not(:disabled) {
-  background: var(--peligro-suave);
-}
-
-/* Producto del mostrador: objetivo grande y respuesta clara al tocarlo. */
+/* Producto del mostrador: el objetivo táctil grande de la aplicación. */
 .producto {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 92px;
-  padding: 0.75rem;
+  min-height: 84px;
+  padding: 0.625rem 0.75rem;
   text-align: left;
-  background: var(--superficie);
-  border: 1px solid var(--borde);
-  border-radius: 0.625rem;
-  transition: transform 0.08s, border-color 0.15s, box-shadow 0.15s;
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-radius: var(--r);
+  transition: border-color 0.12s, background-color 0.12s;
 }
 .producto:hover:not(:disabled) {
-  border-color: var(--acento-borde);
-  box-shadow: var(--sombra-alta);
+  border-color: var(--tinta-3);
+  background: #fcfcfb;
 }
 .producto:active:not(:disabled) {
-  transform: scale(0.98);
+  background: #f5f5f4;
 }
 .producto:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 /* ---------- carga ---------- */
-/* Esqueletos en vez de un texto de "cargando": la página no salta cuando
-   llegan los datos porque el espacio ya estaba reservado. */
 
 .esqueleto {
-  background: linear-gradient(90deg, #ececea 25%, #f5f5f4 50%, #ececea 75%);
+  background: linear-gradient(90deg, #f0efed 25%, #f8f7f6 50%, #f0efed 75%);
   background-size: 200% 100%;
   animation: brillo 1.4s ease-in-out infinite;
-  border-radius: 0.5rem;
+  border-radius: 3px;
 }
 @keyframes brillo {
   to {
@@ -182,17 +276,21 @@ textarea {
   }
 }
 
+/* Entrada sutil por desplazamiento y NO por opacidad.
+ *
+ * Animar desde `opacity: 0` deja el contenido invisible si la animación no
+ * llega a correr, y sí ocurre: el navegador frena las animaciones de una
+ * pestaña en segundo plano. Un tablero de cocina en blanco no es aceptable.
+ * Con transform, lo peor que pasa es que algo quede 3px corrido. */
 .aparece {
-  animation: aparecer 0.18s ease-out;
+  animation: aparecer 0.15s ease-out;
 }
 @keyframes aparecer {
   from {
-    opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(3px);
   }
 }
 
-/* Quien prefiere menos movimiento no debería pelear con la interfaz. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -204,11 +302,15 @@ textarea {
 }
 
 /* ---------- cocina ---------- */
-/* La demora se lee por color y por grosor de borde, para distinguirla desde
-   lejos y sin depender solo del color. */
+/* Aquí sí la tarjeta tiene sentido: cada ticket es un objeto suelto que se
+   mueve entre columnas. La demora va por color y por grosor de borde, para
+   no depender solo del color. */
 
 .ticket {
-  border-left-width: 4px;
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-left-width: 3px;
+  border-radius: var(--r);
 }
 .ticket-fresco {
   border-left-color: var(--ok);
@@ -218,5 +320,5 @@ textarea {
 }
 .ticket-tarde {
   border-left-color: var(--peligro);
-  box-shadow: 0 0 0 1px var(--peligro-suave), var(--sombra-alta);
+  background: #fffbfb;
 }

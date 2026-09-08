@@ -9,43 +9,33 @@ import { api } from '../api.js';
 import { money, moneyExact } from '../format.js';
 import { icon } from '../icons.js';
 import { me } from '../session.js';
-import { badge, button, card, empty, errorBox, h, input, render, skeleton, toast } from '../ui.js';
+import { badge, button, card, empty, errorBox, h, input, render, section, skeleton, tabs, toast } from '../ui.js';
 import { canal } from './cocina.js';
 
 export async function pedidos(outlet) {
   const contenido = h('div');
-  const pestanas = h('div', { class: 'flex gap-1 p-1 bg-stone-200/60 rounded-xl w-fit mb-4' });
+  const barra = h('div');
   let activa = 'nuevo';
+
+  const ITEMS = [
+    { key: 'nuevo', label: 'Nuevo pedido' },
+    { key: 'dia', label: 'Pedidos del día' },
+  ];
 
   function pintarPestanas() {
     render(
-      pestanas,
-      [
-        ['nuevo', 'Nuevo pedido', 'mas'],
-        ['dia', 'Pedidos del día', 'pedidos'],
-      ].map(([clave, etiqueta, ico]) =>
-        h(
-          'button',
-          {
-            class: `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
-              activa === clave ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'
-            }`,
-            onClick: () => {
-              activa = clave;
-              pintarPestanas();
-              pintar();
-            },
-          },
-          icon(ico, { size: 16 }),
-          etiqueta
-        )
-      )
+      barra,
+      tabs(ITEMS, activa, (clave) => {
+        activa = clave;
+        pintarPestanas();
+        pintar();
+      })
     );
   }
 
   const pintar = () => (activa === 'nuevo' ? vistaNuevo(contenido) : vistaDelDia(contenido));
 
-  render(outlet, pestanas, contenido);
+  render(outlet, barra, contenido);
   pintarPestanas();
   pintar();
 }
@@ -134,7 +124,7 @@ async function vistaNuevo(host) {
         panelMenu,
         h(
           'div',
-          { class: 'superficie' },
+          { class: 'seccion' },
           empty(
             'Este restaurante todavía no tiene menú',
             'Agrega categorías y productos desde la pantalla Menú para empezar a vender.',
@@ -147,7 +137,7 @@ async function vistaNuevo(host) {
     if (!categorias.length) {
       return render(
         panelMenu,
-        h('div', { class: 'superficie' }, empty('Ningún producto coincide', `No encontramos “${filtro}”.`, null, 'buscar'))
+        h('div', { class: 'seccion' }, empty('Ningún producto coincide', `No encontramos “${filtro}”.`, null, 'buscar'))
       );
     }
 
@@ -386,7 +376,7 @@ async function vistaNuevo(host) {
         ),
         h(
           'details',
-          { class: 'superficie p-4' },
+          { class: 'seccion p-4' },
           h(
             'summary',
             { class: 'flex items-center gap-2 cursor-pointer text-sm font-medium text-stone-700' },
@@ -531,7 +521,7 @@ async function vistaDelDia(host) {
   if (!pedidos.length) {
     return render(
       host,
-      h('div', { class: 'superficie' }, empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.', null, 'pedidos'))
+      h('div', { class: 'seccion' }, empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.', null, 'pedidos'))
     );
   }
 

@@ -65,7 +65,7 @@ export async function cocina(outlet) {
         tablero,
         h(
           'div',
-          { class: 'superficie' },
+          { class: 'seccion' },
           empty('Todo al día', 'Los pedidos nuevos aparecen aquí solos, sin recargar.', null, 'check')
         )
       );
@@ -126,7 +126,9 @@ function ticket(pedido, refrescar) {
 
   return h(
     'article',
-    { class: `superficie ticket ${nivel.clase} p-4 flex flex-col gap-3 aparece` },
+    // Sin animación de entrada: el tablero se repinta cada 15 segundos y una
+    // sacudida en cada refresco distrae más de lo que aporta.
+    { class: `ticket ${nivel.clase} p-4 flex flex-col gap-3` },
 
     h(
       'div',

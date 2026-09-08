@@ -10,7 +10,7 @@ import { icon } from '../icons.js';
 import { can } from '../session.js';
 import {
   badge, button, card, confirm, empty, errorBox, field, h, input, loading, pageHeader, render,
-  select, skeleton, titledCard, toast,
+  section, select, skeleton, tabs, titledCard, toast,
 } from '../ui.js';
 
 const CANALES = [
@@ -29,7 +29,7 @@ const SECCIONES = [
 ];
 
 export async function admin(outlet) {
-  const nav = h('div', { class: 'flex flex-wrap gap-1 p-1 bg-stone-200/60 rounded-xl w-fit mb-4' });
+  const nav = h('div');
   const panel = h('div', { class: 'space-y-4' });
   render(
     outlet,
@@ -71,18 +71,10 @@ export async function admin(outlet) {
     activa = clave;
     render(
       nav,
-      disponibles.map((s) =>
-        h(
-          'button',
-          {
-            class: `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
-              s.clave === activa ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'
-            }`,
-            onClick: () => mostrar(s.clave),
-          },
-          icon(s.icono, { size: 16 }),
-          s.etiqueta
-        )
+      tabs(
+        disponibles.map((s) => ({ key: s.clave, label: s.etiqueta })),
+        activa,
+        mostrar
       )
     );
 
