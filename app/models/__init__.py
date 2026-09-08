@@ -1,5 +1,6 @@
 from app.models.branch import Branch, BranchSchedule
 from app.models.customer import Customer
+from app.models.delivery import DeliveryInfo, DeliveryZone
 from app.models.menu import BranchMenuOverride, MenuCategory, MenuItem
 from app.models.modifier import Modifier, ModifierGroup, item_modifier_groups
 from app.models.order import Order, OrderItem, OrderItemModifier, OrderStatusHistory
@@ -17,6 +18,8 @@ __all__ = [
     "BranchSchedule",
     "BranchMenuOverride",
     "Customer",
+    "DeliveryInfo",
+    "DeliveryZone",
     "MenuCategory",
     "MenuItem",
     "Modifier",

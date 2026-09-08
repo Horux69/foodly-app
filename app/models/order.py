@@ -12,6 +12,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.models.branch import Branch
     from app.models.customer import Customer
+    from app.models.delivery import DeliveryInfo
     from app.models.menu import MenuItem
     from app.models.modifier import Modifier
     from app.models.order_status import OrderStatus
@@ -63,6 +64,7 @@ class Order(Base):
     items: Mapped[list["OrderItem"]] = relationship(back_populates="order")
     status_history: Mapped[list["OrderStatusHistory"]] = relationship(back_populates="order")
     payments: Mapped[list["Payment"]] = relationship(back_populates="order")
+    delivery: Mapped["DeliveryInfo | None"] = relationship(back_populates="order", uselist=False)
 
 
 class OrderItem(Base):
