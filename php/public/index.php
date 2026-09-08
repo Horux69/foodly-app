@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Api\ApiException;
 use App\Api\Router;
 use App\Core\Config;
+use App\Core\Database;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -40,15 +41,21 @@ if ($path === '/health') {
 $router = new Router();
 require __DIR__ . '/../src/Api/routes.php';
 
+// Una transaccion por request sobre la conexion app(), igual que la Session
+// de SQLAlchemy en Python: setTenantContext() la abre en cuanto hay tenant,
+// y aqui se cierra siempre, salga como salga la respuesta.
 try {
     [$status, $body] = $router->dispatch($_SERVER['REQUEST_METHOD'], $path);
     http_response_code($status);
     echo json_encode($body, JSON_UNESCAPED_UNICODE);
+    Database::endAppTransaction(success: true);
 } catch (ApiException $e) {
     http_response_code($e->status);
     echo json_encode(['detail' => $e->getMessage()]);
+    Database::endAppTransaction(success: false);
 } catch (\Throwable $e) {
     http_response_code(500);
     $debug = Config::get()->environment === 'development';
     echo json_encode(['detail' => $debug ? $e->getMessage() : 'Error interno']);
+    Database::endAppTransaction(success: false);
 }

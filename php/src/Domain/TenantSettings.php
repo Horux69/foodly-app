@@ -19,6 +19,9 @@ final class TenantSettings
      *  un tenant lo tenga activo. */
     public const CHANNELS = ['counter', 'table', 'delivery', 'whatsapp', 'app'];
 
+    /** Claves de DEFAULTS_BY_BUSINESS_TYPE, expuestas para validar entrada (p.ej. --business-type de bin/create_tenant.php). */
+    public const BUSINESS_TYPES = ['fast_food', 'table_service', 'delivery'];
+
     private const DEFAULTS_BY_BUSINESS_TYPE = [
         'fast_food' => ['channels' => ['counter', 'delivery'], 'uses_tables' => false, 'asks_tip' => false],
         'table_service' => ['channels' => ['table'], 'uses_tables' => true, 'asks_tip' => true],

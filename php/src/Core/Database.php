@@ -58,11 +58,26 @@ final class Database
      * seguridad, igual que hace set_tenant_context en Python.
      *
      * true en el tercer argumento de set_config = valido solo para la
-     * transaccion/sesion actual, exactamente como SET LOCAL.
+     * transaccion actual, exactamente como SET LOCAL — lo que exige que haya
+     * una transaccion abierta. SQLAlchemy mantiene una por request sin que
+     * el codigo tenga que pedirlo; PDO en autocommit no, asi que sin este
+     * beginTransaction() explicito el ajuste se perdia entre un execute() y
+     * el siguiente y el resto de la request volvia a ver cero filas.
      */
     public static function setTenantContext(PDO $pdo, string $tenantId): void
     {
+        if (!$pdo->inTransaction()) {
+            $pdo->beginTransaction();
+        }
         $stmt = $pdo->prepare("SELECT set_config('app.current_tenant', :tid, true)");
         $stmt->execute(['tid' => $tenantId]);
+    }
+
+    /** Cierra la transaccion de la request sobre app(): commit si salio bien, rollback si no. */
+    public static function endAppTransaction(bool $success): void
+    {
+        if (self::$app !== null && self::$app->inTransaction()) {
+            $success ? self::$app->commit() : self::$app->rollBack();
+        }
     }
 }

@@ -1,0 +1,39 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Api\Routes;
+
+use App\Api\Controllers\AdminController;
+use App\Api\Router;
+
+/** Mismas rutas (y sin prefijo /admin) que app/api/v1/admin.py monta en router.py. */
+final class AdminRoutes
+{
+    public static function register(Router $router): void
+    {
+        $router->get('/settings', fn () => AdminController::getSettings());
+        $router->patch('/settings', fn () => AdminController::updateSettings());
+
+        $router->get('/branches', fn () => AdminController::listBranches());
+        $router->post('/branches', fn () => AdminController::createBranch());
+        $router->patch('/branches/{branch_id}/active', fn ($p) => AdminController::setBranchActive($p));
+
+        $router->get('/tax-rates', fn () => AdminController::listTaxRates());
+        $router->post('/tax-rates', fn () => AdminController::createTaxRate());
+        $router->put('/tax-rates/{tax_rate_id}/default', fn ($p) => AdminController::setDefaultTaxRate($p));
+
+        $router->get('/branches/{branch_id}/tables', fn ($p) => AdminController::listTables($p));
+        $router->post('/branches/{branch_id}/tables', fn ($p) => AdminController::createTable($p));
+
+        $router->get('/permissions', fn () => AdminController::listPermissions());
+
+        $router->get('/roles', fn () => AdminController::listRoles());
+        $router->post('/roles', fn () => AdminController::createRole());
+        $router->put('/roles/{role_id}/permissions', fn ($p) => AdminController::setRolePermissions($p));
+
+        $router->get('/users', fn () => AdminController::listUsers());
+        $router->post('/users', fn () => AdminController::createUser());
+        $router->patch('/users/{user_id}/active', fn ($p) => AdminController::setUserActive($p));
+    }
+}
