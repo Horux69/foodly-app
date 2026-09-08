@@ -28,6 +28,20 @@ final class OrderListFilters
         public readonly ?string $toDate = null,
         public readonly int $limit = self::LIMIT_DEFAULT,
         public readonly ?string $cursor = null,
+        /**
+         * Solo los pedidos con entrega. Un domicilio es un pedido que tiene
+         * `delivery_info`, no uno de cierto canal: el canal cada restaurante
+         * lo bautiza como quiere.
+         */
+        public readonly bool $onlyDelivery = false,
+        /**
+         * Los estados a los que puede moverse cada pedido, dentro de la
+         * lista. Opcional porque no toda pantalla los necesita: cuesta una
+         * consulta mas (la maquina de estados del tenant, una sola vez) y
+         * engorda la respuesta. El tablero de domicilios si los necesita —
+         * sin ellos serian tantas peticiones como tarjetas.
+         */
+        public readonly bool $withNextStatuses = false,
     ) {
         if ($statusCategory !== null && !in_array($statusCategory, OrderStatus::CATEGORIES, true)) {
             throw new OrderError(

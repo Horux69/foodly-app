@@ -297,6 +297,8 @@ final class OrderController
                     max: OrderListFilters::LIMIT_MAX,
                 ),
                 cursor: Request::queryString('cursor', 200),
+                onlyDelivery: Request::queryBool('only_delivery'),
+                withNextStatuses: Request::queryBool('with_next_statuses'),
             );
             $page = OrderService::listOrders($ctx->tenantId, Deps::activeBranchId($ctx), $filters);
         } catch (OrderError $e) {
@@ -305,7 +307,15 @@ final class OrderController
 
         return [
             'items' => array_map(
-                static fn ($order) => self::orderOut($order) + ['balance' => self::balanceOut($page->balances[$order->id])],
+                static fn ($order) => self::orderOut($order) + [
+                    'balance' => self::balanceOut($page->balances[$order->id]),
+                    'delivery' => isset($page->deliveries[$order->id])
+                        ? DeliveryController::infoOut($page->deliveries[$order->id])
+                        : null,
+                    'next_statuses' => isset($page->nextStatuses[$order->id])
+                        ? array_map(self::statusOut(...), $page->nextStatuses[$order->id])
+                        : null,
+                ],
                 $page->orders,
             ),
             'next_cursor' => $page->nextCursor,

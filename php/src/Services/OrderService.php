@@ -443,13 +443,33 @@ final class OrderService
         $orders = array_slice($orders, 0, $filters->limit);
         $nextCursor = $hayMas && $orders !== [] ? OrderCursor::encode($orders[count($orders) - 1]) : null;
 
-        $paid = (new PaymentRepository($pdo))->paidTotalsForOrders(array_map(static fn ($o) => $o->id, $orders));
+        $orderIds = array_map(static fn ($o) => $o->id, $orders);
+        $paid = (new PaymentRepository($pdo))->paidTotalsForOrders($orderIds);
 
         $balances = [];
         foreach ($orders as $order) {
             $balances[$order->id] = PaymentBalance::compute($order->totalCents, [$paid[$order->id] ?? 0]);
         }
 
-        return new OrderListPage($orders, $balances, $nextCursor);
+        // La maquina de estados se arma una vez para toda la pagina, no una
+        // por pedido: es la misma para todo el tenant.
+        $nextStatuses = [];
+        if ($filters->withNextStatuses && $orders !== []) {
+            [$machine, $byId] = OrderStatusService::buildMachine($tenantId);
+            foreach ($orders as $order) {
+                $nextStatuses[$order->id] = array_map(
+                    static fn ($s) => $byId[$s->id],
+                    $machine->allowedFrom($order->statusId),
+                );
+            }
+        }
+
+        return new OrderListPage(
+            $orders,
+            $balances,
+            $nextCursor,
+            (new DeliveryRepository($pdo))->getForOrders($orderIds),
+            $nextStatuses,
+        );
     }
 }

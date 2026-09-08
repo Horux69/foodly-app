@@ -138,6 +138,9 @@ final class OrderRepository
             self::SELECT_ORDER
             . ' JOIN branches b ON b.id = o.branch_id'
             . ' LEFT JOIN customers c ON c.id = o.customer_id'
+            // INNER JOIN cuando se piden solo domicilios: tener entrega es
+            // exactamente lo que hace domicilio a un pedido.
+            . ($filters->onlyDelivery ? ' JOIN delivery_info di ON di.order_id = o.id' : '')
             . ' WHERE ' . implode(' AND ', $where)
             // El id desempata para que el cursor no se salte un pedido
             // cuando dos comparten el instante de creacion.

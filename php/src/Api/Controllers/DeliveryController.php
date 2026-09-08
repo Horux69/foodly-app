@@ -11,6 +11,7 @@ use App\Api\Request;
 use App\Core\Money;
 use App\Models\DeliveryInfo;
 use App\Models\DeliveryZone;
+use App\Services\AdminService;
 use App\Services\DeliveryService;
 use App\Services\DeliveryServiceError;
 
@@ -109,6 +110,23 @@ final class DeliveryController
             throw new ApiException(404, $e->getMessage());
         }
         return self::zoneOut($zone);
+    }
+
+    /**
+     * Los repartidores entre los que se puede elegir.
+     *
+     * Bajo 'delivery.assign' y no bajo 'users.manage': quien despacha
+     * domicilios necesita esta lista y no deberia hacer falta darle un
+     * permiso de administracion para que pueda trabajar. Devuelve solo id y
+     * nombre —lo unico que el selector necesita—, no la ficha del empleado.
+     */
+    public static function listCouriers(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'delivery.assign');
+        return array_map(
+            static fn ($u) => ['id' => $u->id, 'name' => $u->name],
+            AdminService::listCouriers($ctx->tenantId),
+        );
     }
 
     // ---------- Entrega de un pedido ----------

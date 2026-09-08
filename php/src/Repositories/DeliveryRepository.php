@@ -103,6 +103,37 @@ final class DeliveryRepository
         return $row === false ? null : DeliveryInfo::fromRow($row);
     }
 
+    /**
+     * Las entregas de varios pedidos de una vez, con zona y repartidor ya
+     * resueltos: el tablero pinta una pagina entera y pedir una por pedido
+     * seria el mismo N+1 que se quito de la lista en F0.3.
+     *
+     * @param string[] $orderIds
+     * @return array<string, DeliveryInfo> indexadas por order_id
+     */
+    public function getForOrders(array $orderIds): array
+    {
+        if ($orderIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+        $stmt = $this->pdo->prepare(
+            "SELECT d.*, z.name AS zone_name, u.name AS courier_name
+               FROM delivery_info d
+               LEFT JOIN delivery_zones z ON z.id = d.zone_id
+               LEFT JOIN users u ON u.id = d.courier_id
+              WHERE d.order_id IN ({$placeholders})"
+        );
+        $stmt->execute(array_values($orderIds));
+
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['order_id']] = DeliveryInfo::fromRow($row);
+        }
+        return $result;
+    }
+
     public function createInfo(
         string $orderId,
         string $address,

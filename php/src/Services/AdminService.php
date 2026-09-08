@@ -241,6 +241,22 @@ final class AdminService
         return (new UserRepository($pdo, new RoleRepository($pdo)))->listForTenant($tenantId);
     }
 
+    /**
+     * Quienes pueden llevar un domicilio: los que tienen 'delivery.complete'.
+     *
+     * Por permiso y no por codigo de rol. El catalogo de permisos es fijo y
+     * los roles que los agrupan son de cada restaurante, asi que preguntar
+     * por 'repartidor' solo funcionaria en los que hayan llamado asi al rol.
+     *
+     * @return User[]
+     */
+    public static function listCouriers(string $tenantId): array
+    {
+        $pdo = self::pdo();
+        return (new UserRepository($pdo, new RoleRepository($pdo)))
+            ->listWithPermission($tenantId, 'delivery.complete');
+    }
+
     public static function createUser(
         string $tenantId,
         string $name,
