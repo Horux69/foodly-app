@@ -12,9 +12,17 @@ el camino: el canal `whatsapp` y `customers.phone` existen para eso.
 
 - PostgreSQL 16 con Row Level Security por tenant
 - PHP 8.1+ con PDO, **sin framework**. La única dependencia de Composer es
-  `firebase/php-jwt`, porque decodificar un JWT a mano es el tipo de cosa
+  `firebase/php-jwt` (v7), porque decodificar un JWT a mano es el tipo de cosa
   criptográfica que no vale la pena reinventar. Todo lo demás (router,
   validación de entrada, acceso a datos) es PHP nativo.
+
+**`SECRET_KEY` necesita al menos 32 bytes.** HS256 firma con HMAC-SHA256 y una
+clave más corta debilita la firma; php-jwt las rechaza desde la v7 y
+`Core\Config` lo comprueba al arrancar para que el fallo salga como un error de
+configuración y no como un `Provided key is too short` en mitad de un login.
+Cada entorno genera la suya —`setup-php.sh` lo hace al crear el `.env`— con
+`php -r "echo bin2hex(random_bytes(32));"`. Cambiarla invalida los tokens ya
+emitidos: todo el mundo tiene que volver a entrar.
 - Frontend: SPA de módulos ES en `web/`, con enrutado por hash y sin paso de
   build ni framework — se edita y se recarga. Tailwind por CDN y `web/app.css`
   para lo propio. `web/js/views/` tiene una vista por pantalla; `router.js`,
@@ -160,11 +168,6 @@ Pendientes conocidos:
   `users.role_id`, `orders.status_id`, `order_items.menu_item_id`, entre otras),
   así que Postgres se traba. Dar de baja un restaurante hoy exige borrar a mano
   en orden. Se arregla con una migración que defina `ON DELETE` en esas claves.
-- `firebase/php-jwt` está fijado en v6.11.1, alcanzada por
-  GHSA-2x45-7fc3-mxwq (severidad baja). El arreglo está en 7.0.0, que es un
-  major: hay que subir la restricción de `composer.json` y revisar la API de
-  `JWT::decode`. Mientras tanto `composer update` queda bloqueado por el aviso;
-  `composer install` desde el lock sí funciona.
 - **El frontend no tiene pruebas automatizadas, y ya costó caro**: la pantalla
   de login estuvo rota desde `c697b9e` hasta `99e54ea` por un
   `[rail, topbar, barraInferior].forEach(render)` — `forEach` pasa

@@ -27,7 +27,15 @@ docker compose exec -T db psql -q -U resto -d resto_platform < db/seeds/002_demo
 
 echo ">> Instalando dependencias PHP"
 cd php
-[ -f .env ] || cp .env.example .env
+if [ ! -f .env ]; then
+  cp .env.example .env
+  # Una clave de firma propia por entorno. Si se dejara la del ejemplo, todas
+  # las instalaciones compartirian un secreto publico y cualquiera podria
+  # fabricar un token con el tenant_id que quisiera.
+  secreto=$(php -r 'echo bin2hex(random_bytes(32));')
+  php -r '$f=".env"; file_put_contents($f, preg_replace("/^SECRET_KEY=.*$/m", "SECRET_KEY=\"".$argv[1]."\"", file_get_contents($f)));' "$secreto"
+  echo "   .env creado con una SECRET_KEY nueva"
+fi
 composer install --no-interaction
 
 echo
