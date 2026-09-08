@@ -71,6 +71,27 @@ export const api = {
   put: (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body ?? {}) }),
 };
 
+/**
+ * Identificador de un intento, para que un reintento no cobre ni pida dos
+ * veces. El backend ya lo acepta (`OrderService::createOrder`,
+ * `PaymentService::registerPayment`): guarda la llave junto al pedido o al
+ * pago y, si vuelve la misma, devuelve el que ya existe en vez de crear otro.
+ *
+ * `crypto.randomUUID` solo existe en contexto seguro, y una tableta de
+ * mostrador entra por `http://192.168.x.x`: ahí el respaldo es
+ * `getRandomValues`, que sí está siempre. No hace falta que sea impredecible
+ * —no es un secreto—, solo que no se repita.
+ */
+export function uuid() {
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // versión 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variante RFC 4122
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function query(params) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

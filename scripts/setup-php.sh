@@ -10,9 +10,14 @@ echo ">> Levantando Postgres"
 docker compose up -d db
 until docker compose exec -T db pg_isready -U resto >/dev/null 2>&1; do sleep 1; done
 
-echo ">> Aplicando esquema y politicas RLS"
-docker compose exec -T db psql -q -U resto -d resto_platform < db/migrations/001_initial_schema.sql
-docker compose exec -T db psql -q -U resto -d resto_platform < db/migrations/002_rls_hardening.sql
+echo ">> Aplicando esquema, politicas RLS y migraciones"
+# Todas las migraciones, en orden numerico. Antes solo se aplicaban la 001 y
+# la 002 escritas a mano, asi que cada migracion nueva quedaba fuera de una
+# base recien creada: 003 sembraba los permisos de clientes y no llegaba.
+for migracion in db/migrations/*.sql; do
+  echo "   $(basename "$migracion")"
+  docker compose exec -T db psql -q -U resto -d resto_platform < "$migracion"
+done
 
 echo ">> Habilitando el rol de aplicacion"
 # Este rol no es dueño de las tablas: eso es justamente lo que hace que las

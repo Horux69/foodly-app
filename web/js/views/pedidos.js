@@ -5,7 +5,7 @@
 // restaurante no usa (mesas, propina) no aparece, porque lo dice su
 // configuración y no un condicional en el código.
 
-import { api } from '../api.js';
+import { api, uuid } from '../api.js';
 import { money, moneyExact } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery, me } from '../session.js';
@@ -57,6 +57,13 @@ async function vistaNuevo(host) {
   const contexto = me();
   const carrito = [];
   let filtro = '';
+
+  // Llave de idempotencia del intento en curso. Vive mientras el pedido no
+  // se confirme: si la respuesta se pierde por red lenta y el cajero vuelve
+  // a tocar, el backend reconoce la llave y devuelve el pedido que ya creó
+  // en vez de crear un segundo. Se renueva recién al confirmarse, que es
+  // cuando empieza otro pedido.
+  let intento = uuid();
 
   const panelMenu = h('div', { class: 'space-y-4' });
 
@@ -319,8 +326,9 @@ async function vistaNuevo(host) {
   async function enviar() {
     crear.disabled = true;
     try {
-      const pedido = await api.post(`/orders${branchQuery()}`, cuerpo());
+      const pedido = await api.post(`/orders${branchQuery()}`, { ...cuerpo(), idempotency_key: intento });
       toast(`Pedido ${pedido.order_number} creado por ${money(pedido.total)}`, 'ok');
+      intento = uuid();
       carrito.length = 0;
       [telefono, nombre, mesa].forEach((el) => (el.value = ''));
       notas.value = '';
@@ -537,6 +545,13 @@ async function vistaDelDia(host) {
 function tarjetaPedido(pedido, saldo, refrescar) {
   const pendiente = saldo && !saldo.is_settled;
 
+  // Una llave por tarjeta, compartida por los tres métodos. Es a propósito:
+  // si el cobro en efectivo se registró pero la respuesta se perdió, tocar
+  // "Tarjeta" devuelve ese cobro en vez de cobrar dos veces. La tarjeta se
+  // vuelve a pintar tras cada cobro exitoso, así que el siguiente cobro
+  // parcial del mismo pedido ya trae otra llave.
+  const cobro = uuid();
+
   return card(
     h(
       'div',
@@ -586,7 +601,11 @@ function tarjetaPedido(pedido, saldo, refrescar) {
                 onClick: async (event) => {
                   event.currentTarget.disabled = true;
                   try {
-                    await api.post(`/orders/${pedido.id}/payments`, { method: metodo, amount: saldo.pending });
+                    await api.post(`/orders/${pedido.id}/payments`, {
+                      method: metodo,
+                      amount: saldo.pending,
+                      idempotency_key: cobro,
+                    });
                     toast('Pago registrado', 'ok');
                     refrescar();
                   } catch (error) {
