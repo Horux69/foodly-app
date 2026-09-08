@@ -5,6 +5,7 @@ import * as router from './router.js';
 import * as session from './session.js';
 import { h, render, select, toast } from './ui.js';
 import { admin } from './views/admin.js';
+import { caja } from './views/caja.js';
 import { clientes } from './views/clientes.js';
 import { cocina } from './views/cocina.js';
 import { domicilios } from './views/domicilios.js';
@@ -18,6 +19,15 @@ import { reportes } from './views/reportes.js';
 const RUTAS = [
   { path: 'pedidos', label: 'Pedidos', icon: 'pedidos', permission: 'orders.create', view: pedidos },
   { path: 'cocina', label: 'Cocina', icon: 'cocina', permission: 'orders.view', view: cocina },
+  {
+    path: 'caja',
+    label: 'Caja',
+    icon: 'dinero',
+    // Sin `permission` porque son dos: la abre quien cobra y la cuadra quien
+    // cierra, y cualquiera de los dos tiene algo que hacer en la pantalla.
+    visible: () => session.canAny('payments.register', 'cash.close'),
+    view: caja,
+  },
   { path: 'menu', label: 'Menú', icon: 'menu', permission: 'menu.edit', view: menu },
   {
     path: 'domicilios',

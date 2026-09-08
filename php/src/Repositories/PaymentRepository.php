@@ -89,14 +89,15 @@ final class PaymentRepository
         ?string $createdBy = null,
         ?string $note = null,
         ?string $refundOfPaymentId = null,
+        ?string $cashSessionId = null,
     ): Payment {
         $stmt = $this->pdo->prepare(
             'INSERT INTO payments (
                 order_id, method, status, amount, external_reference, idempotency_key, paid_at,
-                created_by, note, refund_of_payment_id
+                created_by, note, refund_of_payment_id, cash_session_id
              ) VALUES (
                 :order_id, :method, :status, :amount, :external_reference, :idempotency_key, :paid_at,
-                :created_by, :note, :refund_of_payment_id
+                :created_by, :note, :refund_of_payment_id, :cash_session_id
              ) RETURNING *'
         );
         $stmt->execute([
@@ -110,6 +111,7 @@ final class PaymentRepository
             'created_by' => $createdBy,
             'note' => $note,
             'refund_of_payment_id' => $refundOfPaymentId,
+            'cash_session_id' => $cashSessionId,
         ]);
         return Payment::fromRow($stmt->fetch());
     }

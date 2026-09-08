@@ -167,8 +167,9 @@ Sobre eso se construyeron dos fases de trabajo en la web:
   de reparto en Administración, detalle de pedido con bitácora, precio por
   sucursal en el menú y edición de los permisos de un rol.
 
-- **Fase 2 (cerrar el ciclo del dinero)**, en curso y partida en trozos. Hecho
-  el primero: cobro parcial y por varios métodos (F2.1) y reembolsos (F2.3).
+- **Fase 2 (cerrar el ciclo del dinero)**, en curso y partida en trozos.
+  Hechos: cobro parcial y por varios métodos (F2.1), reembolsos (F2.3) y
+  cierre de turno con arqueo (F2.5).
 
 Sobre los reembolsos, tres detalles que conviene no deshacer:
 
@@ -181,9 +182,28 @@ Sobre los reembolsos, tres detalles que conviene no deshacer:
 - **La cadena tiene un solo eslabón**: un reembolso no se reembolsa. Para
   deshacerlo se vuelve a cobrar.
 
+Sobre el arqueo, cuatro decisiones que conviene no deshacer:
+
+- **La diferencia se calcula, no se guarda.** Se guarda lo contado
+  (`counted_cash`) y la base; el esperado y la diferencia salen de
+  `Domain\CashSessionTotals` con los movimientos reales. Una diferencia
+  almacenada al cerrar mentiría en cuanto se registre un reembolso de ese
+  turno.
+- **Solo el efectivo cuadra contra un conteo.** Lo cobrado con tarjeta o
+  transferencia se reporta por método pero no pasa por el cajón. Cuál método
+  es el físico se le pasa al dominio, no se adivina.
+- **Una sola caja abierta por sucursal**, y lo impone un índice único parcial
+  (`WHERE closed_at IS NULL`), no una comprobación en PHP: dos cajeros
+  abriendo a la vez la pasarían los dos.
+- **Abrir pide `payments.register`; ver el cuadre y cerrar piden
+  `cash.close`.** Así, en un restaurante que separe los roles, quien cuenta el
+  cajón no ve antes cuánto debería haber — que es el control que hace útil un
+  arqueo. Cobrar no exige turno abierto: lo que se cobre sin turno queda con
+  `cash_session_id` nulo y no entra en ningún arqueo.
+
 **Siguiente**: el resto de la fase 2 —división de cuenta (F2.2, sobre F2.1),
-cancelación con motivo (F2.4), cierre de turno y arqueo (F2.5, `cash.close`
-sigue sin endpoint) y los reportes de cierre (F2.6).
+cancelación con motivo (F2.4) y los reportes de cierre (F2.6), que ya tienen
+en `payments.created_by` y `payments.cash_session_id` lo que necesitan.
 
 Antes de F2.4 hay una decisión de negocio pendiente: **si un pedido con pagos
 debe exigir reembolso antes de poder cancelarse.** Ata F2.3 con F2.4 y no la
@@ -204,9 +224,9 @@ Pendientes conocidos:
   esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
-  domicilios y el cobro y reembolso desde el detalle del pedido. Faltan la
-  toma de pedido con modificadores obligatorios y el avance de estado en
-  cocina. Cada pantalla nueva debería llegar con la suya.
+  domicilios, el cobro y reembolso desde el detalle del pedido, y la caja.
+  Faltan la toma de pedido con modificadores obligatorios y el avance de
+  estado en cocina. Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta
   `99e54ea` por un `[rail, topbar, barraInferior].forEach(render)` — `forEach`

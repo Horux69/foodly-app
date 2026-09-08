@@ -10,6 +10,7 @@ use App\Domain\RefundError;
 use App\Domain\RefundRules;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Repositories\CashSessionRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\PaymentRepository;
 
@@ -17,6 +18,20 @@ final class PaymentService
 {
     /** unique_violation de Postgres. */
     private const UNIQUE_VIOLATION = '23505';
+
+    /**
+     * El turno de caja abierto en la sucursal del pedido, si lo hay.
+     *
+     * Cobrar no exige turno abierto: un restaurante que no lleve caja por
+     * turnos tiene que poder seguir vendiendo. Lo que se cobre sin turno
+     * queda con cash_session_id nulo y no entra en ningun arqueo — que es
+     * exactamente lo que significa.
+     */
+    private static function openSessionId(string $tenantId, string $branchId): ?string
+    {
+        return (new CashSessionRepository(Database::app()))
+            ->currentForBranch($tenantId, $branchId)?->id;
+    }
 
     public static function getBalanceForOrder(Order $order): PaymentBalance
     {
@@ -119,6 +134,7 @@ final class PaymentService
                 $idempotencyKey,
                 $result->paidAt,
                 createdBy: $createdBy,
+                cashSessionId: self::openSessionId($tenantId, $order->branchId),
             );
         } catch (\PDOException $e) {
             $pdo->exec('ROLLBACK TO SAVEPOINT registrar_pago');
@@ -209,6 +225,9 @@ final class PaymentService
             createdBy: $createdBy,
             note: $note,
             refundOfPaymentId: $original->id,
+            // La devolucion pertenece al turno en que se hace, no al turno en
+            // que se cobro: la plata sale del cajon que este abierto ahora.
+            cashSessionId: self::openSessionId($tenantId, $order->branchId),
         );
 
         // Si ya no queda nada por devolver, el cobro original queda marcado.
