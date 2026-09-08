@@ -94,6 +94,12 @@ final class OrderStatusService
         $orders->setStatus($order->id, $target->id);
         $orders->addStatusHistory($order->id, $target->id, $changedBy, $note);
 
+        // Modulo 6: si el pedido es un domicilio, aqui queda la hora de salida
+        // o de entrega. Va despues del cambio de estado y no antes para que un
+        // rechazo de la maquina de estados no deje una hora sellada de un
+        // avance que nunca ocurrio.
+        DeliveryService::stampByCategory($order->id, $target->category);
+
         return $orders->getById($tenantId, $order->id);
     }
 }

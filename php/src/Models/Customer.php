@@ -12,6 +12,7 @@ final class Customer
         public readonly string $phone,
         public readonly ?string $name,
         public readonly ?string $email,
+        public readonly string $createdAt,
     ) {
     }
 
@@ -24,6 +25,7 @@ final class Customer
             phone: $row['phone'],
             name: $row['name'],
             email: $row['email'],
+            createdAt: $row['created_at'],
         );
     }
 }

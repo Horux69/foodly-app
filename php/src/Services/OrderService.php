@@ -6,6 +6,9 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Domain\BranchSchedule;
+use App\Domain\DeliveryError;
+use App\Domain\DeliveryRules;
+use App\Domain\DeliveryZoneRules;
 use App\Domain\LineInput;
 use App\Domain\MenuPricing;
 use App\Domain\ModifierGroupConstraint;
@@ -22,6 +25,7 @@ use App\Models\Modifier;
 use App\Models\Order;
 use App\Repositories\BranchRepository;
 use App\Repositories\CustomerRepository;
+use App\Repositories\DeliveryRepository;
 use App\Repositories\MenuRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\OrderStatusRepository;
@@ -158,6 +162,7 @@ final class OrderService
         int $deliveryFeeCents = 0,
         int $discountCents = 0,
         int $tipCents = 0,
+        ?DeliveryInput $delivery = null,
     ): Order {
         $pdo = Database::app();
         $orders = new OrderRepository($pdo);
@@ -220,6 +225,21 @@ final class OrderService
             $tableId = $table->id;
         }
 
+        // La tarifa de domicilio la pone el restaurante en su zona, no quien
+        // pide: si viene una zona, su tarifa manda sobre lo que llegue en el
+        // cuerpo de la peticion.
+        $zone = null;
+        if ($delivery !== null && $delivery->zoneId !== null) {
+            $zone = (new DeliveryRepository($pdo))->getZone($tenantId, $delivery->zoneId);
+            if ($zone === null) {
+                throw new OrderError('La zona de domicilio no existe para este tenant');
+            }
+            if (!$zone->isActive) {
+                throw new OrderError("La zona '{$zone->name}' no esta activa");
+            }
+            $deliveryFeeCents = $zone->feeCents;
+        }
+
         $resolvedLines = self::resolveLines($tenantId, $branchId, $items);
 
         try {
@@ -231,6 +251,19 @@ final class OrderService
             );
         } catch (OrderTotalsError $e) {
             throw new OrderError($e->getMessage());
+        }
+
+        // Se valida con los totales ya calculados y antes de escribir nada: el
+        // minimo mira el subtotal, no el total (ver Domain\DeliveryRules).
+        if ($zone !== null) {
+            try {
+                DeliveryRules::validateMinimum(
+                    $totals->subtotalCents,
+                    new DeliveryZoneRules($zone->name, $zone->feeCents, $zone->minOrderCents, $zone->estMinutes),
+                );
+            } catch (DeliveryError $e) {
+                throw new OrderError($e->getMessage());
+            }
         }
 
         $orderId = $orders->create(
@@ -268,6 +301,16 @@ final class OrderService
             foreach ($resolved->modifiers as $modifier) {
                 $orders->addItemModifier($orderItemId, $modifier->id, $modifier->name, $modifier->priceDeltaCents);
             }
+        }
+
+        if ($delivery !== null) {
+            (new DeliveryRepository($pdo))->createInfo(
+                $orderId,
+                $delivery->address,
+                $zone?->id,
+                $delivery->lat,
+                $delivery->lng,
+            );
         }
 
         $orders->addStatusHistory($orderId, $initialStatus->id, $createdBy, 'Pedido creado');

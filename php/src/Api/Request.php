@@ -71,6 +71,25 @@ final class Request
         return $value;
     }
 
+    /**
+     * Parametro de query de texto libre, opcional. Equivalente al
+     * `Query(default=None)` de FastAPI en customers.py.
+     */
+    public static function queryString(string $key, ?int $maxLength = null): ?string
+    {
+        $value = $_GET[$key] ?? null;
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (!is_string($value)) {
+            throw new ApiException(422, "'{$key}' debe ser texto");
+        }
+        if ($maxLength !== null && strlen($value) > $maxLength) {
+            throw new ApiException(422, "'{$key}' debe tener como maximo {$maxLength} caracteres");
+        }
+        return $value;
+    }
+
     /** Fecha opcional en formato YYYY-MM-DD. */
     public static function queryDate(string $key): ?string
     {

@@ -128,22 +128,27 @@ Usuario de demo: `admin@demo.local` / `admin123` (solo desarrollo).
 
 ## Estado actual y siguiente paso
 
-Hecho: módulos 1, 2, 3, 4, 5, 8 y 9, ya migrados a PHP. La API cubre
-configuración, administración (sucursales, mesas, impuestos, usuarios y roles),
-menú, pedidos, cocina, caja y reportes. Hay interfaz web en `web/` servida por
-la misma app: login, toma de pedidos, KDS, menú, administración y reportes.
+Los nueve módulos del alcance funcional están construidos y migrados a PHP. La
+API cubre configuración, administración (sucursales, mesas, impuestos, usuarios
+y roles), menú, pedidos, cocina, caja, reportes, domicilios y clientes.
 
 Un restaurante nuevo se da de alta con `php/bin/create_tenant.php` y se
 configura entero desde la web, sin SQL ni código.
 
-**Siguiente**: portar a PHP los módulos 6 y 7 (domicilios y clientes) —
-`delivery_zones` con tarifa y mínimo, asignación de repartidor, gestión de
-clientes. Sus tablas existen y sus permisos también
-(`db/migrations/003_customer_permissions.sql`); faltan repositorios, servicios
-y endpoints en `php/`. **La implementación en Python de `app/` sirve de
-especificación**: `app/services/delivery_service.py`,
-`app/services/customer_service.py` y sus tests en `tests/integration/` dicen
-exactamente qué reglas hay que reproducir.
+Domicilios y clientes cierran el MVP: zonas con tarifa y mínimo, asignación de
+repartidor, sellado de la hora de salida y de entrega, y una base de clientes
+que se llena sola con el teléfono de cada pedido (la llave que usará el agente
+de WhatsApp). Tres detalles del módulo que conviene no deshacer:
+
+- **La tarifa la pone la zona, no quien pide.** Si el pedido trae `zone_id`, el
+  `delivery_fee` del cuerpo se ignora.
+- **El mínimo se mide contra el subtotal**, nunca contra el total: contar el
+  envío para alcanzarlo sería hacer trampa (`Domain\DeliveryRules`).
+- **La hora de salida y la de entrega se sellan por categoría del estado**
+  (`in_transit` y `completed`), no por su código, y solo si estaban vacías.
+
+**Siguiente**: no hay un módulo pendiente. Lo que queda son los pendientes de
+abajo y, cuando se decida, la fase de WhatsApp.
 
 Pendientes conocidos:
 
@@ -160,17 +165,24 @@ Pendientes conocidos:
   major: hay que subir la restricción de `composer.json` y revisar la API de
   `JWT::decode`. Mientras tanto `composer update` queda bloqueado por el aviso;
   `composer install` desde el lock sí funciona.
-- El frontend no tiene pruebas automatizadas.
+- **El frontend no tiene pruebas automatizadas, y ya costó caro**: la pantalla
+  de login estuvo rota desde `c697b9e` hasta `99e54ea` por un
+  `[rail, topbar, barraInferior].forEach(render)` — `forEach` pasa
+  `(elemento, indice, array)` y `render(el, ...children)` tomaba el resto como
+  hijos, así que intentaba meter el rail dentro de sí mismo. Nadie lo vio
+  porque la rama solo corre con la sesión cerrada, y en desarrollo siempre
+  había token en `localStorage`. Cualquier prueba que cargara la app sin token
+  lo habría atrapado.
 - El login resuelve la empresa a partir del email: si dos empresas registran el
   mismo correo, queda ambiguo (gana el primero). Se resolvería con subdominio o
   slug de empresa en la pantalla de login.
 - Falta reembolsos: el permiso `payments.refund` existe pero ningún endpoint lo
   usa, así que caja no puede revertir un cobro.
+- Domicilios y clientes no tienen pantallas propias: se manejan por API. La
+  SPA todavía no tiene vista de clientes ni de zonas de reparto.
 - Un combo (varios productos completos a precio de paquete) no se puede
   modelar: los modificadores suman o restan sobre una línea, no "son" otro
   producto con su propia receta.
-- Domicilios y clientes no tienen pantallas propias: cuando existan en PHP se
-  manejarán por API hasta que se les haga vista.
 
 Ya resuelto en la migración: el avance de estado usa `SELECT ... FOR UPDATE`,
 así que dos cajeros que avancen el mismo pedido a la vez ya no se pisan.

@@ -12,6 +12,7 @@ use App\Api\RequestContext;
 use App\Core\Money;
 use App\Models\Order;
 use App\Models\OrderStatusRow;
+use App\Services\DeliveryInput;
 use App\Services\OrderError;
 use App\Services\OrderLineInput;
 use App\Services\OrderService;
@@ -111,6 +112,35 @@ final class OrderController
         return [$read('delivery_fee'), $read('discount'), $read('tip')];
     }
 
+    /**
+     * Datos de entrega, si el pedido es un domicilio. Su sola presencia es lo
+     * que lo convierte en uno; no se deduce del canal, que el restaurante
+     * puede haber bautizado como quiera.
+     */
+    private static function deliveryFrom(array $body): ?DeliveryInput
+    {
+        if (!array_key_exists('delivery', $body) || $body['delivery'] === null) {
+            return null;
+        }
+        if (!is_array($body['delivery'])) {
+            throw new ApiException(422, "'delivery' debe ser un objeto");
+        }
+        $raw = $body['delivery'];
+
+        return new DeliveryInput(
+            address: Request::string($raw, 'address', 1, 255),
+            zoneId: Request::optionalUuid($raw, 'zone_id'),
+            // Coordenadas como decimal en texto: la columna es NUMERIC(10,7) y
+            // un float perderia justo los digitos que ubican el punto.
+            lat: array_key_exists('lat', $raw) && $raw['lat'] !== null
+                ? Request::decimalString($raw, 'lat')
+                : null,
+            lng: array_key_exists('lng', $raw) && $raw['lng'] !== null
+                ? Request::decimalString($raw, 'lng')
+                : null,
+        );
+    }
+
     public static function create(): JsonResponse
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.create');
@@ -133,6 +163,7 @@ final class OrderController
                 $deliveryFee,
                 $discount,
                 $tip,
+                self::deliveryFrom($body),
             );
         } catch (OrderError $e) {
             throw new ApiException(422, $e->getMessage());
