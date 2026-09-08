@@ -43,7 +43,7 @@ final class MenuController
     public static function getMenu(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'menu.view');
-        $categories = MenuService::getMenu($ctx->tenantId, $ctx->branchId);
+        $categories = MenuService::getMenu($ctx->tenantId, Deps::activeBranchIdOrNull($ctx));
 
         return array_map(static fn (MenuCategoryView $c) => [
             'id' => $c->id,

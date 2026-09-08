@@ -43,7 +43,17 @@ final class AuthService
         return Security::createAccessToken($user->id, $user->tenantId, $user->branchId, $user->roleCode, $user->permissionCodes);
     }
 
-    /** @return array{0: User, 1: ?Branch, 2: Tenant, 3: TenantSettings} */
+    /**
+     * Quien es el usuario, como opera su restaurante y entre que sucursales
+     * puede moverse.
+     *
+     * Las sucursales van aqui y no en /branches a proposito: ese endpoint es
+     * de administracion y pide 'settings.view', pero un cajero de una
+     * cadena tambien necesita saber en cual esta parado. Son nombres de
+     * sucursal de su propia empresa, no hay nada que ocultarle.
+     *
+     * @return array{0: User, 1: ?Branch, 2: Tenant, 3: TenantSettings, 4: Branch[]}
+     */
     public static function getMe(string $tenantId, string $userId): array
     {
         $pdo = Database::app();
@@ -57,9 +67,14 @@ final class AuthService
             throw new AuthError('El tenant ya no existe');
         }
 
-        $branch = $user->branchId !== null ? (new BranchRepository($pdo))->get($tenantId, $user->branchId) : null;
+        $branches = new BranchRepository($pdo);
+        $branch = $user->branchId !== null ? $branches->get($tenantId, $user->branchId) : null;
         $settings = TenantSettings::parse($tenant->settings, $tenant->businessType);
 
-        return [$user, $branch, $tenant, $settings];
+        // Solo las activas: una sucursal dada de baja no es un lugar donde
+        // se pueda seguir vendiendo.
+        $operables = array_values(array_filter($branches->listForTenant($tenantId), static fn ($b) => $b->isActive));
+
+        return [$user, $branch, $tenant, $settings, $operables];
     }
 }

@@ -7,6 +7,7 @@ namespace App\Api\Controllers;
 use App\Api\ApiException;
 use App\Api\Deps;
 use App\Api\Request;
+use App\Api\RequestContext;
 use App\Core\Money;
 use App\Services\ReportError;
 use App\Services\ReportService;
@@ -20,9 +21,9 @@ use App\Services\ReportService;
 final class ReportController
 {
     /** @return array{0: ?string, 1: ?string, 2: ?string} */
-    private static function filters(): array
+    private static function filters(RequestContext $ctx): array
     {
-        return [Request::queryUuid('branch_id'), Request::queryDate('from_date'), Request::queryDate('to_date')];
+        return [Deps::optionalBranchId($ctx), Request::queryDate('from_date'), Request::queryDate('to_date')];
     }
 
     /** Los importes salen como cadena decimal, igual que serializa Pydantic un Decimal. */
@@ -39,7 +40,7 @@ final class ReportController
     public static function sales(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'reports.view');
-        [$branchId, $from, $to] = self::filters();
+        [$branchId, $from, $to] = self::filters($ctx);
 
         try {
             $data = ReportService::sales($ctx->tenantId, $branchId, $from, $to);
@@ -77,7 +78,7 @@ final class ReportController
     public static function topProducts(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'reports.view');
-        [$branchId, $from, $to] = self::filters();
+        [$branchId, $from, $to] = self::filters($ctx);
         $limit = Request::queryInt('limit', default: 10, min: 1, max: 100);
 
         try {
@@ -97,7 +98,7 @@ final class ReportController
     public static function prepTimes(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'reports.view');
-        [$branchId, $from, $to] = self::filters();
+        [$branchId, $from, $to] = self::filters($ctx);
 
         try {
             $data = ReportService::prepTimes($ctx->tenantId, $branchId, $from, $to);
@@ -117,7 +118,7 @@ final class ReportController
     public static function peakHours(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'reports.view');
-        [$branchId, $from, $to] = self::filters();
+        [$branchId, $from, $to] = self::filters($ctx);
 
         try {
             $rows = ReportService::peakHours($ctx->tenantId, $branchId, $from, $to);

@@ -12,6 +12,7 @@
 import { api } from '../api.js';
 import { elapsed, minutesSince, time } from '../format.js';
 import { icon } from '../icons.js';
+import { branchQuery } from '../session.js';
 import { badge, button, empty, errorBox, h, render, skeleton, toast } from '../ui.js';
 
 const REFRESCO_MS = 15000;
@@ -51,7 +52,7 @@ export async function cocina(outlet) {
 
     let pedidos;
     try {
-      pedidos = await api.get('/kitchen/orders');
+      pedidos = await api.get(`/kitchen/orders${branchQuery()}`);
     } catch (error) {
       if (vivo) render(tablero, errorBox(error.message, refrescar));
       return;

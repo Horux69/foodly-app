@@ -30,7 +30,7 @@ final class AuthController
     {
         $ctx = Deps::getContext();
         try {
-            [$user, $branch, $tenant, $settings] = AuthService::getMe($ctx->tenantId, $ctx->userId);
+            [$user, $branch, $tenant, $settings, $branches] = AuthService::getMe($ctx->tenantId, $ctx->userId);
         } catch (AuthError $e) {
             throw new \App\Api\ApiException(401, $e->getMessage());
         }
@@ -46,6 +46,13 @@ final class AuthController
             'permissions' => $ctx->permissions,
             'branch_id' => $branch?->id,
             'branch_name' => $branch?->name,
+            // Entre estas puede elegir el selector de sucursal de la web. La
+            // del token sigue siendo la predeterminada; la elegida viaja
+            // como ?branch_id= y se valida en Deps::activeBranchId.
+            'branches' => array_map(
+                static fn ($b) => ['id' => $b->id, 'name' => $b->name, 'code' => $b->code],
+                $branches,
+            ),
             'tenant_name' => $tenant->name,
             'currency' => $tenant->currency,
             'channels' => $settings->channels,

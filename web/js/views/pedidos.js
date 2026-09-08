@@ -8,7 +8,7 @@
 import { api } from '../api.js';
 import { money, moneyExact } from '../format.js';
 import { icon } from '../icons.js';
-import { me } from '../session.js';
+import { branchQuery, me } from '../session.js';
 import { badge, button, card, empty, errorBox, h, input, render, section, skeleton, tabs, toast } from '../ui.js';
 import { canal } from './cocina.js';
 
@@ -49,7 +49,7 @@ async function vistaNuevo(host) {
 
   let menu;
   try {
-    menu = await api.get('/menu');
+    menu = await api.get(`/menu${branchQuery()}`);
   } catch (error) {
     return render(host, errorBox(error.message, () => vistaNuevo(host)));
   }
@@ -274,7 +274,7 @@ async function vistaNuevo(host) {
 
     temporizador = setTimeout(async () => {
       try {
-        const t = await api.post('/orders/preview', cuerpo());
+        const t = await api.post(`/orders/preview${branchQuery()}`, cuerpo());
         render(
           totales,
           fila('Subtotal', money(t.subtotal)),
@@ -319,7 +319,7 @@ async function vistaNuevo(host) {
   async function enviar() {
     crear.disabled = true;
     try {
-      const pedido = await api.post('/orders', cuerpo());
+      const pedido = await api.post(`/orders${branchQuery()}`, cuerpo());
       toast(`Pedido ${pedido.order_number} creado por ${money(pedido.total)}`, 'ok');
       carrito.length = 0;
       [telefono, nombre, mesa].forEach((el) => (el.value = ''));
@@ -513,7 +513,7 @@ async function vistaDelDia(host) {
 
   let pedidos;
   try {
-    pedidos = await api.get('/orders');
+    pedidos = await api.get(`/orders${branchQuery()}`);
   } catch (error) {
     return render(host, errorBox(error.message, () => vistaDelDia(host)));
   }

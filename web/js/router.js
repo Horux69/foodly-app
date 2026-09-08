@@ -33,6 +33,11 @@ export function go(path, { replace = false } = {}) {
   else window.location.hash = destino;
 }
 
+/** Vuelve a montar la vista actual: cambiar de sucursal cambia lo que pinta. */
+export function reload() {
+  return resolver();
+}
+
 export function current() {
   return window.location.hash.replace(/^#\/?/, '').split('?')[0] || '';
 }

@@ -7,7 +7,7 @@
 
 import { api, query } from '../api.js';
 import { isoDate, money, number } from '../format.js';
-import { can } from '../session.js';
+import { branches } from '../session.js';
 import { button, card, errorBox, h, pageHeader, render, skeleton } from '../ui.js';
 import { canal } from './cocina.js';
 
@@ -44,25 +44,20 @@ export async function reportes(outlet) {
       ),
       etiqueta('Desde', desde),
       etiqueta('Hasta', hasta),
-      can('settings.view') ? etiqueta('Sucursal', sucursal) : null,
+      branches().length > 1 ? etiqueta('Sucursal', sucursal) : null,
       button('Aplicar', { onClick: () => cargar() })
     )
   );
 
   render(outlet, pageHeader('Reportes', { hint: 'Solo cuenta lo que se completó y se pagó.' }), h('div', { class: 'space-y-4' }, filtros, contenido));
 
-  if (can('settings.view')) {
-    try {
-      const sucursales = await api.get('/branches');
-      render(
-        sucursal,
-        h('option', { value: '' }, 'Todas las sucursales'),
-        sucursales.map((b) => h('option', { value: b.id }, b.name))
-      );
-    } catch {
-      sucursal.remove();
-    }
-  }
+  // Aquí "ninguna" sí significa algo —toda la empresa—, así que este
+  // selector no es el de la barra lateral y arranca en vacío a propósito.
+  render(
+    sucursal,
+    h('option', { value: '' }, 'Todas las sucursales'),
+    branches().map((b) => h('option', { value: b.id }, b.name))
+  );
 
   async function cargar() {
     render(contenido, skeleton({ rows: 3 }));

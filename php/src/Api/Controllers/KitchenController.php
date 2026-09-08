@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Api\Controllers;
 
-use App\Api\ApiException;
 use App\Api\Deps;
 use App\Services\KitchenOrder;
 use App\Services\KitchenService;
@@ -15,11 +14,7 @@ final class KitchenController
     public static function board(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
-        if ($ctx->branchId === null) {
-            throw new ApiException(400, 'El usuario no tiene una sucursal asignada');
-        }
-
-        $board = KitchenService::getBoard($ctx->tenantId, $ctx->branchId);
+        $board = KitchenService::getBoard($ctx->tenantId, Deps::activeBranchId($ctx));
 
         return array_map(static fn (KitchenOrder $entry) => [
             'id' => $entry->order->id,

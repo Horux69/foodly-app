@@ -8,7 +8,6 @@ use App\Api\ApiException;
 use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
-use App\Api\RequestContext;
 use App\Core\Money;
 use App\Models\Order;
 use App\Models\OrderStatusRow;
@@ -56,14 +55,6 @@ final class OrderController
     public static function statusOut(OrderStatusRow $s): array
     {
         return ['id' => $s->id, 'code' => $s->code, 'name' => $s->name, 'category' => $s->category, 'color' => $s->color];
-    }
-
-    private static function branchOf(RequestContext $ctx): string
-    {
-        if ($ctx->branchId === null) {
-            throw new ApiException(400, 'El usuario no tiene una sucursal asignada');
-        }
-        return $ctx->branchId;
     }
 
     /**
@@ -144,7 +135,7 @@ final class OrderController
     public static function create(): JsonResponse
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.create');
-        $branchId = self::branchOf($ctx);
+        $branchId = Deps::activeBranchId($ctx);
         $body = Request::json();
         [$deliveryFee, $discount, $tip] = self::adjustments($body);
 
@@ -179,7 +170,7 @@ final class OrderController
     public static function preview(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.create');
-        $branchId = self::branchOf($ctx);
+        $branchId = Deps::activeBranchId($ctx);
         $body = Request::json();
         [$deliveryFee, $discount, $tip] = self::adjustments($body);
 
@@ -219,7 +210,7 @@ final class OrderController
     public static function list(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
-        $orders = OrderService::listOrders($ctx->tenantId, self::branchOf($ctx));
+        $orders = OrderService::listOrders($ctx->tenantId, Deps::activeBranchId($ctx));
         return array_map(self::orderOut(...), $orders);
     }
 
