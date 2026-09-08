@@ -156,8 +156,21 @@ de WhatsApp). Tres detalles del módulo que conviene no deshacer:
 - **La hora de salida y la de entrega se sellan por categoría del estado**
   (`in_transit` y `completed`), no por su código, y solo si estaban vacías.
 
-**Siguiente**: no hay un módulo pendiente. Lo que queda son los pendientes de
-abajo y, cuando se decida, la fase de WhatsApp.
+Sobre eso se construyeron dos fases de trabajo en la web:
+
+- **Fase 0 (cimientos)**: selector de sucursal activa —el `branch_id` viaja
+  como `?branch_id=` y lo resuelve solo `Deps::activeBranchId`—, llave de
+  idempotencia al crear pedidos y cobros, lista de pedidos con filtros,
+  búsqueda y paginación keyset, y el arnés de pruebas del frontend.
+- **Fase 1 (sacar a la luz lo construido)**: pantalla de clientes, cliente
+  conocido y domicilio real al tomar el pedido, tablero de domicilios, zonas
+  de reparto en Administración, detalle de pedido con bitácora, precio por
+  sucursal en el menú y edición de los permisos de un rol.
+
+**Siguiente**: la fase 2 del plan de obra —cerrar el ciclo del dinero: cobro
+parcial y por varios métodos, división de cuenta, reembolsos (`payments.refund`
+sigue sin endpoint), cancelación con motivo, cierre de turno y arqueo
+(`cash.close` tampoco lo usa nadie) y los reportes de cierre.
 
 Pendientes conocidos:
 
@@ -173,8 +186,10 @@ Pendientes conocidos:
   `web/tests/` corre con Vitest sobre jsdom y monta la aplicación real —el
   esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
-  Lo cubierto hoy es el arranque sin sesión y con sesión. Cada pantalla nueva
-  debería llegar con la suya.
+  Cubre el arranque con y sin sesión, la pantalla de clientes y el tablero de
+  domicilios. Faltan la toma de pedido con modificadores obligatorios, el
+  avance de estado en cocina y el cobro. Cada pantalla nueva debería llegar
+  con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta
   `99e54ea` por un `[rail, topbar, barraInferior].forEach(render)` — `forEach`
@@ -188,8 +203,6 @@ Pendientes conocidos:
   slug de empresa en la pantalla de login.
 - Falta reembolsos: el permiso `payments.refund` existe pero ningún endpoint lo
   usa, así que caja no puede revertir un cobro.
-- Domicilios y clientes no tienen pantallas propias: se manejan por API. La
-  SPA todavía no tiene vista de clientes ni de zonas de reparto.
 - Un combo (varios productos completos a precio de paquete) no se puede
   modelar: los modificadores suman o restan sobre una línea, no "son" otro
   producto con su propia receta.

@@ -26,7 +26,10 @@ function esqueleto() {
  * Deja la página en su estado inicial y monta la aplicación.
  *
  * @param {{token?: string, hash?: string, respuestas?: Record<string, unknown>}} opciones
- *   `respuestas` mapea una ruta de la API ('/auth/me') a lo que debe devolver.
+ *   `respuestas` mapea una ruta de la API a lo que debe devolver. La clave
+ *   puede terminar en `/*` para cubrir las rutas con id ('/customers/*'), y
+ *   el valor puede ser una función que recibe la URL completa, para cuando
+ *   la respuesta depende de la query ('/orders?status_category=ready').
  */
 export async function montarApp({ token = null, hash = '', respuestas = {} } = {}) {
   localStorage.clear();
@@ -36,14 +39,22 @@ export async function montarApp({ token = null, hash = '', respuestas = {} } = {
   document.body.innerHTML = esqueleto();
 
   const fetchFalso = vi.fn(async (url) => {
-    const ruta = String(url).replace('/api/v1', '').split('?')[0];
-    if (!(ruta in respuestas)) {
-      throw new Error(`La prueba no esperaba una llamada a ${ruta}`);
+    const completa = String(url).replace('/api/v1', '');
+    const ruta = completa.split('?')[0];
+
+    const clave =
+      ruta in respuestas
+        ? ruta
+        : Object.keys(respuestas).find((k) => k.endsWith('/*') && ruta.startsWith(k.slice(0, -1)));
+    if (clave === undefined) {
+      throw new Error(`La prueba no esperaba una llamada a ${completa}`);
     }
+
+    const valor = respuestas[clave];
     return {
       ok: true,
       status: 200,
-      json: async () => respuestas[ruta],
+      json: async () => (typeof valor === 'function' ? valor(completa) : valor),
     };
   });
   vi.stubGlobal('fetch', fetchFalso);
