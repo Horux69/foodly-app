@@ -17,23 +17,23 @@ final class AdminRoutes
 
         $router->get('/branches', fn () => AdminController::listBranches());
         $router->post('/branches', fn () => AdminController::createBranch());
-        $router->patch('/branches/{branch_id}/active', fn ($p) => AdminController::setBranchActive($p));
+        $router->patch('/branches/{branch_id:uuid}/active', fn ($p) => AdminController::setBranchActive($p));
 
         $router->get('/tax-rates', fn () => AdminController::listTaxRates());
         $router->post('/tax-rates', fn () => AdminController::createTaxRate());
-        $router->put('/tax-rates/{tax_rate_id}/default', fn ($p) => AdminController::setDefaultTaxRate($p));
+        $router->put('/tax-rates/{tax_rate_id:uuid}/default', fn ($p) => AdminController::setDefaultTaxRate($p));
 
-        $router->get('/branches/{branch_id}/tables', fn ($p) => AdminController::listTables($p));
-        $router->post('/branches/{branch_id}/tables', fn ($p) => AdminController::createTable($p));
+        $router->get('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::listTables($p));
+        $router->post('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::createTable($p));
 
         $router->get('/permissions', fn () => AdminController::listPermissions());
 
         $router->get('/roles', fn () => AdminController::listRoles());
         $router->post('/roles', fn () => AdminController::createRole());
-        $router->put('/roles/{role_id}/permissions', fn ($p) => AdminController::setRolePermissions($p));
+        $router->put('/roles/{role_id:uuid}/permissions', fn ($p) => AdminController::setRolePermissions($p));
 
         $router->get('/users', fn () => AdminController::listUsers());
         $router->post('/users', fn () => AdminController::createUser());
-        $router->patch('/users/{user_id}/active', fn ($p) => AdminController::setUserActive($p));
+        $router->patch('/users/{user_id:uuid}/active', fn ($p) => AdminController::setUserActive($p));
     }
 }

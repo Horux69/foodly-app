@@ -144,15 +144,27 @@ final class TenantProvisioning
             }
         }
 
+        // Si quien llama ya abrio una transaccion (el script de alta, que
+        // ademas crea la primera sucursal y el primer usuario), se respeta:
+        // el alta completa tiene que ser todo o nada, no dejar a medias un
+        // restaurante sin usuario con el cual entrar.
         $pdo = Database::admin();
-        $pdo->beginTransaction();
+        $ownsTransaction = !$pdo->inTransaction();
+        if ($ownsTransaction) {
+            $pdo->beginTransaction();
+        }
+
         try {
             $tenant = (new TenantRepository($pdo))->create($name, $businessType, $currency, $settings);
             self::provisionTenant($pdo, $tenant->id, $businessType);
-            $pdo->commit();
+            if ($ownsTransaction) {
+                $pdo->commit();
+            }
             return $tenant;
         } catch (\Throwable $e) {
-            $pdo->rollBack();
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
             throw $e;
         }
     }

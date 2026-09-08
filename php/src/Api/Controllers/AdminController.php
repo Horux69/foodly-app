@@ -300,8 +300,8 @@ final class AdminController
                 Request::string($body, 'name', 1, 150),
                 Request::string($body, 'email', 3, 150),
                 Request::string($body, 'password', 8, 72),
-                Request::string($body, 'role_id'),
-                Request::optionalString($body, 'branch_id'),
+                Request::uuid($body, 'role_id'),
+                Request::optionalUuid($body, 'branch_id'),
             );
         } catch (AdminError $e) {
             throw new ApiException(422, $e->getMessage());

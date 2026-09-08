@@ -55,6 +55,37 @@ final class Request
         return $data[$key];
     }
 
+    public static function isUuid(string $value): bool
+    {
+        return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1;
+    }
+
+    /**
+     * Un id que llega en el body. Sin esta validacion el texto viaja hasta
+     * Postgres y vuelve como un 500 con el error de SQL adentro, en vez del
+     * 422 que devolvia Pydantic al anotar el campo como uuid.UUID.
+     *
+     * @param array<string, mixed> $data
+     */
+    public static function uuid(array $data, string $key): string
+    {
+        $value = self::string($data, $key);
+        if (!self::isUuid($value)) {
+            throw new ApiException(422, "'{$key}' debe ser un UUID valido");
+        }
+        return $value;
+    }
+
+    /** @param array<string, mixed> $data */
+    public static function optionalUuid(array $data, string $key): ?string
+    {
+        $value = self::optionalString($data, $key);
+        if ($value !== null && !self::isUuid($value)) {
+            throw new ApiException(422, "'{$key}' debe ser un UUID valido");
+        }
+        return $value;
+    }
+
     /** @param array<string, mixed> $data */
     public static function bool(array $data, string $key): bool
     {

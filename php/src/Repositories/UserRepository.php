@@ -16,10 +16,21 @@ final class UserRepository
     {
     }
 
-    private function hydrate(array $row): User
+    /**
+     * Los permisos del rol solo se cargan cuando hacen falta (una consulta
+     * extra por usuario). El unico que los necesita es el login, para
+     * meterlos en el token; listar usuarios muestra el codigo del rol y
+     * nada mas, asi que cargarlos ahi seria una consulta por fila y por
+     * nada — igual que list_for_tenant en Python, que tampoco los trae.
+     */
+    private function hydrate(array $row, bool $withPermissions = false): User
     {
-        $role = $this->roles->get($row['tenant_id'], $row['role_id']);
-        return User::fromRow($row, $role?->permissionCodes ?? []);
+        $permissions = [];
+        if ($withPermissions) {
+            $role = $this->roles->get($row['tenant_id'], $row['role_id']);
+            $permissions = $role?->permissionCodes ?? [];
+        }
+        return User::fromRow($row, $permissions);
     }
 
     /**
@@ -32,7 +43,7 @@ final class UserRepository
         $stmt = $this->pdo->prepare(self::SELECT . ' WHERE u.email = :email AND u.is_active = true');
         $stmt->execute(['email' => $email]);
         $row = $stmt->fetch();
-        return $row === false ? null : $this->hydrate($row);
+        return $row === false ? null : $this->hydrate($row, withPermissions: true);
     }
 
     public function get(string $tenantId, string $userId): ?User

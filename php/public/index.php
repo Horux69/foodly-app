@@ -22,21 +22,79 @@ if (is_file($envFile)) {
     }
 }
 
-header('Content-Type: application/json; charset=utf-8');
-
-// El frontend vive en web/ y se sirve aparte (mismo patron que
-// StaticFiles de FastAPI); este front controller es solo la API.
 $prefix = Config::get()->apiV1Prefix;
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
-if (str_starts_with($path, $prefix)) {
-    $path = substr($path, strlen($prefix));
+
+/**
+ * El frontend se sirve desde el mismo origen que la API: sin CORS de por
+ * medio y sin paso de build, igual que el StaticFiles(html=True) que monta
+ * app/main.py en "/". Va antes del router para que la API siga mandando en
+ * su prefijo.
+ */
+function serveStaticFile(string $path): bool
+{
+    $webDir = realpath(dirname(__DIR__, 2) . '/web');
+    if ($webDir === false) {
+        return false;
+    }
+
+    $relative = $path === '/' ? '/index.html' : $path;
+    $candidate = realpath($webDir . $relative);
+
+    // realpath ya resolvio ../ y symlinks: si el resultado no cuelga de
+    // web/, la peticion se estaba yendo del directorio publico.
+    if ($candidate === false || !str_starts_with($candidate, $webDir . DIRECTORY_SEPARATOR)) {
+        return false;
+    }
+    if (is_dir($candidate)) {
+        $candidate = $candidate . DIRECTORY_SEPARATOR . 'index.html';
+        if (!is_file($candidate)) {
+            return false;
+        }
+    }
+    if (!is_file($candidate)) {
+        return false;
+    }
+
+    $types = [
+        'html' => 'text/html; charset=utf-8',
+        'js' => 'text/javascript; charset=utf-8',
+        'css' => 'text/css; charset=utf-8',
+        'json' => 'application/json; charset=utf-8',
+        'svg' => 'image/svg+xml',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'webp' => 'image/webp',
+        'ico' => 'image/x-icon',
+        'woff2' => 'font/woff2',
+    ];
+    $extension = strtolower(pathinfo($candidate, PATHINFO_EXTENSION));
+
+    header('Content-Type: ' . ($types[$extension] ?? 'application/octet-stream'));
+    header('Content-Length: ' . (string) filesize($candidate));
+    readfile($candidate);
+    return true;
 }
-$path = '/' . ltrim($path, '/');
+
+if (!str_starts_with($path, $prefix) && $path !== '/health') {
+    if (serveStaticFile($path)) {
+        return;
+    }
+    http_response_code(404);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['detail' => 'Recurso no encontrado']);
+    return;
+}
+
+header('Content-Type: application/json; charset=utf-8');
 
 if ($path === '/health') {
     echo json_encode(['status' => 'ok', 'environment' => Config::get()->environment]);
     return;
 }
+
+$path = '/' . ltrim(substr($path, strlen($prefix)), '/');
 
 $router = new Router();
 require __DIR__ . '/../src/Api/routes.php';
@@ -55,6 +113,9 @@ try {
     Database::endAppTransaction(success: false);
 } catch (\Throwable $e) {
     http_response_code(500);
+    // En produccion el cliente solo ve "Error interno"; el detalle va al log
+    // del servidor, que si no quedaba sin rastro de la falla en ningun lado.
+    error_log(sprintf('[foodly] %s: %s en %s:%d', $e::class, $e->getMessage(), $e->getFile(), $e->getLine()));
     $debug = Config::get()->environment === 'development';
     echo json_encode(['detail' => $debug ? $e->getMessage() : 'Error interno']);
     Database::endAppTransaction(success: false);

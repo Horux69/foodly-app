@@ -8,19 +8,37 @@ namespace App\Api;
  * Front controller a mano: sin framework, una tabla de rutas con {param}
  * convertido a grupo con nombre. Equivalente PHP puro de las @router.get/post
  * de FastAPI en app/api/v1/*.py.
+ *
+ * Un parametro se puede declarar tipado como {branch_id:uuid}. FastAPI
+ * validaba eso solo con anotar `branch_id: uuid.UUID` y devolvia 422 ante
+ * basura; aca se declara en la ruta para que sea visible en la tabla y no
+ * haya que acordarse de validarlo en cada controlador. Sin esa validacion,
+ * el UUID malformado llegaba hasta Postgres y volvia como un 500 con el
+ * error de SQL adentro.
  */
 final class Router
 {
-    /** @var array<int, array{method:string, pattern:string, regex:string, handler:callable}> */
+    /** @var array<int, array{method:string, regex:string, types:array<string,string>, handler:callable}> */
     private array $routes = [];
 
     public function add(string $method, string $pattern, callable $handler): void
     {
-        $regex = preg_replace('#\{([a-zA-Z_]+)\}#', '(?P<$1>[^/]+)', $pattern);
+        $types = [];
+        $regex = preg_replace_callback(
+            '#\{([a-zA-Z_]+)(?::([a-z]+))?\}#',
+            static function (array $m) use (&$types): string {
+                if (isset($m[2]) && $m[2] !== '') {
+                    $types[$m[1]] = $m[2];
+                }
+                return '(?P<' . $m[1] . '>[^/]+)';
+            },
+            $pattern,
+        );
+
         $this->routes[] = [
             'method' => strtoupper($method),
-            'pattern' => $pattern,
             'regex' => '#^' . $regex . '$#',
+            'types' => $types,
             'handler' => $handler,
         ];
     }
@@ -46,6 +64,19 @@ final class Router
     }
 
     /**
+     * @param array<string, string> $params
+     * @param array<string, string> $types
+     */
+    private static function validateParams(array $params, array $types): void
+    {
+        foreach ($types as $name => $type) {
+            if ($type === 'uuid' && !Request::isUuid($params[$name] ?? '')) {
+                throw new ApiException(422, "'{$name}' debe ser un UUID valido");
+            }
+        }
+    }
+
+    /**
      * Despacha la peticion actual. Devuelve [statusCode, body] — body ya es
      * un arreglo listo para json_encode, nunca una excepcion sin capturar:
      * eso lo resuelve el front controller antes de llamar aqui.
@@ -55,6 +86,10 @@ final class Router
     public function dispatch(string $method, string $path): array
     {
         $method = strtoupper($method);
+        // Tolerante a la barra final, como el redirect_slashes de FastAPI.
+        if ($path !== '/' && str_ends_with($path, '/')) {
+            $path = rtrim($path, '/');
+        }
         $allowedForPath = [];
 
         foreach ($this->routes as $route) {
@@ -67,6 +102,8 @@ final class Router
             }
 
             $params = array_filter($matches, fn ($k) => is_string($k), ARRAY_FILTER_USE_KEY);
+            self::validateParams($params, $route['types']);
+
             $result = ($route['handler'])($params);
             if ($result instanceof JsonResponse) {
                 return [$result->status, $result->data];

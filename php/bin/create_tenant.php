@@ -74,6 +74,11 @@ if (strlen($adminPassword) < 8) {
     exit(1);
 }
 
+// Todo el alta en una sola transaccion: un restaurante sin usuario con el
+// cual entrar no sirve de nada, asi que si algo falla no queda nada creado.
+$pdo = Database::admin();
+$pdo->beginTransaction();
+
 try {
     $tenant = TenantProvisioning::createTenant(
         $name,
@@ -81,7 +86,6 @@ try {
         $opts['currency'] ?? 'COP',
     );
 
-    $pdo = Database::admin();
     $branch = (new BranchRepository($pdo))->create(
         $tenant->id,
         $opts['branch'],
@@ -93,6 +97,7 @@ try {
 
     $adminRole = (new RoleRepository($pdo))->getByCode($tenant->id, 'admin');
     if ($adminRole === null) {
+        $pdo->rollBack();
         fwrite(STDERR, "El aprovisionamiento no dejo un rol admin; se aborta\n");
         exit(1);
     }
@@ -105,7 +110,9 @@ try {
         $opts['admin-email'],
         Security::hashPassword($adminPassword),
     );
+    $pdo->commit();
 } catch (TenantProvisioningError|\Throwable $e) {
+    $pdo->rollBack();
     fwrite(STDERR, "No se pudo crear el restaurante: {$e->getMessage()}\n");
     exit(1);
 }
