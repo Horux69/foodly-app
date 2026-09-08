@@ -63,9 +63,13 @@ final class MenuController
     public static function getCatalog(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'menu.view');
-        [$categories, $items] = MenuService::getCatalog($ctx->tenantId);
+        $branchId = Deps::activeBranchIdOrNull($ctx);
+        [$categories, $items, $overrides] = MenuService::getCatalog($ctx->tenantId, $branchId);
 
         return [
+            // Cual sucursal se esta mirando, para que la pantalla pueda decir
+            // "precio en Sede Norte" y no solo "override".
+            'branch_id' => $branchId,
             'categories' => array_map(static fn ($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
@@ -83,6 +87,14 @@ final class MenuController
                 'is_available' => $i->isAvailable,
                 'is_archived' => $i->isArchived,
                 'sort_order' => $i->sortOrder,
+                'branch_override' => isset($overrides[$i->id])
+                    ? [
+                        'price' => $overrides[$i->id]->priceCents === null
+                            ? null
+                            : Money::toDecimalString($overrides[$i->id]->priceCents),
+                        'is_available' => $overrides[$i->id]->isAvailable,
+                    ]
+                    : null,
             ], $items),
         ];
     }
@@ -213,9 +225,20 @@ final class MenuController
         return ['id' => $item->id, 'is_available' => $item->isAvailable];
     }
 
+    /**
+     * Precio y disponibilidad de un producto en la sucursal activa.
+     *
+     * La sucursal sale de Deps::activeBranchId y ya no del cuerpo: es el
+     * mismo punto unico que usan pedidos, cocina y reportes, y asi no hay dos
+     * formas de decir sobre que sucursal se esta operando.
+     *
+     * Mandar `price: null` no es omitirlo: es quitar el ajuste y devolver el
+     * producto a su precio base.
+     */
     public static function setBranchOverride(array $params): array
     {
         $ctx = Deps::require(Deps::getContext(), 'menu.edit');
+        $branchId = Deps::activeBranchId($ctx);
         $body = Request::json();
 
         $price = array_key_exists('price', $body) && $body['price'] !== null
@@ -228,7 +251,7 @@ final class MenuController
         try {
             $override = MenuService::setBranchOverride(
                 $ctx->tenantId,
-                Request::uuid($body, 'branch_id'),
+                $branchId,
                 $params['item_id'],
                 $price,
                 $isAvailable,

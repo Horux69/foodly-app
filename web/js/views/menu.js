@@ -6,7 +6,7 @@
 
 import { api } from '../api.js';
 import { money, percent } from '../format.js';
-import { can } from '../session.js';
+import { activeBranch, branchQuery, branches, can } from '../session.js';
 import {
   badge, button, card, confirm, empty, errorBox, field, h, input, pageHeader, render, select, skeleton, titledCard, toast,
 } from '../ui.js';
@@ -17,7 +17,7 @@ export async function menu(outlet) {
   let catalogo;
   let impuestos = [];
   try {
-    catalogo = await api.get('/menu/catalog');
+    catalogo = await api.get(`/menu/catalog${branchQuery()}`);
     if (can('settings.view')) impuestos = await api.get('/tax-rates');
   } catch (error) {
     return render(outlet, errorBox(error.message, () => menu(outlet)));
@@ -27,9 +27,13 @@ export async function menu(outlet) {
   const lista = h('div', { class: 'space-y-4' });
 
   const recargar = async () => {
-    catalogo = await api.get('/menu/catalog');
+    catalogo = await api.get(`/menu/catalog${branchQuery()}`);
     pintar();
   };
+
+  // El precio por sucursal solo tiene sentido con más de una: en un local
+  // único, "el precio de esta sede" y "el precio" son la misma cifra.
+  const porSucursal = branches().length > 1 ? activeBranch() : null;
 
   function nombreImpuesto(id) {
     const impuesto = impuestos.find((t) => t.id === id);
@@ -77,6 +81,20 @@ export async function menu(outlet) {
       { class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' }
     );
 
+    // Vacío significa "esta sede no ajusta el precio", no cero: el producto
+    // se vende al precio base. Es también la forma de deshacer un ajuste.
+    const ajuste = item.branch_override?.price ?? null;
+    const precioSucursal = porSucursal
+      ? input({
+          type: 'number',
+          min: '0',
+          value: ajuste ?? '',
+          placeholder: 'Precio base',
+          title: `Precio en ${porSucursal.name}`,
+          class: 'w-32 rounded-lg border border-amber-300 bg-amber-50/40 px-2 py-1.5 text-sm tabular-nums',
+        })
+      : null;
+
     return h(
       'div',
       { class: `py-3 flex flex-wrap items-center gap-3 ${item.is_archived ? 'opacity-50' : ''}` },
@@ -90,9 +108,17 @@ export async function menu(outlet) {
           item.is_archived ? badge('Archivado') : null,
           !item.is_available && !item.is_archived ? badge('Agotado', 'warn') : null
         ),
-        h('div', { class: 'text-xs text-stone-500' }, `${money(item.base_price)} · ${nombreImpuesto(item.tax_rate_id)}`)
+        h(
+          'div',
+          { class: 'text-xs text-stone-500' },
+          `${money(item.base_price)} · ${nombreImpuesto(item.tax_rate_id)}`,
+          porSucursal && ajuste !== null
+            ? h('span', { class: 'text-amber-800' }, ` · en ${porSucursal.name} ${money(ajuste)}`)
+            : null
+        )
       ),
       precio,
+      precioSucursal,
       impuesto,
       button('Guardar', {
         variant: 'secondary',
@@ -103,6 +129,20 @@ export async function menu(outlet) {
               base_price: Number(precio.value),
               tax_rate_id: impuesto.value || null,
             });
+            // El ajuste de sucursal solo se escribe si cambió: así una
+            // corrección del precio base no crea un override en la sede que
+            // se esté mirando.
+            if (precioSucursal) {
+              const nuevo = precioSucursal.value.trim() === '' ? null : Number(precioSucursal.value);
+              if (nuevo !== (ajuste === null ? null : Number(ajuste))) {
+                await api.put(`/menu/items/${item.id}/branch-override${branchQuery()}`, {
+                  price: nuevo,
+                  // Se conserva lo que la sucursal ya decía de la
+                  // disponibilidad: aquí solo se está tocando el precio.
+                  is_available: item.branch_override?.is_available ?? null,
+                });
+              }
+            }
             toast('Producto actualizado', 'ok');
             await recargar();
           } catch (error) {
@@ -177,7 +217,11 @@ export async function menu(outlet) {
     h(
       'div',
       { class: 'space-y-4' },
-      pageHeader('Menú', { hint: 'Lo que aquí cambies se refleja de inmediato en la pantalla de venta.' }),
+      pageHeader('Menú', {
+        hint: porSucursal
+          ? `Lo que aquí cambies se refleja de inmediato en la pantalla de venta. La columna ámbar es el precio en ${porSucursal.name}: vacía, se vende al precio base.`
+          : 'Lo que aquí cambies se refleja de inmediato en la pantalla de venta.',
+      }),
 
       titledCard(
         'Nueva categoría',

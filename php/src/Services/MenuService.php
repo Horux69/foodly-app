@@ -64,10 +64,25 @@ final class MenuService
      *
      * @return array{0: MenuCategory[], 1: MenuItem[]}
      */
-    public static function getCatalog(string $tenantId): array
+    /**
+     * Catalogo de administracion, con los ajustes de la sucursal que se este
+     * mirando si hay una.
+     *
+     * Los overrides viajan aparte del producto y no mezclados en su precio:
+     * la pantalla necesita ver las dos cifras —el precio base y el de esta
+     * sucursal— para poder decidir. Quien resuelve cual manda es
+     * Domain\MenuPricing, en un solo lugar.
+     *
+     * @return array{0: MenuCategory[], 1: MenuItem[], 2: array<string, \App\Models\BranchMenuOverride>}
+     */
+    public static function getCatalog(string $tenantId, ?string $branchId = null): array
     {
         $repo = new MenuRepository(Database::app());
-        return [$repo->listAllCategories($tenantId), $repo->listAllItems($tenantId)];
+        return [
+            $repo->listAllCategories($tenantId),
+            $repo->listAllItems($tenantId),
+            $branchId === null ? [] : $repo->getOverridesForBranch($branchId),
+        ];
     }
 
     public static function createCategory(string $tenantId, string $name, int $sortOrder = 0): MenuCategory
@@ -157,6 +172,13 @@ final class MenuService
         return $repo->getItem($tenantId, $itemId);
     }
 
+    /**
+     * Fija —o quita— el ajuste de un producto en una sucursal.
+     *
+     * Un `null` no es "no cambies": es "esta sucursal no ajusta eso", y el
+     * producto vuelve a regirse por su precio o su disponibilidad base. Es la
+     * forma de deshacer un ajuste sin borrar la fila.
+     */
     public static function setBranchOverride(
         string $tenantId,
         string $branchId,
