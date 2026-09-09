@@ -343,7 +343,8 @@ de un tercero dejaría al worker sin instalar y a la tableta sin nada.
 
 - **Fase 5 (configuración sin código)**, en curso y partida en trozos.
   Hechos: catálogo único de permisos (F5.5), datos del restaurante
-  editables (F5.4) y modificadores desde la web (F5.1).
+  editables (F5.4), modificadores desde la web (F5.1) y horarios de
+  sucursal (F5.3).
 
 Sobre esos dos, tres cosas:
 
@@ -405,11 +406,37 @@ solo los ids, en orden, porque la pantalla ya tiene los grupos enteros de
 se pregunta al tomar el pedido: primero el término de la carne, después las
 adiciones. El router aprendió `DELETE`, y un 204 ya no lleva cuerpo.
 
-**Siguiente**: lo que queda de la fase 5 —horarios de sucursal (F5.3) y
-estados de pedido con sus transiciones (F5.2, la más riesgosa: un error ahí
-congela la operación del restaurante). La fase 4, servicio en mesa, el plan
-la deja condicionada a que haya clientes de ese modelo, y la fase 6
-(confianza y pulido) corre en paralelo.
+Sobre los horarios, tres cosas:
+
+- **Una franja que cierra antes de la hora a la que abre cruza la
+  medianoche.** El viernes de 20:00 a 02:00 abre el viernes por la noche y
+  cierra la madrugada del sábado. Antes esa configuración se podía guardar y
+  no abría nunca —ninguna hora es a la vez posterior a las 20:00 y anterior a
+  las 02:00—, así que un restaurante nocturno quedaba cerrado siempre sin
+  ningún error a la vista. `Domain\BranchSchedule` lo resuelve mirando
+  también la franja del día anterior; la pantalla lo rotula "del día
+  siguiente" para que nadie lo "corrija".
+- **Sin ninguna franja la sucursal atiende siempre**, pero en cuanto hay una,
+  todo canal sin cobertura queda cerrado. Es fácil de provocar —se configuran
+  las horas del mostrador y se olvida el domicilio— y no da ninguna señal
+  hasta que alguien intenta vender, así que `ScheduleRules::channelsWithoutWindows`
+  lo calcula y la pantalla lo avisa. Una franja sin canal vale para todos, y
+  con una sola nadie queda fuera.
+- **Ver los horarios pide `settings.view`; tocarlos, `branches.manage`**, el
+  mismo permiso que crear una sede: son la misma decisión de quién opera
+  dónde y cuándo.
+
+`ScheduleRepository` va aparte del `getSchedules` que ya tenía
+`BranchRepository`: aquel es la lectura de operación y filtra por `is_active`;
+este es el CRUD de configuración y necesita ver también las apagadas, porque
+apagar una franja sin borrarla es cómo se cierra por temporada.
+
+**Siguiente**: lo último de la fase 5 es F5.2 —estados de pedido y
+transiciones desde la web—, la más riesgosa: un error ahí congela la
+operación del restaurante, así que la validación es parte de la tarjeta y no
+un extra. La fase 4, servicio en mesa, el plan la deja condicionada a que
+haya clientes de ese modelo, y la fase 6 (confianza y pulido) corre en
+paralelo.
 
 Pendientes conocidos:
 
@@ -431,7 +458,8 @@ Pendientes conocidos:
   impresión de comanda y ticket, el tablero de cocina, la cola de pedidos
   tomados sin red junto con el manifiesto y el precache del service worker,
   los datos del restaurante, los grupos de modificadores con su asignación a
-  productos, y que un botón que falla vuelva a servir.
+  productos, los horarios de sucursal, y que un botón que falla vuelva a
+  servir.
   Faltan los modificadores obligatorios al tomar el pedido y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

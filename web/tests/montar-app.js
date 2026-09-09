@@ -41,8 +41,10 @@ export const sinRed = () => {
  * @param {{token?: string, hash?: string, respuestas?: Record<string, unknown>}} opciones
  *   `respuestas` mapea una ruta de la API a lo que debe devolver. La clave
  *   puede terminar en `/*` para cubrir las rutas con id ('/customers/*'), y
- *   el valor puede ser una función que recibe la URL completa, para cuando
- *   la respuesta depende de la query ('/orders?status_category=ready').
+ *   el valor puede ser una función que recibe la URL completa y las opciones
+ *   de fetch, para cuando la respuesta depende de la query
+ *   ('/orders?status_category=ready') o del método (listar bien y crear mal
+ *   sobre la misma ruta).
  */
 export async function montarApp({ token = null, hash = '', respuestas = {} } = {}) {
   localStorage.clear();
@@ -51,7 +53,7 @@ export async function montarApp({ token = null, hash = '', respuestas = {} } = {
   window.location.hash = hash;
   document.body.innerHTML = esqueleto();
 
-  const fetchFalso = vi.fn(async (url) => {
+  const fetchFalso = vi.fn(async (url, opciones) => {
     const completa = String(url).replace('/api/v1', '');
     const ruta = completa.split('?')[0];
 
@@ -67,7 +69,8 @@ export async function montarApp({ token = null, hash = '', respuestas = {} } = {
       throw new Error(`La prueba no esperaba una llamada a ${completa}`);
     }
 
-    const valor = typeof respuestas[clave] === 'function' ? respuestas[clave](completa) : respuestas[clave];
+    const valor =
+      typeof respuestas[clave] === 'function' ? respuestas[clave](completa, opciones ?? {}) : respuestas[clave];
 
     // Una `Respuesta` dice con qué código contesta el servidor; cualquier
     // otra cosa es el cuerpo de un 200. Para simular que no hay red, la

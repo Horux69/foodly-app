@@ -7,11 +7,15 @@ namespace App\Services;
 use App\Core\Database;
 use App\Core\Permissions;
 use App\Core\Security;
+use App\Domain\ScheduleError;
+use App\Domain\ScheduleRules;
+use App\Domain\ScheduleWindow;
 use App\Domain\SettingsError;
 use App\Domain\TenantProfile;
 use App\Domain\TenantProfileError;
 use App\Domain\TenantSettings;
 use App\Models\Branch;
+use App\Models\BranchScheduleRow;
 use App\Models\Role;
 use App\Models\Table;
 use App\Models\TaxRate;
@@ -19,6 +23,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Repositories\BranchRepository;
 use App\Repositories\RoleRepository;
+use App\Repositories\ScheduleRepository;
 use App\Repositories\TableRepository;
 use App\Repositories\TaxRateRepository;
 use App\Repositories\TenantRepository;
@@ -211,6 +216,94 @@ final class AdminService
             throw new AdminError("Ya existe una mesa con el codigo '{$code}' en esta sucursal");
         }
         return $tables->create($branch->id, $code, $capacity);
+    }
+
+    // ---------- Horarios ----------
+
+    /**
+     * Las franjas de una sucursal y los canales que se quedaron sin ninguna.
+     *
+     * Los dos juntos porque la pantalla necesita los dos y el aviso depende de
+     * la configuracion del tenant, que aqui ya esta a mano.
+     *
+     * @return array{0: BranchScheduleRow[], 1: string[]}
+     */
+    public static function listSchedules(string $tenantId, string $branchId): array
+    {
+        $pdo = self::pdo();
+        $branch = self::ownedBranch(new BranchRepository($pdo), $tenantId, $branchId);
+        $rows = (new ScheduleRepository($pdo))->listForBranch($branch->id);
+
+        $tenant = self::tenant(new TenantRepository($pdo), $tenantId);
+        $settings = TenantSettings::parse($tenant->settings, $tenant->businessType);
+
+        return [$rows, ScheduleRules::channelsWithoutWindows(self::asWindows($rows), $settings->channels)];
+    }
+
+    public static function createSchedule(
+        string $tenantId,
+        string $branchId,
+        int $weekday,
+        string $opensAt,
+        string $closesAt,
+        ?string $channel,
+    ): BranchScheduleRow {
+        $pdo = self::pdo();
+        $branch = self::ownedBranch(new BranchRepository($pdo), $tenantId, $branchId);
+
+        try {
+            $desde = ScheduleRules::normalizeTime($opensAt);
+            $hasta = ScheduleRules::normalizeTime($closesAt);
+            ScheduleRules::validate($weekday, $desde, $hasta, $channel, TenantSettings::CHANNELS);
+        } catch (ScheduleError $e) {
+            throw new AdminError($e->getMessage());
+        }
+
+        return (new ScheduleRepository($pdo))->create($branch->id, $weekday, $desde, $hasta, $channel);
+    }
+
+    public static function setScheduleActive(string $tenantId, string $scheduleId, bool $isActive): BranchScheduleRow
+    {
+        $pdo = self::pdo();
+        $repo = new ScheduleRepository($pdo);
+        self::ownedSchedule($repo, $tenantId, $scheduleId);
+        return $repo->setActive($scheduleId, $isActive);
+    }
+
+    public static function deleteSchedule(string $tenantId, string $scheduleId): void
+    {
+        $pdo = self::pdo();
+        $repo = new ScheduleRepository($pdo);
+        self::ownedSchedule($repo, $tenantId, $scheduleId);
+        $repo->delete($scheduleId);
+    }
+
+    /**
+     * La franja existe y su sucursal es de esta empresa.
+     *
+     * RLS ya lo garantiza, pero la comprobacion explicita convierte un "no
+     * paso nada" en un 404 con motivo.
+     */
+    private static function ownedSchedule(ScheduleRepository $repo, string $tenantId, string $scheduleId): BranchScheduleRow
+    {
+        $row = $repo->get($scheduleId);
+        if ($row === null) {
+            throw new AdminError('El horario no existe');
+        }
+        self::ownedBranch(new BranchRepository(self::pdo()), $tenantId, $row->branchId);
+        return $row;
+    }
+
+    /**
+     * @param BranchScheduleRow[] $rows
+     * @return ScheduleWindow[]
+     */
+    private static function asWindows(array $rows): array
+    {
+        return array_map(
+            static fn (BranchScheduleRow $r) => new ScheduleWindow($r->weekday, $r->opensAt, $r->closesAt, $r->channel, $r->isActive),
+            $rows
+        );
     }
 
     // ---------- Roles ----------

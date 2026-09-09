@@ -30,6 +30,9 @@ async function montarAdmin(respuestaDeSettings = AJUSTES) {
       '/auth/me': YO,
       '/settings': respuestaDeSettings,
       '/branches': [],
+      // La pantalla carga las franjas de la sede activa desde que existe la
+      // sección de Horarios.
+      '/branches/*': { schedules: [], channels_without_windows: [] },
       '/tax-rates': [],
     },
   });
@@ -113,6 +116,7 @@ describe('datos del restaurante', () => {
         '/auth/me': sesion({ permissions: ['settings.view'] }),
         '/settings': AJUSTES,
         '/branches': [],
+        '/branches/*': { schedules: [], channels_without_windows: [] },
         '/tax-rates': [],
       },
     });

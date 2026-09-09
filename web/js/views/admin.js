@@ -34,6 +34,7 @@ const MODELOS = [
 const SECCIONES = [
   { clave: 'config', etiqueta: 'Cómo opera', icono: 'admin', permiso: 'settings.view' },
   { clave: 'sucursales', etiqueta: 'Sucursales', icono: 'sucursal', permiso: 'settings.view' },
+  { clave: 'horarios', etiqueta: 'Horarios', icono: 'reloj', permiso: 'settings.view' },
   { clave: 'impuestos', etiqueta: 'Impuestos', icono: 'impuesto', permiso: 'settings.view' },
   // Aparece si el restaurante tiene el canal de domicilios activo: por
   // configuración, no por un condicional sobre el tenant.
@@ -89,6 +90,9 @@ export async function admin(outlet) {
     estado.zonas = sede && ajustes.channels.includes('delivery')
       ? await api.get(`/branches/${sede.id}/delivery-zones`)
       : [];
+    estado.horarios = sede
+      ? await api.get(`/branches/${sede.id}/schedules`)
+      : { schedules: [], channels_without_windows: [] };
   }
 
   const disponibles = SECCIONES.filter((s) => can(s.permiso) && (s.visible?.(estado) ?? true));
@@ -112,6 +116,7 @@ export async function admin(outlet) {
 
     if (clave === 'config') render(panel, seccionConfig(estado));
     else if (clave === 'sucursales') render(panel, seccionSucursales(estado, refrescar));
+    else if (clave === 'horarios') render(panel, seccionHorarios(estado, refrescar));
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
     else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
     else render(panel, seccionEquipo(estado, refrescar));
@@ -410,6 +415,162 @@ async function verMesas(sucursal, host, ajustes) {
       )
     )
   );
+}
+
+// =========================================================
+// Horarios
+// =========================================================
+
+// Lunes = 0, la misma convención que `branch_schedules` y que
+// `Domain\ScheduleRules::DIAS`.
+const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+function seccionHorarios({ horarios, sede, sucursales }, refrescar) {
+  const gestiona = can('branches.manage');
+
+  if (!sede) {
+    return card(
+      empty('Elige una sucursal', 'Los horarios son de cada sede. Selecciona una en la barra lateral.', null, 'sucursal')
+    );
+  }
+
+  const dia = select(DIAS.map((nombre, i) => ({ value: String(i), label: nombre })));
+  const desde = input({ type: 'time', value: '10:00' });
+  const hasta = input({ type: 'time', value: '22:00' });
+  const canal = select([
+    { value: '', label: 'Todos los canales' },
+    ...CANALES.map(([code, nombre]) => ({ value: code, label: nombre })),
+  ]);
+
+  const nombreCanal = (code) => CANALES.find(([c]) => c === code)?.[1] ?? code;
+
+  const filas = horarios.schedules;
+  const sinCobertura = horarios.channels_without_windows;
+
+  return [
+    titledCard(
+      `Horarios · ${sede.name}`,
+      h(
+        'div',
+        { class: 'text-[13px] text-stone-600 space-y-1.5 mb-4 border-l-2 border-amber-300 pl-3' },
+        h(
+          'p',
+          {},
+          h('b', {}, 'Sin ninguna franja la sucursal atiende siempre.'),
+          ' En cuanto haya una, solo se puede pedir dentro de las que apliquen al canal.'
+        ),
+        h(
+          'p',
+          {},
+          h('b', {}, 'Una franja sin canal vale para todos.'),
+          ' Poner una de mostrador y otra de domicilio es lo que permite cerrar los domicilios a las 10 y seguir atendiendo en la barra.'
+        ),
+        // La zona horaria sale de /branches, que es donde viaja: la de
+        // /auth/me solo trae lo que el rail necesita para el selector.
+        h('p', {}, `Las horas se leen en la zona horaria de la sede: ${sucursales.find((b) => b.id === sede.id)?.timezone ?? 'la suya'}.`)
+      ),
+
+      // Con horarios configurados, un canal sin franjas queda cerrado siempre
+      // y no da ninguna señal hasta que alguien intenta vender.
+      sinCobertura.length
+        ? h(
+            'p',
+            { class: 'text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[--r] px-3 py-2 mb-3' },
+            `Sin franjas para ${sinCobertura.map(nombreCanal).join(' y ')}: por ahí no se puede pedir en ningún momento. Agrega una franja para ese canal, o una sin canal que valga para todos.`
+          )
+        : null,
+
+      filas.length
+        ? h(
+            'div',
+            { class: 'divide-y divide-stone-100' },
+            filas.map((f) =>
+              h(
+                'div',
+                { class: `py-2.5 flex flex-wrap items-center gap-3 ${f.is_active ? '' : 'opacity-50'}` },
+                h('div', { class: 'w-24 text-sm font-medium text-stone-900' }, DIAS[f.weekday]),
+                h(
+                  'div',
+                  { class: 'text-sm tabular-nums text-stone-700' },
+                  `${f.opens_at} – ${f.closes_at}`,
+                  // Cerrar antes de abrir no es un error de captura: es la
+                  // franja nocturna, y decirlo evita que alguien la "corrija".
+                  f.crosses_midnight ? h('span', { class: 'text-stone-500' }, ' (del día siguiente)') : null
+                ),
+                h(
+                  'div',
+                  { class: 'flex-1 min-w-[120px]' },
+                  f.channel ? badge(nombreCanal(f.channel), 'info') : badge('Todos los canales')
+                ),
+                f.is_active ? null : badge('Apagada', 'warn'),
+                gestiona
+                  ? button(f.is_active ? 'Apagar' : 'Encender', {
+                      variant: 'secondary',
+                      onClick: async () => {
+                        try {
+                          await api.patch(`/schedules/${f.id}/active`, { is_active: !f.is_active });
+                          await refrescar();
+                        } catch (error) {
+                          toast(error.message);
+                        }
+                      },
+                    })
+                  : null,
+                gestiona
+                  ? button('Borrar', {
+                      variant: 'secondary',
+                      onClick: async () => {
+                        try {
+                          await api.delete(`/schedules/${f.id}`);
+                          await refrescar();
+                        } catch (error) {
+                          toast(error.message);
+                        }
+                      },
+                    })
+                  : null
+              )
+            )
+          )
+        : h('p', { class: 'text-sm text-stone-500' }, 'Sin franjas: esta sede atiende a cualquier hora.'),
+
+      gestiona
+        ? h(
+            'div',
+            { class: 'flex flex-wrap items-end gap-2 pt-4 mt-2 border-t border-stone-100' },
+            h('div', { class: 'min-w-[130px]' }, field('Día', dia)),
+            h('div', {}, field('Abre', desde)),
+            h('div', {}, field('Cierra', hasta)),
+            h('div', { class: 'min-w-[150px]' }, field('Canal', canal)),
+            button('Agregar franja', {
+              onClick: async (e) => {
+                const boton = e.currentTarget;
+                boton.disabled = true;
+                try {
+                  await api.post(`/branches/${sede.id}/schedules`, {
+                    weekday: Number(dia.value),
+                    opens_at: desde.value,
+                    closes_at: hasta.value,
+                    channel: canal.value || null,
+                  });
+                  toast('Franja agregada', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  toast(error.message);
+                  boton.disabled = false;
+                }
+              },
+            })
+          )
+        : null
+    ),
+
+    h(
+      'p',
+      { class: 'text-xs text-stone-500 px-1' },
+      'Para una sede que cierra pasada la medianoche, pon la hora de cierre menor que la de apertura: “Viernes 20:00 – 02:00” abre el viernes por la noche y cierra la madrugada del sábado.'
+    ),
+  ];
 }
 
 // =========================================================

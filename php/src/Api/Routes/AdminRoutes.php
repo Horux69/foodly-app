@@ -19,6 +19,12 @@ final class AdminRoutes
         $router->post('/branches', fn () => AdminController::createBranch());
         $router->patch('/branches/{branch_id:uuid}/active', fn ($p) => AdminController::setBranchActive($p));
 
+        // Horarios de sucursal (F5.3): franjas por dia y por canal.
+        $router->get('/branches/{branch_id:uuid}/schedules', fn ($p) => AdminController::listSchedules($p));
+        $router->post('/branches/{branch_id:uuid}/schedules', fn ($p) => AdminController::createSchedule($p));
+        $router->patch('/schedules/{schedule_id:uuid}/active', fn ($p) => AdminController::setScheduleActive($p));
+        $router->delete('/schedules/{schedule_id:uuid}', fn ($p) => AdminController::deleteSchedule($p));
+
         $router->get('/tax-rates', fn () => AdminController::listTaxRates());
         $router->post('/tax-rates', fn () => AdminController::createTaxRate());
         $router->put('/tax-rates/{tax_rate_id:uuid}/default', fn ($p) => AdminController::setDefaultTaxRate($p));
