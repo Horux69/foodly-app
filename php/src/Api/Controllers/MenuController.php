@@ -68,7 +68,7 @@ final class MenuController
     {
         $ctx = Deps::require(Deps::getContext(), 'menu.view');
         $branchId = Deps::activeBranchIdOrNull($ctx);
-        [$categories, $items, $overrides] = MenuService::getCatalog($ctx->tenantId, $branchId);
+        [$categories, $items, $overrides, $groupsByItem] = MenuService::getCatalog($ctx->tenantId, $branchId);
 
         return [
             // Cual sucursal se esta mirando, para que la pantalla pueda decir
@@ -99,6 +99,10 @@ final class MenuController
                         'is_available' => $overrides[$i->id]->isAvailable,
                     ]
                     : null,
+                // Solo los ids y en orden: la pantalla ya tiene los grupos
+                // enteros de /menu/modifier-groups y no hace falta repetirlos
+                // en cada producto.
+                'modifier_group_ids' => $groupsByItem[$i->id] ?? [],
             ], $items),
         ];
     }

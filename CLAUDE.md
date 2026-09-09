@@ -342,8 +342,8 @@ sobre la marcha la primera vez que responde, porque un `addAll` que dependa
 de un tercero dejaría al worker sin instalar y a la tableta sin nada.
 
 - **Fase 5 (configuración sin código)**, en curso y partida en trozos.
-  Hechos: catálogo único de permisos (F5.5) y datos del restaurante
-  editables (F5.4).
+  Hechos: catálogo único de permisos (F5.5), datos del restaurante
+  editables (F5.4) y modificadores desde la web (F5.1).
 
 Sobre esos dos, tres cosas:
 
@@ -372,12 +372,44 @@ Sobre esos dos, tres cosas:
   vacío pasaría de mostrador a mesas —encendiendo el canal `table`— por
   elegir otra etiqueta en un desplegable.
 
-**Siguiente**: lo que queda de la fase 5 —modificadores desde la web (F5.1,
-la más grande), horarios de sucursal (F5.3) y estados de pedido con sus
-transiciones (F5.2, la más riesgosa: un error ahí congela la operación del
-restaurante). La fase 4, servicio en mesa, el plan la deja condicionada a que
-haya clientes de ese modelo, y la fase 6 (confianza y pulido) corre en
-paralelo.
+Sobre los modificadores, cuatro decisiones que conviene no deshacer:
+
+- **La forma de un grupo la valida `Domain\ModifierGroupRules`, no solo el
+  `CHECK` de la base.** La base solo exige `max_select >= min_select`, que
+  deja pasar `0` y `0`: un grupo obligatorio con máximo 0 no se puede
+  satisfacer con ninguna cantidad, así que ningún pedido con un producto de
+  ese grupo se podría crear — y el error saldría en el mostrador y no al
+  configurarlo. Lo mismo con obligatorio y mínimo 0, que se contradice:
+  `ModifierValidation` ya exige al menos una selección, así que el 0 guardado
+  mentiría sobre lo que el grupo pide. La casilla de la pantalla sube el
+  mínimo sola para no dejar que el rechazo sea la forma de enterarse.
+- **Lo que ya se vendió no se borra.** Una opción referenciada por
+  `order_item_modifiers` no se puede borrar —la clave foránea lo bloquearía
+  de todos modos— y la salida es marcarla como no disponible: deja de
+  ofrecerse y los pedidos viejos siguen entendiéndose. Un grupo asignado a
+  productos tampoco se borra, y el mensaje dice a cuántos: borrarlo
+  cambiaría la carta en silencio.
+- **La frase de la regla la escribe el dominio** (`ModifierGroupRules::describe`)
+  y viaja en el campo `rule`. Así "Elige 1" u "Opcional, hasta 3" se leen
+  igual en la web y en cualquier otro cliente, incluido el agente de WhatsApp
+  cuando llegue.
+- **La pantalla avisa cuando un grupo obligatorio no tiene nada que
+  ofrecer.** Es configuración válida y momentánea —se crea el grupo antes que
+  sus opciones—, pero mientras dure vuelve impedibles todos los productos que
+  lo tengan, y eso no se puede descubrir vendiendo.
+
+`ModifierRepository` va aparte de `MenuRepository` porque es otro agregado con
+su CRUD completo, y `/menu/catalog` trae `modifier_group_ids` por producto —
+solo los ids, en orden, porque la pantalla ya tiene los grupos enteros de
+`/menu/modifier-groups`. El orden es el que se guarda en `sort_order` y el que
+se pregunta al tomar el pedido: primero el término de la carne, después las
+adiciones. El router aprendió `DELETE`, y un 204 ya no lleva cuerpo.
+
+**Siguiente**: lo que queda de la fase 5 —horarios de sucursal (F5.3) y
+estados de pedido con sus transiciones (F5.2, la más riesgosa: un error ahí
+congela la operación del restaurante). La fase 4, servicio en mesa, el plan
+la deja condicionada a que haya clientes de ese modelo, y la fase 6
+(confianza y pulido) corre en paralelo.
 
 Pendientes conocidos:
 
@@ -398,7 +430,8 @@ Pendientes conocidos:
   del pedido, la caja, los reportes de cierre, la anulación con motivo, la
   impresión de comanda y ticket, el tablero de cocina, la cola de pedidos
   tomados sin red junto con el manifiesto y el precache del service worker,
-  los datos del restaurante, y que un botón que falla vuelva a servir.
+  los datos del restaurante, los grupos de modificadores con su asignación a
+  productos, y que un botón que falla vuelva a servir.
   Faltan los modificadores obligatorios al tomar el pedido y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

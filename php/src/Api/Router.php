@@ -63,6 +63,11 @@ final class Router
         $this->add('PUT', $pattern, $handler);
     }
 
+    public function delete(string $pattern, callable $handler): void
+    {
+        $this->add('DELETE', $pattern, $handler);
+    }
+
     /**
      * @param array<string, string> $params
      * @param array<string, string> $types

@@ -116,7 +116,11 @@ require __DIR__ . '/../src/Api/routes.php';
 try {
     [$status, $body] = $router->dispatch($_SERVER['REQUEST_METHOD'], $path);
     http_response_code($status);
-    echo json_encode($body, JSON_UNESCAPED_UNICODE);
+    // 204 es "hecho, y no hay nada que devolver": un cuerpo ahi es invalido
+    // y algunos proxies lo descartan o se atragantan. api.js ya lo espera.
+    if ($status !== 204) {
+        echo json_encode($body, JSON_UNESCAPED_UNICODE);
+    }
     Database::endAppTransaction(success: true);
 } catch (ApiException $e) {
     http_response_code($e->status);

@@ -11,6 +11,7 @@ use App\Models\MenuCategory;
 use App\Models\MenuItem;
 use App\Repositories\BranchRepository;
 use App\Repositories\MenuRepository;
+use App\Repositories\ModifierRepository;
 use App\Repositories\TaxRateRepository;
 
 final class MenuService
@@ -75,13 +76,23 @@ final class MenuService
      *
      * @return array{0: MenuCategory[], 1: MenuItem[], 2: array<string, \App\Models\BranchMenuOverride>}
      */
+    /**
+     * @return array{0: MenuCategory[], 1: MenuItem[], 2: array<string, BranchMenuOverride>, 3: array<string, string[]>}
+     *         categorias, productos, overrides de la sucursal y grupos de
+     *         modificadores por producto
+     */
     public static function getCatalog(string $tenantId, ?string $branchId = null): array
     {
-        $repo = new MenuRepository(Database::app());
+        $pdo = Database::app();
+        $repo = new MenuRepository($pdo);
         return [
             $repo->listAllCategories($tenantId),
             $repo->listAllItems($tenantId),
             $branchId === null ? [] : $repo->getOverridesForBranch($branchId),
+            // Una consulta para todos los productos, no una por fila: la
+            // pantalla necesita saber que grupos tiene cada uno para poder
+            // ofrecer cambiarlos.
+            (new ModifierRepository($pdo))->groupIdsByItem($tenantId),
         ];
     }
 
