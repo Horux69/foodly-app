@@ -13,10 +13,9 @@ use App\Models\Role;
 use App\Models\Table;
 use App\Models\TaxRate;
 use App\Models\User;
-use App\Repositories\RoleRepository;
 use App\Services\AdminError;
 use App\Services\AdminService;
-use App\Core\Database;
+use App\Core\Permissions;
 
 /**
  * Equivalente PHP de app/api/v1/admin.py. Cada metodo repite el mismo
@@ -109,8 +108,19 @@ final class AdminController
             $changes['asks_tip'] = Request::bool($body, 'asks_tip');
         }
 
+        // Identidad del restaurante: van aparte porque son columnas de
+        // `tenants` y no claves del JSONB de configuracion.
+        $profile = [];
+        foreach (['name', 'business_type', 'currency'] as $campo) {
+            if (array_key_exists($campo, $body) && $body[$campo] !== null) {
+                $profile[$campo] = Request::string($body, $campo, 1, 150);
+            }
+        }
+        $currencyConfirmed = array_key_exists('confirm_currency_change', $body)
+            && Request::bool($body, 'confirm_currency_change');
+
         try {
-            [$tenant, $settings] = AdminService::updateSettings($ctx->tenantId, $changes);
+            [$tenant, $settings] = AdminService::updateSettings($ctx->tenantId, $changes, $profile, $currencyConfirmed);
         } catch (AdminError $e) {
             throw new ApiException(422, $e->getMessage());
         }
@@ -240,11 +250,19 @@ final class AdminController
 
     // ---------- Roles y permisos ----------
 
+    /**
+     * Del catalogo de la plataforma, no de la tabla: es el mismo arreglo que
+     * valida los roles, asi que la pantalla no puede ofrecer un permiso que
+     * luego se rechace al guardarlo.
+     */
     public static function listPermissions(): array
     {
         Deps::require(Deps::getContext(), 'users.manage');
-        $permissions = (new RoleRepository(Database::app()))->listPermissions();
-        return array_map(static fn ($p) => ['code' => $p->code, 'description' => $p->description], $permissions);
+        $salida = [];
+        foreach (Permissions::CATALOG as $code => $description) {
+            $salida[] = ['code' => $code, 'description' => $description];
+        }
+        return $salida;
     }
 
     public static function listRoles(): array

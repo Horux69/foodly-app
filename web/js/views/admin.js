@@ -7,7 +7,8 @@
 import { api } from '../api.js';
 import { money, percent } from '../format.js';
 import { icon } from '../icons.js';
-import { activeBranch, can } from '../session.js';
+import * as router from '../router.js';
+import { activeBranch, can, load as cargarSesion } from '../session.js';
 import {
   badge, button, card, confirm, empty, errorBox, field, h, input, loading, pageHeader, render,
   section, select, skeleton, tabs, titledCard, toast,
@@ -19,6 +20,15 @@ const CANALES = [
   ['delivery', 'Domicilio'],
   ['whatsapp', 'WhatsApp'],
   ['app', 'App'],
+];
+
+// Los mismos que valida Domain\TenantSettings::BUSINESS_TYPES. Solo deciden
+// los valores por defecto de un restaurante recién creado, así que cambiarlo
+// después no cambia cómo opera: eso lo dicen los interruptores de abajo.
+const MODELOS = [
+  ['fast_food', 'Comida rápida'],
+  ['table_service', 'Servicio en mesa'],
+  ['delivery', 'Domicilios'],
 ];
 
 const SECCIONES = [
@@ -100,7 +110,7 @@ export async function admin(outlet) {
       mostrar(activa);
     };
 
-    if (clave === 'config') render(panel, seccionConfig(estado, refrescar));
+    if (clave === 'config') render(panel, seccionConfig(estado));
     else if (clave === 'sucursales') render(panel, seccionSucursales(estado, refrescar));
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
     else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
@@ -114,8 +124,21 @@ export async function admin(outlet) {
 // Cómo opera
 // =========================================================
 
-function seccionConfig({ ajustes }, refrescar) {
+function seccionConfig({ ajustes }) {
   const editable = can('settings.edit');
+
+  const nombre = input({ value: ajustes.name, maxlength: '150', disabled: !editable });
+  const modelo = select(
+    MODELOS.map(([value, label]) => ({ value, label, selected: value === ajustes.business_type })),
+    { disabled: !editable }
+  );
+  const moneda = input({
+    value: ajustes.currency,
+    maxlength: '3',
+    class: 'campo uppercase tabular-nums',
+    disabled: !editable,
+  });
+
   const casillas = CANALES.map(([code, nombre]) => ({
     code,
     control: h('input', {
@@ -133,9 +156,11 @@ function seccionConfig({ ajustes }, refrescar) {
     titledCard(
       'Cómo opera el restaurante',
       h(
-        'p',
-        { class: 'text-sm text-stone-600 mb-4' },
-        `${ajustes.name} · ${ajustes.business_type} · ${ajustes.currency}`
+        'div',
+        { class: 'grid grid-cols-1 sm:grid-cols-[2fr_1fr_auto] gap-3 mb-5' },
+        field('Nombre', nombre),
+        field('Modelo de negocio', modelo, 'Solo fija los valores por defecto'),
+        field('Moneda', moneda)
       ),
       h('div', { class: 'text-sm font-medium text-stone-700 mb-2' }, 'Canales de venta activos'),
       h(
@@ -152,18 +177,45 @@ function seccionConfig({ ajustes }, refrescar) {
       editable
         ? button('Guardar cambios', {
             onClick: async (e) => {
-              e.currentTarget.disabled = true;
+              // Se guarda antes de cualquier `await`: el navegador vacía
+              // `currentTarget` en cuanto termina el despacho del evento, y
+              // el diálogo de la moneda ocurre justo en medio.
+              const guardar = e.currentTarget;
+              const monedaNueva = moneda.value.trim().toUpperCase();
+              const cambiaMoneda = monedaNueva !== ajustes.currency;
+
+              // La API exige la confirmación aparte (`Domain\TenantProfile`),
+              // así que esto no es solo cortesía: sin el visto bueno el
+              // guardado se rechaza.
+              if (cambiaMoneda) {
+                const seguro = await confirm({
+                  title: `¿Cambiar la moneda de ${ajustes.currency} a ${monedaNueva}?`,
+                  message:
+                    'Los pedidos que ya se emitieron no se reconvierten: sus cifras se quedan como están y pasarían a leerse en la moneda nueva.',
+                  confirmLabel: 'Cambiar la moneda',
+                });
+                if (!seguro) return;
+              }
+
+              guardar.disabled = true;
               try {
                 await api.patch('/settings', {
+                  name: nombre.value.trim(),
+                  business_type: modelo.value,
+                  currency: monedaNueva,
+                  confirm_currency_change: cambiaMoneda,
                   channels: casillas.filter((c) => c.control.checked).map((c) => c.code),
                   uses_tables: mesas.checked,
                   asks_tip: propina.checked,
                 });
                 toast('Configuración guardada', 'ok');
-                await refrescar();
+                // El nombre se lee en el rail y la moneda en cada cifra de la
+                // aplicación: repintar solo esta pantalla dejaría las dos
+                // viejas hasta la siguiente navegación.
+                await recargarSesion();
               } catch (error) {
                 toast(error.message);
-                e.currentTarget.disabled = false;
+                guardar.disabled = false;
               }
             },
           })
@@ -175,6 +227,16 @@ function seccionConfig({ ajustes }, refrescar) {
       'Esto cambia cómo se comporta el sistema sin tocar código: los canales apagados se rechazan al tomar un pedido, y sin mesas ni propina esos campos desaparecen de la pantalla de venta.'
     ),
   ];
+}
+
+/**
+ * Vuelve a leer /auth/me y repinta todo: el enrutador llama de nuevo al
+ * pintado de la estructura, así que el rail y esta pantalla salen con los
+ * datos nuevos. Por eso no hace falta el `refrescar()` de la sección.
+ */
+async function recargarSesion() {
+  await cargarSesion();
+  await router.reload();
 }
 
 // =========================================================

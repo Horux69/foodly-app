@@ -7,6 +7,11 @@
         <testsuite name="domain">
             <directory>tests/Domain</directory>
         </testsuite>
+        <!-- No es dominio puro: mira los archivos del repositorio. Corre en la
+             misma suite porque tampoco necesita base de datos. -->
+        <testsuite name="core">
+            <directory>tests/Core</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

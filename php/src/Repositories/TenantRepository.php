@@ -38,13 +38,31 @@ final class TenantRepository
         return Tenant::fromRow($stmt->fetch());
     }
 
-    /** @param array<mixed> $settings */
-    public function updateSettings(string $tenantId, array $settings): Tenant
+    /**
+     * Identidad y configuracion en un solo UPDATE.
+     *
+     * Van juntas porque cambiar de modelo de negocio cambia los defaults de
+     * la configuracion: guardarlas en dos pasos dejaria un instante con el
+     * tipo nuevo y los ajustes viejos.
+     *
+     * @param array<mixed> $settings
+     */
+    public function update(string $tenantId, string $name, string $businessType, string $currency, array $settings): Tenant
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE tenants SET settings = :settings, updated_at = now() WHERE id = :id RETURNING *'
+            'UPDATE tenants
+                SET name = :name,
+                    business_type = :business_type,
+                    currency = :currency,
+                    settings = :settings,
+                    updated_at = now()
+              WHERE id = :id
+          RETURNING *'
         );
         $stmt->execute([
+            'name' => $name,
+            'business_type' => $businessType,
+            'currency' => $currency,
             'settings' => json_encode($settings, JSON_UNESCAPED_UNICODE),
             'id' => $tenantId,
         ]);

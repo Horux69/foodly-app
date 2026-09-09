@@ -80,8 +80,13 @@ migración; no se ejecuta y no debe recibir cambios nuevos.
    (`new`, `kitchen`, `ready`, `in_transit`, `completed`, `cancelled`). El KDS
    y los reportes se apoyan en la categoría, no en el nombre.
 7. **Los roles son configurables, los permisos no.** El catálogo de permisos es
-   fijo (`php/src/Core/Permissions.php`); los roles que los agrupan son por
-   tenant. Autorizar con `Deps::require($ctx, 'permiso')`.
+   fijo y vive en `php/src/Core/Permissions.php`: es lo que valida un rol, lo
+   que responde `GET /permissions` y lo que comprueba `Deps::require`. La
+   tabla `permissions` de la base sigue existiendo porque `role_permissions`
+   apunta a ella, pero es el destino del join, no el catálogo; las dos se
+   mantienen iguales y `php/tests/Core/PermissionsTest.php` compara el arreglo
+   contra los `INSERT` de `db/`. Los roles que los agrupan son por tenant.
+   Autorizar con `Deps::require($ctx, 'permiso')`.
 8. **Los precios se congelan en el pedido.** `order_items` guarda `unit_price`,
    `tax_rate`, `tax_amount` y `name_snapshot` del momento de la venta. Los
    productos se archivan (`is_archived`), nunca se borran.
@@ -336,12 +341,43 @@ Tailwind llega por CDN y es lo único que no se puede precargar: se guarda
 sobre la marcha la primera vez que responde, porque un `addAll` que dependa
 de un tercero dejaría al worker sin instalar y a la tableta sin nada.
 
-**Siguiente**: la fase 5 del plan de obra —configuración sin código:
-modificadores, estados de pedido y transiciones, y horarios, todos
-configurables por diseño pero hoy solo poblables por SQL. Es la promesa del
-producto y hoy se cumple a medias. La fase 4, servicio en mesa, el plan la
-deja condicionada a que haya clientes de ese modelo, y la fase 6 (confianza
-y pulido) corre en paralelo.
+- **Fase 5 (configuración sin código)**, en curso y partida en trozos.
+  Hechos: catálogo único de permisos (F5.5) y datos del restaurante
+  editables (F5.4).
+
+Sobre esos dos, tres cosas:
+
+- **El catálogo de permisos es uno y está en el código.** Antes había dos y
+  no coincidían: `Core\Permissions::CATALOG` no se usaba en ninguna parte y
+  le faltaban los dos permisos de clientes que la migración 003 sí había
+  insertado. Ahora el arreglo de PHP es la fuente —valida los roles, responde
+  `GET /permissions` y lo comprueba `Deps::require`— y la tabla es solo el
+  destino del join. Una prueba compara los dos contra los `INSERT` de `db/`,
+  así que volver a separarlos pone la suite en rojo.
+- **Un permiso mal escrito se rompe ruidoso.** `Deps::require('orders.cancell')`
+  no lo tiene nadie: la pantalla queda cerrada para todo el mundo y el 403
+  repite el código equivocado como si fuera cierto. Se comprueba contra el
+  catálogo antes de negar, y una prueba recorre `php/src` buscando los
+  literales de `Deps::require` para atraparlo antes de desplegar. Lo mismo
+  vale para `role_permissions`: si un código del catálogo no tiene fila, el
+  `INSERT ... SELECT` insertaría cero y el permiso quedaría concedido en la
+  pantalla y ausente en la base, así que ahora falla.
+- **Cambiar la moneda exige confirmarlo aparte.** Los pedidos ya emitidos
+  guardan sus cifras sin moneda: cambiar el código no reconvierte nada, solo
+  hace que lo histórico se lea con el símbolo equivocado. La confirmación la
+  pide `Domain\TenantProfile` y no el navegador, porque una pantalla no es el
+  único cliente de la API. Y **cambiar el modelo de negocio congela cómo
+  opera hoy el restaurante**: el tipo solo fija los valores por defecto de
+  las claves que el tenant nunca guardó, así que sin esto uno con `settings`
+  vacío pasaría de mostrador a mesas —encendiendo el canal `table`— por
+  elegir otra etiqueta en un desplegable.
+
+**Siguiente**: lo que queda de la fase 5 —modificadores desde la web (F5.1,
+la más grande), horarios de sucursal (F5.3) y estados de pedido con sus
+transiciones (F5.2, la más riesgosa: un error ahí congela la operación del
+restaurante). La fase 4, servicio en mesa, el plan la deja condicionada a que
+haya clientes de ese modelo, y la fase 6 (confianza y pulido) corre en
+paralelo.
 
 Pendientes conocidos:
 
@@ -360,8 +396,9 @@ Pendientes conocidos:
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
   domicilios, el cobro, el reembolso y la división de cuenta desde el detalle
   del pedido, la caja, los reportes de cierre, la anulación con motivo, la
-  impresión de comanda y ticket, el tablero de cocina, y la cola de pedidos
-  tomados sin red junto con el manifiesto y el precache del service worker.
+  impresión de comanda y ticket, el tablero de cocina, la cola de pedidos
+  tomados sin red junto con el manifiesto y el precache del service worker,
+  los datos del restaurante, y que un botón que falla vuelva a servir.
   Faltan los modificadores obligatorios al tomar el pedido y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

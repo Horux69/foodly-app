@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api;
 
 use App\Core\Database;
+use App\Core\Permissions;
 use App\Core\Security;
 use App\Repositories\BranchRepository;
 
@@ -99,6 +100,12 @@ final class Deps
 
     public static function require(RequestContext $ctx, string $permission): RequestContext
     {
+        // Antes de negar, se comprueba que el permiso exista. Un 'orders.cancell'
+        // mal escrito no lo tiene nadie: la pantalla queda cerrada para todo el
+        // mundo y el 403 dice justo lo que el codigo cree, asi que el error se
+        // vuelve invisible.
+        Permissions::assertKnown($permission);
+
         if (!$ctx->has($permission)) {
             throw new ApiException(403, "Falta el permiso: {$permission}");
         }
@@ -116,6 +123,8 @@ final class Deps
      */
     public static function requireAny(RequestContext $ctx, string ...$permissions): RequestContext
     {
+        Permissions::assertKnown(...$permissions);
+
         foreach ($permissions as $permission) {
             if ($ctx->has($permission)) {
                 return $ctx;

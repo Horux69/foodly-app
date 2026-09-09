@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Core\Permissions;
 use App\Core\Security;
 use App\Domain\SettingsError;
+use App\Domain\TenantProfile;
+use App\Domain\TenantProfileError;
 use App\Domain\TenantSettings;
 use App\Models\Branch;
 use App\Models\Role;
@@ -55,25 +58,58 @@ final class AdminService
     }
 
     /**
-     * @param array<mixed> $changes
+     * @param array<mixed> $changes claves de tenants.settings (channels, uses_tables, asks_tip)
+     * @param array<string, string> $profile name, business_type y currency, los que vengan
      * @return array{0: Tenant, 1: TenantSettings}
      */
-    public static function updateSettings(string $tenantId, array $changes): array
-    {
+    public static function updateSettings(
+        string $tenantId,
+        array $changes,
+        array $profile = [],
+        bool $currencyConfirmed = false,
+    ): array {
         $repo = new TenantRepository(self::pdo());
         $tenant = self::tenant($repo, $tenantId);
+
+        $name = trim($profile['name'] ?? $tenant->name);
+        $businessType = $profile['business_type'] ?? $tenant->businessType;
+        $currency = isset($profile['currency'])
+            ? TenantProfile::normalizeCurrency($profile['currency'])
+            : $tenant->currency;
+
+        try {
+            TenantProfile::validate($name, $businessType, $currency);
+            TenantProfile::ensureCurrencyChangeConfirmed($tenant->currency, $currency, $currencyConfirmed);
+        } catch (TenantProfileError $e) {
+            throw new AdminError($e->getMessage());
+        }
 
         // Se valida el resultado del merge y no solo el parche: activar el
         // canal 'table' sin tocar uses_tables debe chocar contra el valor ya
         // guardado.
         $merged = array_merge($tenant->settings, $changes);
+
+        // Cambiar de modelo de negocio cambia los defaults que TenantSettings
+        // usa para las claves que el tenant nunca fijo. Si se guardara asi, un
+        // restaurante con `settings` vacio pasaria de mostrador a mesas —y
+        // encendería el canal 'table'— por elegir otra etiqueta. Se congela
+        // como opera hoy y el cambio queda donde debe: en los interruptores,
+        // que estan en la misma pantalla.
+        if ($businessType !== $tenant->businessType) {
+            $vigente = TenantSettings::parse($tenant->settings, $tenant->businessType);
+            $merged = array_merge(
+                ['channels' => $vigente->channels, 'uses_tables' => $vigente->usesTables, 'asks_tip' => $vigente->asksTip],
+                $merged
+            );
+        }
+
         try {
             TenantSettings::validate($merged);
         } catch (SettingsError $e) {
             throw new AdminError($e->getMessage());
         }
 
-        $updated = $repo->updateSettings($tenantId, $merged);
+        $updated = $repo->update($tenantId, $name, $businessType, $currency, $merged);
         return [$updated, TenantSettings::parse($updated->settings, $updated->businessType)];
     }
 
@@ -186,17 +222,20 @@ final class AdminService
     }
 
     /**
+     * Valida contra el catalogo de la plataforma, no contra la tabla: el
+     * catalogo es la fuente y la tabla es solo el destino del join.
+     *
      * @param string[] $codes
      * @return string[]
      */
-    private static function resolvePermissions(RoleRepository $repo, array $codes): array
+    private static function resolvePermissions(array $codes): array
     {
-        $found = array_map(static fn ($p) => $p->code, $repo->permissionsByCodes($codes));
-        $unknown = array_values(array_diff($codes, $found));
+        $unique = array_values(array_unique($codes));
+        $unknown = array_values(array_diff($unique, Permissions::codes()));
         if ($unknown !== []) {
             throw new AdminError('Permisos desconocidos: ' . implode(', ', $unknown));
         }
-        return $found;
+        return $unique;
     }
 
     /** @param string[] $permissions */
@@ -207,7 +246,7 @@ final class AdminService
             throw new AdminError("Ya existe un rol con el codigo '{$code}'");
         }
 
-        $resolved = self::resolvePermissions($repo, $permissions);
+        $resolved = self::resolvePermissions($permissions);
         $role = $repo->create($tenantId, $code, $name);
         $repo->setPermissions($role->id, $resolved);
         return $repo->get($tenantId, $role->id);
@@ -227,7 +266,7 @@ final class AdminService
             throw new AdminError('Los roles de sistema no se pueden modificar');
         }
 
-        $resolved = self::resolvePermissions($repo, $permissions);
+        $resolved = self::resolvePermissions($permissions);
         $repo->setPermissions($roleId, $resolved);
         return $repo->get($tenantId, $roleId);
     }
