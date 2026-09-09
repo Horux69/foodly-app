@@ -7,6 +7,7 @@ namespace App\Api\Controllers;
 use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
+use App\Services\AmbiguousLoginError;
 use App\Services\AuthError;
 use App\Services\AuthService;
 use App\Services\PaymentProviders;
@@ -18,9 +19,17 @@ final class AuthController
         $body = Request::json();
         $email = Request::string($body, 'email');
         $password = Request::string($body, 'password');
+        // Opcional: solo hace falta cuando el mismo correo y la misma
+        // contrasena sirven en mas de un restaurante.
+        $slug = Request::optionalString($body, 'slug');
 
         try {
-            $token = AuthService::login($email, $password);
+            $token = AuthService::login($email, $password, $slug);
+        } catch (AmbiguousLoginError $e) {
+            // 409 y no 401: las credenciales estan bien, falta decir donde.
+            // La pantalla de ingreso lo distingue por el codigo y recien ahi
+            // muestra el campo de la empresa.
+            throw new \App\Api\ApiException(409, $e->getMessage());
         } catch (AuthError) {
             throw new \App\Api\ApiException(401, 'Credenciales invalidas');
         }
@@ -102,6 +111,9 @@ final class AuthController
                 $branches,
             ),
             'tenant_name' => $tenant->name,
+            // El nombre corto con el que se entra cuando el correo se repite:
+            // se muestra en Mi cuenta para que se pueda recordar.
+            'tenant_slug' => $tenant->slug,
             'currency' => $tenant->currency,
             'channels' => $settings->channels,
             // Los metodos de cobro los define PaymentProviders, no la web:

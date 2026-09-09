@@ -575,6 +575,22 @@ que nada dijera por qué. `Domain\ChargeRules` es el espejo de
 `RefundRules`: no se cobra más de lo que falta, ni sobre un pedido ya
 saldado. Un vuelto no se registra como cobro, se entrega.
 
+Sobre entrar cuando el correo se repite, dos cosas:
+
+- **Cada empresa tiene un `slug`**, generado del nombre (`Domain\Slug`) y
+  único. Es lo que se escribe al ingresar para decir en cuál entrar, y está
+  pensado para que sobreviva a que lo dicten por teléfono: sin acentos, sin
+  espacios, en minúsculas.
+- **La empresa se decide después de comprobar la contraseña, no antes.**
+  Bastaría con pedir el slug apenas hay más de una candidata, pero eso le
+  contaría a cualquiera que escriba un correo en cuántas empresas existe. Así,
+  dos personas distintas con el mismo correo en dos restaurantes entran cada
+  una sin escribir nada más, y el slug solo se pide en el único caso de verdad
+  ambiguo —mismo correo **y** misma contraseña—, que solo ve quien ya sabe
+  entrar. Con la contraseña equivocada la respuesta es la de siempre. La
+  pantalla revela el campo solo ante ese 409, y conserva la contraseña:
+  volver a escribirla para responder "¿cuál?" sería absurdo.
+
 **Siguiente**: solo queda la fase 4 (servicio en mesa), que el plan deja
 condicionada a que haya clientes de ese modelo y que arrastra la pieza más
 pesada que le falta al backend: modificar un pedido abierto.
@@ -607,9 +623,8 @@ Pendientes conocidos:
   porque esa rama solo corre con la sesión cerrada, y en desarrollo siempre
   había token en `localStorage`. La primera prueba del arnés es justo esa, y
   se comprobó que falla al reintroducir el `forEach`.
-- El login resuelve la empresa a partir del email: si dos empresas registran el
-  mismo correo, queda ambiguo (gana el primero). Se resolvería con subdominio o
-  slug de empresa en la pantalla de login.
+- El slug de empresa se escribe a mano cuando hace falta; con subdominio por
+  empresa no haría falta nunca, pero eso es despliegue, no código.
 - Un combo (varios productos completos a precio de paquete) no se puede
   modelar: los modificadores suman o restan sobre una línea, no "son" otro
   producto con su propia receta.

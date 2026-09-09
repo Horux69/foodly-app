@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Core\Database;
 use App\Core\Permissions;
 use App\Domain\SettingsError;
+use App\Domain\Slug;
 use App\Domain\TenantSettings;
 use App\Models\Tenant;
 use App\Repositories\OrderStatusRepository;
@@ -119,6 +120,7 @@ final class TenantProvisioning
         string $businessType = 'fast_food',
         string $currency = 'COP',
         ?array $settings = null,
+        ?string $slug = null,
     ): Tenant {
         if ($settings === null) {
             $settings = TenantSettings::defaultsFor($businessType);
@@ -141,7 +143,12 @@ final class TenantProvisioning
         }
 
         try {
-            $tenant = (new TenantRepository($pdo))->create($name, $businessType, $currency, $settings);
+            // El slug se genera del nombre si no lo dan: es lo que alguien
+            // escribe al entrar cuando su correo esta en mas de un
+            // restaurante, y una cosa menos que inventar al dar de alta.
+            $tenants = new TenantRepository($pdo);
+            $elegido = Slug::unique($slug ?? $name, static fn (string $s) => $tenants->slugExists($s));
+            $tenant = $tenants->create($name, $elegido, $businessType, $currency, $settings);
             self::provisionTenant($pdo, $tenant->id, $businessType);
             if ($ownsTransaction) {
                 $pdo->commit();

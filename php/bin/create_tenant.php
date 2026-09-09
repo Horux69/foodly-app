@@ -16,6 +16,9 @@ declare(strict_types=1);
  *       --business-type=table_service \
  *       --branch="Sede Norte" --branch-code=NOR \
  *       --admin-email=dueno@napoli.com --admin-password="una-clave-larga"
+ *
+ * El slug (el nombre corto con el que se entra si el correo se repite) sale
+ * del nombre; --slug=napoli lo fija a mano.
  */
 
 use App\Core\Database;
@@ -84,6 +87,8 @@ try {
         $name,
         $businessType,
         $opts['currency'] ?? 'COP',
+        // El slug se genera del nombre; --slug solo para elegirlo a mano.
+        slug: $opts['slug'] ?? null,
     );
 
     $branch = (new BranchRepository($pdo))->create(
@@ -119,5 +124,6 @@ try {
 
 echo "Restaurante '{$name}' creado\n";
 echo "  tenant_id : {$tenant->id}\n";
+echo "  slug      : {$tenant->slug}   (solo hace falta al entrar si el correo se repite)\n";
 echo "  sucursal  : {$branch->name} ({$branch->code})\n";
 echo "  admin     : {$opts['admin-email']}\n";

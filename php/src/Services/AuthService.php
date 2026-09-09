@@ -30,13 +30,70 @@ final class AuthService
      * consulta que cruza empresas, acotada a devolver solo eso), y recien
      * despues se busca al usuario ya con el contexto puesto, bajo RLS.
      */
-    public static function login(string $email, string $password): string
+    /**
+     * Cuantas empresas se prueban cuando el correo se repite y no dieron el
+     * slug. Cada intento cuesta un bcrypt (~100 ms), asi que el limite existe
+     * para que un correo repetido en muchas empresas no vuelva el login lento
+     * ni sirva para agotar el servidor.
+     */
+    private const MAX_CANDIDATAS = 5;
+
+    public static function login(string $email, string $password, ?string $slug = null): string
     {
         $pdo = Database::app();
-        $tenantId = (new TenantRepository($pdo))->findTenantForLogin($email);
-        if ($tenantId === null) {
+        $tenants = new TenantRepository($pdo);
+
+        // Con slug, la empresa esta decidida antes de mirar la contrasena.
+        if ($slug !== null && $slug !== '') {
+            $tenantId = $tenants->tenantForLoginBySlug($email, $slug);
+            if ($tenantId === null) {
+                throw new AuthError('Credenciales invalidas');
+            }
+            return self::emitirToken($pdo, $tenantId, $email, $password);
+        }
+
+        $candidatas = $tenants->tenantsForLogin($email);
+        if ($candidatas === []) {
             throw new AuthError('Credenciales invalidas');
         }
+        if (count($candidatas) > self::MAX_CANDIDATAS) {
+            throw new AmbiguousLoginError('Ese correo esta en varios restaurantes: indica cual');
+        }
+
+        /**
+         * Se prueba la contrasena contra cada empresa candidata y recien
+         * despues se decide.
+         *
+         * Podria bastar con pedir el slug apenas hay mas de una candidata,
+         * pero eso le contaria a cualquiera que escriba un correo en cuantas
+         * empresas existe. Asi, la ambiguedad solo se le revela a quien ya
+         * sabe la contrasena — y en el caso normal, dos personas distintas
+         * con el mismo correo en dos restaurantes, cada una entra sin
+         * escribir nada mas.
+         */
+        $aciertos = [];
+        foreach ($candidatas as $tenantId) {
+            Database::setTenantContext($pdo, $tenantId);
+            $user = (new UserRepository($pdo, new RoleRepository($pdo)))->getByEmail($email);
+            if ($user !== null && Security::verifyPassword($password, $user->passwordHash)) {
+                $aciertos[] = $tenantId;
+            }
+        }
+
+        if ($aciertos === []) {
+            throw new AuthError('Credenciales invalidas');
+        }
+        if (count($aciertos) > 1) {
+            throw new AmbiguousLoginError(
+                'Ese correo y esa contrasena sirven en mas de un restaurante: indica en cual quieres entrar'
+            );
+        }
+
+        return self::emitirToken($pdo, $aciertos[0], $email, $password);
+    }
+
+    private static function emitirToken(\PDO $pdo, string $tenantId, string $email, string $password): string
+    {
         Database::setTenantContext($pdo, $tenantId);
 
         $user = (new UserRepository($pdo, new RoleRepository($pdo)))->getByEmail($email);
