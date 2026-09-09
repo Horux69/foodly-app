@@ -14,7 +14,7 @@ import { api, uuid } from '../api.js';
 import { aCentavos, desdeCentavos, money } from '../format.js';
 import { icon } from '../icons.js';
 import { me } from '../session.js';
-import { button, h, loading, render, select, toast } from '../ui.js';
+import { button, h, loading, montarDialogo, render, select, toast } from '../ui.js';
 import { metodoPago } from './pedido-detalle.js';
 
 const MAX_PARTES = 50;
@@ -29,12 +29,11 @@ export function abrirDivision(pedido, recargar) {
   let personas = 2;
   let cobrado = false;
 
+  let desmontar;
   const cerrar = () => {
-    overlay.remove();
-    document.removeEventListener('keydown', alTeclear);
+    desmontar();
     if (cobrado) recargar();
   };
-  const alTeclear = (e) => e.key === 'Escape' && cerrar();
 
   const overlay = h(
     'div',
@@ -54,8 +53,7 @@ export function abrirDivision(pedido, recargar) {
     )
   );
 
-  document.body.append(overlay);
-  document.addEventListener('keydown', alTeclear);
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
 
   /**
    * Cobra un importe y vuelve a dibujar con el saldo que quedó.

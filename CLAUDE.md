@@ -466,8 +466,8 @@ una cosa menos que inventar. `Services\StatusConfigService` define el flujo;
 `Services\OrderStatusService`, que ya existía, lo opera avanzando un pedido
 concreto.
 
-- **Fase 6 (confianza y pulido)**, en curso y partida en trozos. Hecho:
-  pruebas de las pantallas críticas (F6.1).
+- **Fase 6 (confianza y pulido)**, en curso y partida en trozos. Hechos:
+  pruebas de las pantallas críticas (F6.1) y teclado en el mostrador (F6.2).
 
 Escribir esas pruebas destapó lo que iban a destapar: **el modal de
 modificadores dejaba agregar un producto sin cumplir su grupo obligatorio, y
@@ -480,12 +480,27 @@ rechazar. La frase de la regla la sigue escribiendo el dominio: `/menu`
 devuelve `rule` igual que `/menu/modifier-groups`, así que la pantalla de
 venta y la de configuración dicen lo mismo.
 
-**Siguiente**: lo que queda de la fase 6 —teclado en el mostrador (F6.2, que
-incluye el foco atrapado y el Escape del modal de modificadores), contraseña
-propia y renovación de token (F6.3), exportar reportes y comparar períodos
-(F6.4) y dar de baja un restaurante (F6.5, el pendiente de las claves
-foráneas)—. La fase 4, servicio en mesa, el plan la deja condicionada a que
-haya clientes de ese modelo.
+Sobre el teclado, dos cosas:
+
+- **`montarDialogo` de `ui.js` es lo único que da comportamiento a un
+  diálogo**: Escape cierra, Tab cicla dentro, el foco entra al abrir y vuelve
+  a donde estaba al cerrar. Cada diálogo arma su propio marcado —son muy
+  distintos entre sí— pero los siete pasan por ahí. Sin el ciclo de Tab,
+  tabular desde el último botón se va a la aplicación de atrás: quien navega
+  con teclado se queda sin diálogo sin haberlo cerrado. Y el oyente va en
+  captura, así que con un diálogo abierto la tecla es del diálogo y no de los
+  atajos de la pantalla de atrás.
+- **`/` lleva al buscador y Enter crea el pedido**, pero solo cuando no se
+  está escribiendo en un campo: si no, `/` no se podría teclear en la
+  dirección de un cliente. Enter sí funciona desde el buscador, que es donde
+  están las manos. Las líneas del carrito son enfocables y las flechas
+  cambian su cantidad, con el nombre y el número en `aria-label` para que un
+  lector de pantalla lea el cambio.
+
+**Siguiente**: lo que queda de la fase 6 —contraseña propia y renovación de
+token (F6.3), exportar reportes y comparar períodos (F6.4) y dar de baja un
+restaurante (F6.5, el pendiente de las claves foráneas)—. La fase 4, servicio
+en mesa, el plan la deja condicionada a que haya clientes de ese modelo.
 
 Pendientes conocidos:
 
@@ -509,7 +524,8 @@ Pendientes conocidos:
   los datos del restaurante, los grupos de modificadores con su asignación a
   productos, los horarios de sucursal, el editor de estados y transiciones,
   la toma de pedido con un grupo obligatorio, el avance de estado en cocina,
-  el cobro por partes hasta saldar, y que un botón que falla vuelva a servir.
+  el cobro por partes hasta saldar, los atajos de teclado y el foco de los
+  diálogos, y que un botón que falla vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

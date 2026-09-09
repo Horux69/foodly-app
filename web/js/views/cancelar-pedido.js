@@ -16,7 +16,7 @@
 import { api } from '../api.js';
 import { money } from '../format.js';
 import { icon } from '../icons.js';
-import { button, h, input, loading, render, toast } from '../ui.js';
+import { button, h, input, loading, montarDialogo, render, toast } from '../ui.js';
 
 /**
  * @param {{id: string, order_number: string}} pedido
@@ -26,11 +26,8 @@ import { button, h, input, loading, render, toast } from '../ui.js';
 export function abrirCancelacion(pedido, estado, alAnular) {
   const cuerpo = h('div', { class: 'p-5 space-y-4' });
 
-  const cerrar = () => {
-    overlay.remove();
-    document.removeEventListener('keydown', alTeclear);
-  };
-  const alTeclear = (e) => e.key === 'Escape' && cerrar();
+  let desmontar;
+  const cerrar = () => desmontar();
 
   const overlay = h(
     'div',
@@ -50,8 +47,7 @@ export function abrirCancelacion(pedido, estado, alAnular) {
     )
   );
 
-  document.body.append(overlay);
-  document.addEventListener('keydown', alTeclear);
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
   render(cuerpo, loading('Revisando los cobros…'));
 
   async function pintar() {

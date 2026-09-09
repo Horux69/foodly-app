@@ -11,20 +11,8 @@ import { date, money, moneyExact, time } from '../format.js';
 import { icon } from '../icons.js';
 import { activeBranchId, branchQuery, can, me } from '../session.js';
 import {
-  badge,
-  button,
-  card,
-  clear,
-  empty,
-  errorBox,
-  h,
-  input,
-  loading,
-  render,
-  select,
-  skeleton,
-  tabs,
-  toast,
+  badge, button, card, clear, empty, errorBox, h, input, loading, montarDialogo, render,
+  select, skeleton, tabs, toast,
 } from '../ui.js';
 import { canal } from './cocina.js';
 import { abrirPedido, metodoPago, tonoEstado } from './pedido-detalle.js';
@@ -101,7 +89,7 @@ async function vistaNuevo(host) {
 
   const buscador = input({
     type: 'search',
-    placeholder: 'Buscar un producto…',
+    placeholder: 'Buscar un producto…  (tecla /)',
     class: 'campo pl-10',
     oninput: (e) => {
       filtro = e.target.value.trim().toLowerCase();
@@ -228,7 +216,7 @@ async function vistaNuevo(host) {
   const lineas = h('div', { class: 'divide-y divide-stone-100' });
   const totales = h('div', { class: 'space-y-1.5 text-sm' });
   const contador = h('span');
-  const crear = button('Crear pedido', { onClick: enviar, iconName: 'check', full: true });
+  const crear = button('Crear pedido', { onClick: enviar, iconName: 'check', full: true, title: 'Enter' });
 
   // ---------- menú ----------
 
@@ -349,7 +337,24 @@ async function vistaNuevo(host) {
       carrito.map((linea) =>
         h(
           'div',
-          { class: 'py-2.5 flex items-start gap-2' },
+          {
+            class: 'py-2.5 flex items-start gap-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400',
+            // Con foco, las flechas cambian la cantidad: en un mostrador con
+            // cola es más rápido que apuntar a un botón de 36 píxeles.
+            tabindex: '0',
+            role: 'group',
+            'aria-label': `${linea.item.name}, ${linea.cantidad}. Flechas arriba y abajo para cambiar la cantidad`,
+            onKeydown: (event) => {
+              const paso = { ArrowUp: 1, '+': 1, ArrowDown: -1, '-': -1 }[event.key];
+              if (paso === undefined) return;
+              event.preventDefault();
+              cambiarCantidad(linea.clave, paso);
+              // Tras repintar, el foco vuelve a la línea equivalente; si
+              // desapareció, al carrito.
+              const filas = lineas.querySelectorAll('[role="group"]');
+              (filas[carrito.findIndex((l) => l.clave === linea.clave)] ?? filas[0] ?? buscador).focus();
+            },
+          },
           h(
             'div',
             { class: 'flex-1 min-w-0' },
@@ -642,10 +647,40 @@ async function vistaNuevo(host) {
     explicar();
   }
 
+  // ---------- teclado ----------
+  //
+  // Un mostrador con cola se opera con las dos manos ocupadas: `/` lleva al
+  // buscador y Enter crea el pedido. Solo cuando no se está escribiendo en un
+  // campo —si no, `/` no se podría teclear en el nombre de un cliente— y solo
+  // sin diálogo abierto, porque ahí la tecla es del diálogo.
+  function atajos(event) {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (document.querySelector('[role="dialog"]')) return;
+
+    const enUnCampo = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+    if (event.key === '/' && !enUnCampo) {
+      event.preventDefault();
+      buscador.focus();
+      buscador.select();
+      return;
+    }
+    // Desde el buscador también, que es donde están las manos: escribir el
+    // producto, tocarlo y confirmar sin soltar el teclado.
+    if (event.key === 'Enter' && (!enUnCampo || document.activeElement === buscador)) {
+      if (crear.disabled) return;
+      event.preventDefault();
+      enviar();
+    }
+  }
+
+  document.addEventListener('keydown', atajos);
+
   return {
     destroy() {
       clearTimeout(temporizador);
       clearTimeout(temporizadorCliente);
+      document.removeEventListener('keydown', atajos);
     },
   };
 }
@@ -766,7 +801,8 @@ function abrirModificadores(item, alConfirmar) {
     },
   });
 
-  const cerrar = () => overlay.remove();
+  let desmontar;
+  const cerrar = () => desmontar();
   const overlay = h(
     'div',
     {
@@ -775,7 +811,12 @@ function abrirModificadores(item, alConfirmar) {
     },
     h(
       'div',
-      { class: 'aparece bg-white rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl' },
+      {
+        class: 'aparece bg-white rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': `Opciones de ${item.name}`,
+      },
       h(
         'div',
         { class: 'p-4 border-b border-stone-200 flex items-center justify-between gap-2 sticky top-0 bg-white' },
@@ -797,7 +838,7 @@ function abrirModificadores(item, alConfirmar) {
     )
   );
 
-  document.body.append(overlay);
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
   // El estado inicial también se calcula: con un grupo obligatorio, el botón
   // nace deshabilitado y el aviso dice qué falta.
   revisar();

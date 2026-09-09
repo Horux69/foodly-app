@@ -14,7 +14,8 @@ import { date, money, time } from '../format.js';
 import { icon } from '../icons.js';
 import { can, me } from '../session.js';
 import {
-  badge, button, empty, errorBox, h, input, loading, render, section, select, toast,
+  badge, button, empty, errorBox, h, input, loading, montarDialogo, render, section, select,
+  toast,
 } from '../ui.js';
 import { abrirCancelacion } from './cancelar-pedido.js';
 import { canal } from './cocina.js';
@@ -52,12 +53,11 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
   const cuerpo = h('div', { class: 'p-4 space-y-4' });
   let cambio = false;
 
+  let desmontar;
   const cerrar = () => {
-    overlay.remove();
-    document.removeEventListener('keydown', alTeclear);
+    desmontar();
     if (cambio) alCambiar?.();
   };
-  const alTeclear = (e) => e.key === 'Escape' && cerrar();
 
   const overlay = h(
     'div',
@@ -77,8 +77,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
     )
   );
 
-  document.body.append(overlay);
-  document.addEventListener('keydown', alTeclear);
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
   render(cuerpo, loading('Cargando pedido…'));
 
   async function cargar() {
@@ -420,11 +419,8 @@ function pedirReembolso(pedido, cobro, devuelto, recargar) {
   });
   const motivo = input({ placeholder: 'Por qué se devuelve', maxlength: '255', 'aria-label': 'Motivo' });
 
-  const cerrar = () => {
-    overlay.remove();
-    document.removeEventListener('keydown', alTeclear);
-  };
-  const alTeclear = (e) => e.key === 'Escape' && cerrar();
+  let desmontar;
+  const cerrar = () => desmontar();
 
   const confirmar = button('Reembolsar', {
     variant: 'danger',
@@ -465,8 +461,7 @@ function pedirReembolso(pedido, cobro, devuelto, recargar) {
     )
   );
 
-  document.body.append(overlay);
-  document.addEventListener('keydown', alTeclear);
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
   monto.focus();
 }
 

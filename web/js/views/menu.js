@@ -8,8 +8,8 @@ import { api } from '../api.js';
 import { money, percent } from '../format.js';
 import { activeBranch, branchQuery, branches, can } from '../session.js';
 import {
-  badge, button, card, confirm, empty, errorBox, field, h, input, pageHeader, render, select, skeleton,
-  tabs, titledCard, toast,
+  badge, button, card, confirm, empty, errorBox, field, h, input, montarDialogo, pageHeader,
+  render, select, skeleton, tabs, titledCard, toast,
 } from '../ui.js';
 
 export async function menu(outlet) {
@@ -234,7 +234,8 @@ export async function menu(outlet) {
       }),
     }));
 
-    const cerrar = () => overlay.remove();
+    let desmontar;
+    const cerrar = () => desmontar();
     const guardar = button('Guardar', {
       onClick: async () => {
         guardar.disabled = true;
@@ -304,7 +305,7 @@ export async function menu(outlet) {
       )
     );
 
-    document.body.append(overlay);
+    desmontar = montarDialogo(overlay, { alCerrar: cerrar });
   }
 
   /** Una opción del grupo: nombre, cuánto suma o resta, y si se ofrece. */
