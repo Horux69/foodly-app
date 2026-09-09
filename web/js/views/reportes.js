@@ -8,7 +8,7 @@
 import { api, query } from '../api.js';
 import { date as fecha, isoDate, money, number, time } from '../format.js';
 import { branches } from '../session.js';
-import { badge, button, card, errorBox, h, pageHeader, render, skeleton, tabs } from '../ui.js';
+import { badge, button, card, errorBox, h, pageHeader, render, skeleton, tabs, toast } from '../ui.js';
 import { canal } from './cocina.js';
 import { metodoPago } from './pedido-detalle.js';
 
@@ -39,6 +39,16 @@ export async function reportes(outlet) {
     cargar();
   }
 
+  // Un dueño no lee "vendí 4 millones", lee "vendí 12% más que la semana
+  // pasada". El período anterior lo calcula `Domain\PeriodComparison`: la
+  // misma cantidad de días, terminando justo antes.
+  const comparar = h('input', {
+    type: 'checkbox',
+    class: 'w-4 h-4 rounded border-stone-300',
+    checked: true,
+    onChange: () => cargar(),
+  });
+
   const filtros = card(
     h(
       'div',
@@ -51,9 +61,48 @@ export async function reportes(outlet) {
       etiqueta('Desde', desde),
       etiqueta('Hasta', hasta),
       branches().length > 1 ? etiqueta('Sucursal', sucursal) : null,
+      h(
+        'label',
+        { class: 'flex items-center gap-2 text-[13px] text-stone-600 pb-2' },
+        comparar,
+        'Comparar con el período anterior'
+      ),
       button('Aplicar', { onClick: () => cargar() })
     )
   );
+
+  /**
+   * Descarga el reporte que se está mirando.
+   *
+   * Lo arma el servidor y no el navegador: las listas de ajustes en pantalla
+   * están recortadas a 200 filas, así que un CSV hecho con lo que se ve
+   * exportaría eso sin que nadie lo note.
+   */
+  function descargar(reporte) {
+    return button('Descargar CSV', {
+      variant: 'secondary',
+      iconName: 'archivar',
+      onClick: async (e) => {
+        const boton = e.currentTarget;
+        boton.disabled = true;
+        try {
+          await api.download(
+            `/reports/export${query({
+              report: reporte,
+              from_date: desde.value,
+              to_date: hasta.value,
+              branch_id: sucursal.value,
+            })}`,
+            `${reporte}.csv`
+          );
+        } catch (error) {
+          toast(error.message);
+        } finally {
+          boton.disabled = false;
+        }
+      },
+    });
+  }
 
   function pintarPestanas() {
     render(
@@ -94,19 +143,19 @@ export async function reportes(outlet) {
     try {
       if (vista === 'venta') {
         const [ventas, productos, tiempos, horas] = await Promise.all([
-          api.get(`/reports/sales${qs}`),
+          api.get(`/reports/sales${query({ from_date: desde.value, to_date: hasta.value, branch_id: sucursal.value, compare: comparar.checked ? 'true' : '' })}`),
           api.get(`/reports/top-products${qs}`),
           api.get(`/reports/prep-times${qs}`),
           api.get(`/reports/peak-hours${qs}`),
         ]);
-        render(contenido, panel(ventas, productos, tiempos, horas));
+        render(contenido, panel(ventas, productos, tiempos, horas, descargar));
       } else {
         const [ingresos, porUsuario, ajustes] = await Promise.all([
           api.get(`/reports/payment-methods${qs}`),
           api.get(`/reports/sales-by-user${qs}`),
           api.get(`/reports/adjustments${qs}`),
         ]);
-        render(contenido, panelCierre(ingresos, porUsuario, ajustes));
+        render(contenido, panelCierre(ingresos, porUsuario, ajustes, descargar));
       }
     } catch (error) {
       render(contenido, errorBox(error.message, cargar));
@@ -121,27 +170,44 @@ export async function reportes(outlet) {
 const etiqueta = (texto, control) =>
   h('label', { class: 'block' }, h('span', { class: 'block text-xs text-stone-600 mb-1' }, texto), control);
 
-function panel(ventas, productos, tiempos, horas) {
+function panel(ventas, productos, tiempos, horas, descargar) {
   const t = ventas.totals;
   const minutos = (v) => (v === null || v === undefined ? 'sin datos' : `${Number(v).toFixed(0)} min`);
 
   return [
     // Un solo número protagonista por vista.
     card(
-      h('div', { class: 'text-sm text-stone-600' }, 'Ingresos del período'),
-      h('div', { class: 'text-5xl font-semibold text-stone-900 mt-1' }, money(t.revenue)),
+      h(
+        'div',
+        { class: 'flex items-start justify-between gap-3' },
+        h('div', { class: 'text-sm text-stone-600' }, 'Ingresos del período'),
+        descargar('sales')
+      ),
+      h(
+        'div',
+        { class: 'flex items-baseline gap-3 flex-wrap mt-1' },
+        h('div', { class: 'text-5xl font-semibold text-stone-900' }, money(t.revenue)),
+        variacion(ventas.previous?.change.revenue)
+      ),
       h(
         'div',
         { class: 'text-sm text-stone-500 mt-2' },
-        `${ventas.from_date} a ${ventas.to_date} · solo pedidos completados`
+        `${ventas.from_date} a ${ventas.to_date} · solo pedidos completados`,
+        ventas.previous
+          ? h(
+              'span',
+              {},
+              ` · antes ${money(ventas.previous.totals.revenue)} (${ventas.previous.from_date} a ${ventas.previous.to_date})`
+            )
+          : null
       )
     ),
 
     h(
       'div',
       { class: 'grid grid-cols-1 sm:grid-cols-3 gap-4' },
-      tarjetaDato('Pedidos vendidos', number(t.orders)),
-      tarjetaDato('Ticket promedio', money(t.avg_ticket)),
+      tarjetaDato('Pedidos vendidos', number(t.orders), null, ventas.previous?.change.orders),
+      tarjetaDato('Ticket promedio', money(t.avg_ticket), null, ventas.previous?.change.avg_ticket),
       tarjetaDato(
         'Cocina, tiempo mediano',
         minutos(tiempos.median_minutes),
@@ -207,14 +273,19 @@ function panel(ventas, productos, tiempos, horas) {
  * miden cosas distintas y la pantalla lo dice, para que la diferencia no
  * parezca un error.
  */
-function panelCierre(ingresos, porUsuario, ajustes) {
+function panelCierre(ingresos, porUsuario, ajustes, descargar) {
   const metodos = ingresos.by_method;
   const neto = metodos.reduce((suma, m) => suma + Number(m.net), 0);
   const devuelto = metodos.reduce((suma, m) => suma + Number(m.refunded), 0);
 
   return [
     card(
-      h('div', { class: 'text-sm text-stone-600' }, 'Ingresos del período'),
+      h(
+        'div',
+        { class: 'flex items-start justify-between gap-3' },
+        h('div', { class: 'text-sm text-stone-600' }, 'Ingresos del período'),
+        h('div', { class: 'flex flex-wrap gap-2' }, descargar('payment-methods'), descargar('adjustments'))
+      ),
       h('div', { class: 'text-5xl font-semibold text-stone-900 mt-1' }, money(neto)),
       h(
         'div',
@@ -354,10 +425,35 @@ function seccionAjuste(titulo, grupo, descripcion, tituloDe) {
   );
 }
 
-const tarjetaDato = (titulo, valor, pie) =>
+/**
+ * Cuánto cambió contra el período anterior.
+ *
+ * `null` no es 0%: es que antes no había nada con qué comparar, y decir
+ * "subió un infinito por ciento" no es una lectura. Lo decide
+ * `Domain\PeriodComparison`, aquí solo se pinta.
+ */
+function variacion(cambio) {
+  if (cambio === null || cambio === undefined) return null;
+
+  const sube = cambio > 0;
+  const tono = cambio === 0 ? 'bg-stone-100 text-stone-600' : sube ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700';
+  const signo = sube ? '+' : '';
+  return h(
+    'span',
+    { class: `text-[13px] font-medium px-2 py-0.5 rounded-full ${tono}` },
+    `${signo}${cambio.toFixed(1)} %`
+  );
+}
+
+const tarjetaDato = (titulo, valor, pie, cambio) =>
   card(
     h('div', { class: 'text-sm text-stone-600' }, titulo),
-    h('div', { class: 'text-2xl font-semibold text-stone-900 mt-1' }, valor),
+    h(
+      'div',
+      { class: 'flex items-baseline gap-2 flex-wrap mt-1' },
+      h('div', { class: 'text-2xl font-semibold text-stone-900' }, valor),
+      variacion(cambio)
+    ),
     pie ? h('div', { class: 'text-xs text-stone-500 mt-1' }, pie) : null
   );
 

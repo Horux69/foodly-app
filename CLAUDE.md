@@ -122,6 +122,7 @@ cd php && vendor/bin/phpunit    # pruebas del dominio
 npm install && npm test         # pruebas del frontend (Vitest + jsdom)
 cd php && php bin/create_tenant.php "Nombre" --branch="Sede" --branch-code=SED \
     --admin-email=dueno@x.com --admin-password="clave-larga"
+cd php && php bin/delete_tenant.php "Nombre" --confirm="Nombre"   # irreversible
 ```
 
 `setup-php.sh` es para una base vacía: reaplica `001_initial_schema.sql`, que
@@ -466,9 +467,10 @@ una cosa menos que inventar. `Services\StatusConfigService` define el flujo;
 `Services\OrderStatusService`, que ya existía, lo opera avanzando un pedido
 concreto.
 
-- **Fase 6 (confianza y pulido)**, en curso y partida en trozos. Hechos:
-  pruebas de las pantallas críticas (F6.1), teclado en el mostrador (F6.2) y
-  contraseña propia con renovación de token (F6.3).
+- **Fase 6 (confianza y pulido)**, completa: pruebas de las pantallas
+  críticas (F6.1), teclado en el mostrador (F6.2), contraseña propia con
+  renovación de token (F6.3), exportar reportes y comparar períodos (F6.4) y
+  dar de baja un restaurante (F6.5).
 
 Escribir esas pruebas destapó lo que iban a destapar: **el modal de
 modificadores dejaba agregar un producto sin cumplir su grupo obligatorio, y
@@ -520,21 +522,48 @@ Sobre la sesión, tres cosas:
   sesión en el modelo, así que para cortar todo de inmediato hay que rotar
   `SECRET_KEY` —y eso echa a todo el mundo—.
 
-**Siguiente**: lo que queda de la fase 6 —exportar reportes y comparar
-períodos (F6.4) y dar de baja un restaurante (F6.5, el pendiente de las
-claves foráneas)—. La fase 4, servicio en mesa, el plan la deja condicionada
-a que haya clientes de ese modelo.
+Sobre los reportes y la baja de un restaurante, tres cosas:
+
+- **El período anterior tiene la misma cantidad de días y termina justo
+  antes.** Comparar siete días contra treinta daría una caída del 76% que no
+  significa nada. Y cuando antes no había nada, el cambio viaja en `null` y
+  la pantalla no muestra porcentaje: "subió un infinito por ciento" no es una
+  lectura. Lo decide `Domain\PeriodComparison`; la pantalla solo lo pinta.
+- **El CSV lo arma el servidor, no el navegador.** Las listas de ajustes en
+  pantalla están recortadas a 200 filas, así que un CSV hecho con lo que se
+  ve exportaría eso y nadie lo notaría. Va con punto y coma y con BOM
+  (`Domain\Csv`): es lo que Excel en español abre bien de doble clic, aunque
+  `pandas.read_csv` necesite entonces `sep=';'`.
+- **Dar de baja un restaurante es un script, no una migración con
+  `ON DELETE`.** Siete claves foráneas bloquean el borrado en cascada, y
+  cinco de ellas son justo las protecciones sobre las que están construidas
+  las fases 5 y 6: un estado con pedidos encima no se borra, una opción ya
+  vendida tampoco, los productos se archivan. Con `CASCADE`, borrar un estado
+  borraría los pedidos que están en él. Y hacerlas `DEFERRABLE` movería el
+  error al commit, o sea después de que el controlador ya respondió. Así que
+  el orden lo pone `php/bin/delete_tenant.php`, que borra en una transacción
+  y exige repetir el nombre exacto.
+
+`php/tests/Core/LlamadasTest.php` recorre `php/src` y comprueba por reflexión
+que los métodos que el código llama existan. No reemplaza a las pruebas de
+integración que faltan, pero atrapa la forma concreta en que esta sesión
+rompió dos veces: `OrderStatusService::buildMachine()` dejó de existir al
+pisar el archivo con una clase nueva del mismo nombre, y
+`RoleRepository::listPermissions()` se borró por parecer código muerto
+mientras `TenantProvisioning` lo seguía usando —el alta de restaurantes
+quedó rota y la suite en verde—.
+
+**Siguiente**: solo queda la fase 4 (servicio en mesa), que el plan deja
+condicionada a que haya clientes de ese modelo y que arrastra la pieza más
+pesada que le falta al backend: modificar un pedido abierto.
 
 Pendientes conocidos:
 
 - No hay pruebas de integración en PHP. El dominio sí tiene suite (PHPUnit);
   el resto se validó a mano contra un Postgres real y manejando el frontend en
   un navegador. La suite `tests/` de Python cubre el backend retirado.
-- **Un tenant no se puede borrar.** Varias claves foráneas apuntan a tablas que
-  el borrado en cascada intenta vaciar primero (`menu_items.tax_rate_id`,
-  `users.role_id`, `orders.status_id`, `order_items.menu_item_id`, entre otras),
-  así que Postgres se traba. Dar de baja un restaurante hoy exige borrar a mano
-  en orden. Se arregla con una migración que defina `ON DELETE` en esas claves.
+- No hay pruebas de integración en PHP (ver arriba): `LlamadasTest` tapa una
+  parte del agujero, no todo.
 - **El frontend tiene arnés de pruebas, pero cubre poco todavía.**
   `web/tests/` corre con Vitest sobre jsdom y monta la aplicación real —el
   esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
@@ -548,8 +577,9 @@ Pendientes conocidos:
   productos, los horarios de sucursal, el editor de estados y transiciones,
   la toma de pedido con un grupo obligatorio, el avance de estado en cocina,
   el cobro por partes hasta saldar, los atajos de teclado y el foco de los
-  diálogos, la renovación del token y el cambio de contraseña, y que un botón
-  que falla vuelva a servir.
+  diálogos, la renovación del token y el cambio de contraseña, la comparación
+  entre períodos con su descarga en CSV, y que un botón que falla vuelva a
+  servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

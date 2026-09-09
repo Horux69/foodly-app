@@ -116,6 +116,19 @@ require __DIR__ . '/../src/Api/routes.php';
 try {
     [$status, $body] = $router->dispatch($_SERVER['REQUEST_METHOD'], $path);
     http_response_code($status);
+
+    // Lo que no es JSON (el CSV de los reportes) trae su propio tipo y sus
+    // propias cabeceras, y se escribe tal cual.
+    if ($body instanceof App\Api\RawResponse) {
+        header('Content-Type: ' . $body->contentType);
+        foreach ($body->headers as $nombre => $valor) {
+            header($nombre . ': ' . $valor);
+        }
+        echo $body->body;
+        Database::endAppTransaction(success: true);
+        return;
+    }
+
     // 204 es "hecho, y no hay nada que devolver": un cuerpo ahi es invalido
     // y algunos proxies lo descartan o se atragantan. api.js ya lo espera.
     if ($status !== 204) {

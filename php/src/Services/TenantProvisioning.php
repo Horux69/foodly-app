@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Core\Permissions;
 use App\Domain\SettingsError;
 use App\Domain\TenantSettings;
 use App\Models\Tenant;
@@ -101,8 +102,10 @@ final class TenantProvisioning
         // AdminService::setRolePermissions), asi que no puede quedar como un
         // rol mas que alguien edite hasta dejarlo sin permisos.
         $adminRole = $roles->create($tenantId, 'admin', 'Administrador', isSystem: true);
-        $allPermissionCodes = array_map(static fn ($p) => $p->code, $roles->listPermissions());
-        $roles->setPermissions($adminRole->id, $allPermissionCodes);
+        // Todos los del catalogo de la plataforma, que desde F5.5 es la
+        // fuente: antes se leian de la tabla `permissions`, que es el destino
+        // del join y no el catalogo.
+        $roles->setPermissions($adminRole->id, Permissions::codes());
     }
 
     /**

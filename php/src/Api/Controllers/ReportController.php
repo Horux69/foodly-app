@@ -7,7 +7,9 @@ namespace App\Api\Controllers;
 use App\Api\ApiException;
 use App\Api\Deps;
 use App\Api\Request;
+use App\Api\RawResponse;
 use App\Api\RequestContext;
+use App\Domain\Csv;
 use App\Core\Money;
 use App\Services\ReportError;
 use App\Services\ReportService;
@@ -43,7 +45,7 @@ final class ReportController
         [$branchId, $from, $to] = self::filters($ctx);
 
         try {
-            $data = ReportService::sales($ctx->tenantId, $branchId, $from, $to);
+            $data = ReportService::sales($ctx->tenantId, $branchId, $from, $to, Request::queryBool('compare'));
         } catch (ReportError $e) {
             throw new ApiException(422, $e->getMessage());
         }
@@ -72,7 +74,47 @@ final class ReportController
                 'orders' => (int) $r['orders'],
                 'revenue' => self::money($r['revenue']),
             ], $data['by_branch']),
+            // Solo con ?compare=true: el mismo total del periodo anterior y
+            // cuanto cambio. `change` viene en null cuando antes no habia
+            // nada, porque no hay porcentaje que calcular contra cero.
+            'previous' => $data['previous'] === null ? null : [
+                'from_date' => $data['previous']['from_date'],
+                'to_date' => $data['previous']['to_date'],
+                'totals' => [
+                    'orders' => (int) $data['previous']['totals']['orders'],
+                    'revenue' => self::money($data['previous']['totals']['revenue']),
+                    'avg_ticket' => self::money($data['previous']['totals']['avg_ticket']),
+                ],
+                'change' => $data['previous']['change'],
+            ],
         ];
+    }
+
+    /**
+     * Cualquier reporte como CSV.
+     *
+     * Se arma en el servidor y no en el navegador porque las listas de
+     * ajustes que la pantalla muestra estan recortadas a 200 filas: un CSV
+     * hecho con lo que hay en pantalla exportaria eso y nadie lo notaria.
+     */
+    public static function export(): RawResponse
+    {
+        $ctx = Deps::require(Deps::getContext(), 'reports.view');
+        [$branchId, $from, $to] = self::filters($ctx);
+
+        try {
+            [$encabezados, $filas, $nombre] = ReportService::export(
+                $ctx->tenantId,
+                $branchId,
+                $from,
+                $to,
+                Request::queryString('report', 40) ?? 'sales',
+            );
+        } catch (ReportError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return RawResponse::csv(Csv::render($encabezados, $filas), $nombre);
     }
 
     public static function topProducts(): array

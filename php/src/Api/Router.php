@@ -113,6 +113,11 @@ final class Router
             if ($result instanceof JsonResponse) {
                 return [$result->status, $result->data];
             }
+            // Una RawResponse viaja tal cual: el front controller la reconoce
+            // y no le pone el Content-Type de JSON.
+            if ($result instanceof RawResponse) {
+                return [$result->status, $result];
+            }
             return [200, $result];
         }
 

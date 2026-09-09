@@ -21,5 +21,8 @@ final class ReportRoutes
         $router->get('/reports/payment-methods', fn () => ReportController::paymentMethods());
         $router->get('/reports/sales-by-user', fn () => ReportController::salesByUser());
         $router->get('/reports/adjustments', fn () => ReportController::adjustments());
+
+        // Cualquiera de ellos como CSV: ?report=sales|top-products|...
+        $router->get('/reports/export', fn () => ReportController::export());
     }
 }

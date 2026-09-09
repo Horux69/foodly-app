@@ -136,6 +136,38 @@ export const api = {
   // Sin cuerpo: lo que se borra ya está en la ruta. La API responde 204 y
   // `request` lo traduce a null.
   delete: (path) => request(path, { method: 'DELETE' }),
+
+  /**
+   * Descarga un archivo que sirve la API.
+   *
+   * No se puede con un enlace normal: la sesión va en la cabecera
+   * `Authorization` y no en una cookie, así que el navegador no la mandaría.
+   * Se pide con fetch y se guarda desde un blob.
+   */
+  async download(path, nombrePorDefecto) {
+    await renovarSiHaceFalta();
+
+    const token = getToken();
+    const res = await fetch(`${BASE}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError(await readError(res), res.status);
+
+    // El nombre lo pone el servidor en Content-Disposition; si no llega
+    // —algún proxy la recorta— se usa el que pida quien llama.
+    const disposicion = res.headers.get('Content-Disposition') ?? '';
+    const nombre = disposicion.match(/filename="([^"]+)"/)?.[1] ?? nombrePorDefecto;
+
+    const url = URL.createObjectURL(await res.blob());
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombre;
+    document.body.append(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(url);
+    return nombre;
+  },
 };
 
 /**

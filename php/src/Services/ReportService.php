@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Core\Money;
+use App\Domain\PeriodComparison;
 use App\Repositories\BranchRepository;
 use App\Repositories\ReportRepository;
 
@@ -39,20 +41,146 @@ final class ReportService
     }
 
     /** @return array<string, mixed> */
-    public static function sales(string $tenantId, ?string $branchId, ?string $fromDate, ?string $toDate): array
-    {
+    public static function sales(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+        bool $compare = false,
+    ): array {
         [$start, $end] = self::resolveRange($fromDate, $toDate);
         self::checkBranch($tenantId, $branchId);
 
         $repo = new ReportRepository(Database::app());
+        $totals = $repo->salesTotals($tenantId, $branchId, $start, $end);
+
         return [
             'from_date' => $start,
             'to_date' => $end,
-            'totals' => $repo->salesTotals($tenantId, $branchId, $start, $end),
+            'totals' => $totals,
             'by_day' => $repo->salesByDay($tenantId, $branchId, $start, $end),
             'by_channel' => $repo->salesByChannel($tenantId, $branchId, $start, $end),
             'by_branch' => $repo->salesByBranch($tenantId, $branchId, $start, $end),
+            'previous' => $compare ? self::previous($repo, $tenantId, $branchId, $start, $end, $totals) : null,
         ];
+    }
+
+    /**
+     * El mismo total para el periodo anterior, y cuanto cambio.
+     *
+     * Un dueno no lee "vendi 4 millones", lee "vendi 12% mas que la semana
+     * pasada". El periodo anterior tiene la misma cantidad de dias y termina
+     * justo antes: comparar siete dias con treinta daria una caida que no
+     * significa nada.
+     *
+     * @param array<string, mixed> $totals
+     * @return array<string, mixed>
+     */
+    private static function previous(
+        ReportRepository $repo,
+        string $tenantId,
+        ?string $branchId,
+        string $start,
+        string $end,
+        array $totals,
+    ): array {
+        [$antesInicio, $antesFin] = PeriodComparison::previousRange($start, $end);
+        $antes = $repo->salesTotals($tenantId, $branchId, $antesInicio, $antesFin);
+
+        // Los importes se comparan en centavos enteros: el porcentaje no es
+        // dinero, pero de donde sale si.
+        $centavos = static fn (mixed $v) => Money::fromDecimalString((string) ($v ?? '0'));
+
+        return [
+            'from_date' => $antesInicio,
+            'to_date' => $antesFin,
+            'totals' => $antes,
+            'change' => [
+                'orders' => PeriodComparison::change((int) $antes['orders'], (int) $totals['orders']),
+                'revenue' => PeriodComparison::change($centavos($antes['revenue']), $centavos($totals['revenue'])),
+                'avg_ticket' => PeriodComparison::change($centavos($antes['avg_ticket']), $centavos($totals['avg_ticket'])),
+            ],
+        ];
+    }
+
+    /**
+     * Un reporte como filas para CSV.
+     *
+     * Se arma en el servidor y no en el navegador porque las listas de
+     * ajustes que la pantalla muestra estan recortadas a 200 filas: un CSV
+     * hecho con lo que hay en pantalla exportaria eso y nadie lo notaria.
+     *
+     * @return array{0: string[], 1: array<int, array<int, string|int|null>>, 2: string}
+     *         encabezados, filas y nombre de archivo
+     */
+    public static function export(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+        string $reporte,
+    ): array {
+        [$start, $end] = self::resolveRange($fromDate, $toDate);
+        self::checkBranch($tenantId, $branchId);
+        $repo = new ReportRepository(Database::app());
+
+        $nombre = "{$reporte}-{$start}-a-{$end}.csv";
+
+        return match ($reporte) {
+            'sales' => [
+                ['Dia', 'Pedidos', 'Venta'],
+                array_map(
+                    static fn (array $r) => [$r['day'], (int) $r['orders'], $r['revenue']],
+                    $repo->salesByDay($tenantId, $branchId, $start, $end)
+                ),
+                $nombre,
+            ],
+            'top-products' => [
+                ['Producto', 'Unidades', 'Venta'],
+                array_map(
+                    static fn (array $r) => [$r['name'], (int) $r['units'], $r['revenue']],
+                    $repo->topProducts($tenantId, $branchId, $start, $end, 1000)
+                ),
+                $nombre,
+            ],
+            'payment-methods' => [
+                ['Metodo', 'Movimientos', 'Total'],
+                array_map(
+                    static fn (array $r) => [$r['method'], (int) $r['payments'], $r['total']],
+                    $repo->incomeByMethod($tenantId, $branchId, $start, $end)
+                ),
+                $nombre,
+            ],
+            'sales-by-user' => [
+                ['Usuario', 'Pedidos', 'Venta'],
+                array_map(
+                    static fn (array $r) => [$r['name'], (int) $r['orders'], $r['revenue']],
+                    $repo->salesByUser($tenantId, $branchId, $start, $end)
+                ),
+                $nombre,
+            ],
+            // Los tres tipos en un solo archivo y con una columna que los
+            // distingue: para cuadrar un dia se miran juntos, no por
+            // separado.
+            'adjustments' => [
+                ['Tipo', 'Pedido', 'Importe', 'Cuando', 'Motivo', 'Quien'],
+                [
+                    ...array_map(static fn (array $r) => [
+                        'Anulacion', $r['order_number'], $r['total'], $r['at'], $r['reason'], $r['by_name'],
+                    ], $repo->cancellations($tenantId, $branchId, $start, $end)),
+                    ...array_map(static fn (array $r) => [
+                        'Reembolso', $r['order_number'], $r['amount'], $r['at'], $r['reason'], $r['by_name'],
+                    ], $repo->refunds($tenantId, $branchId, $start, $end)),
+                    ...array_map(static fn (array $r) => [
+                        'Descuento', $r['order_number'], $r['discount'], $r['at'], null, $r['by_name'],
+                    ], $repo->discounts($tenantId, $branchId, $start, $end)),
+                ],
+                $nombre,
+            ],
+            default => throw new ReportError(
+                "Reporte desconocido: {$reporte}. Validos: sales, top-products, payment-methods, sales-by-user, adjustments"
+            ),
+        };
     }
 
     /** @return array<int, array<string, mixed>> */
