@@ -167,9 +167,9 @@ Sobre eso se construyeron dos fases de trabajo en la web:
   de reparto en Administración, detalle de pedido con bitácora, precio por
   sucursal en el menú y edición de los permisos de un rol.
 
-- **Fase 2 (cerrar el ciclo del dinero)**, en curso y partida en trozos.
-  Hechos: cobro parcial y por varios métodos (F2.1), división de cuenta
-  (F2.2), reembolsos (F2.3), cierre de turno con arqueo (F2.5) y los
+- **Fase 2 (cerrar el ciclo del dinero)**, completa: cobro parcial y por
+  varios métodos (F2.1), división de cuenta (F2.2), reembolsos (F2.3),
+  cancelación con motivo (F2.4), cierre de turno con arqueo (F2.5) y los
   reportes de cierre (F2.6).
 
 Sobre los reembolsos, tres detalles que conviene no deshacer:
@@ -226,14 +226,29 @@ Sobre los reportes de cierre, dos cosas:
   que muestre 200 anulaciones y diga que suman solo esas 200 no sirve para
   cuadrar.
 
-**Siguiente**: lo único que queda de la fase 2 es la cancelación con motivo
-(F2.4). El endpoint de cambio de estado ya acepta `note` y la guarda en
-`order_status_history`, y el reporte de anulaciones ya la muestra: falta el
-campo en la pantalla y la regla de negocio.
+Sobre la anulación, la regla que se decidió y sus dos consecuencias:
 
-Antes de F2.4 hay una decisión de negocio pendiente: **si un pedido con pagos
-debe exigir reembolso antes de poder cancelarse.** Ata F2.3 con F2.4 y no la
-resuelve el código.
+- **Un pedido con plata encima no se anula: primero se reembolsa.** Cancelar
+  dejaría un cobro sin venta que lo respalde —la caja cuadraría de más y el
+  cliente se quedaría sin su plata y sin su pedido— y el sistema no podría
+  distinguir eso de un descuadre. Se mira el **neto**, así que un pedido
+  cobrado y reembolsado entero sí se anula: ese es el camino que la regla
+  obliga a recorrer.
+- **Anular exige decir por qué.** El motivo va a `order_status_history.note` y
+  de ahí al reporte de anulaciones. Sin él, esa lista no responde la pregunta
+  que se le hace.
+
+Las dos viven en `Domain\StatusChangeRules`, junto con la que ya existía —no
+se completa un pedido sin saldar—, porque las tres responden lo mismo: qué
+exige el dinero del pedido para entrar a un estado de cierta categoría. La
+máquina de estados sigue respondiendo la otra pregunta, la de qué transiciones
+configuró el tenant y con qué permiso.
+
+**Siguiente**: la fase 3 del plan de obra —impresión y piso de venta: comanda
+de cocina y ticket de cliente, reimpresión, aviso de pedido nuevo en cocina,
+KDS completo, e instalable con tolerancia a cortes de red (que se apoya en la
+llave de idempotencia de F0.2). La fase 4, servicio en mesa, el plan la deja
+condicionada a que haya clientes de ese modelo.
 
 Pendientes conocidos:
 
@@ -251,7 +266,7 @@ Pendientes conocidos:
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
   domicilios, el cobro, el reembolso y la división de cuenta desde el detalle
-  del pedido, la caja y los reportes de cierre.
+  del pedido, la caja, los reportes de cierre y la anulación con motivo.
   Faltan la toma de pedido con modificadores obligatorios y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

@@ -14,6 +14,7 @@ import { elapsed, minutesSince, time } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery } from '../session.js';
 import { badge, button, empty, errorBox, h, render, skeleton, toast } from '../ui.js';
+import { abrirCancelacion } from './cancelar-pedido.js';
 import { abrirPedido } from './pedido-detalle.js';
 
 const REFRESCO_MS = 15000;
@@ -210,6 +211,12 @@ function ticket(pedido, refrescar) {
 }
 
 async function avanzar(boton, pedido, estado, refrescar) {
+  // Anular exige motivo y no se puede si el pedido tiene plata encima; el
+  // diálogo compartido se encarga de las dos cosas.
+  if (estado.category === 'cancelled') {
+    return abrirCancelacion(pedido, estado, refrescar);
+  }
+
   boton.disabled = true;
   try {
     await api.post(`/orders/${pedido.id}/status`, { to_status_id: estado.id });

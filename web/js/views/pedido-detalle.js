@@ -16,6 +16,7 @@ import { can, me } from '../session.js';
 import {
   badge, button, empty, errorBox, h, input, loading, render, section, select, toast,
 } from '../ui.js';
+import { abrirCancelacion } from './cancelar-pedido.js';
 import { canal } from './cocina.js';
 import { abrirDivision } from './dividir-cuenta.js';
 
@@ -461,6 +462,12 @@ function bloqueAvance(pedido, siguientes, recargar) {
           variant: estado.category === 'cancelled' ? 'danger' : 'primary',
           iconName: estado.category === 'cancelled' ? 'cerrar' : 'check',
           onClick: async (event) => {
+            // Anular pide motivo y avisa si hay plata encima: por eso pasa
+            // por su propio diálogo en vez de avanzar directo.
+            if (estado.category === 'cancelled') {
+              return abrirCancelacion(pedido, estado, recargar);
+            }
+
             event.currentTarget.disabled = true;
             try {
               await api.post(`/orders/${pedido.id}/status`, { to_status_id: estado.id });

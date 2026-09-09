@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Domain\StatusChangeError;
+use App\Domain\StatusChangeRules;
 use App\Domain\StatusMachine;
 use App\Domain\TransitionError;
 use App\Models\Order;
@@ -80,15 +82,19 @@ final class OrderStatusService
             throw new OrderStatusError($e->getMessage());
         }
 
-        // Regla de caja: un pedido no se da por completado sin estar saldado.
-        // Se apoya en la categoria, no en el nombre del estado, y deja fuera
-        // 'cancelled' (tambien final) porque un pedido sin pagar si se cancela.
-        if ($target->category === 'completed') {
-            $balance = PaymentService::getBalanceForOrder($order);
-            if (!$balance->isSettled) {
-                $pending = \App\Core\Money::toDecimalString($balance->pendingCents);
-                throw new OrderStatusError("El pedido no esta saldado: faltan {$pending}");
-            }
+        // Lo que el dinero del pedido permite, por encima de lo que la
+        // maquina de estados del tenant configuro: completar exige estar
+        // saldado, anular exige no tener plata encima y decir por que.
+        // Ambas reglas son de la plataforma, no de cada restaurante, y viven
+        // juntas en Domain\StatusChangeRules.
+        try {
+            StatusChangeRules::ensureCanEnter(
+                $target->category,
+                PaymentService::getBalanceForOrder($order),
+                $note,
+            );
+        } catch (StatusChangeError $e) {
+            throw new OrderStatusError($e->getMessage());
         }
 
         $orders->setStatus($order->id, $target->id);

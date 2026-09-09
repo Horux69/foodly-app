@@ -20,6 +20,7 @@ import { branchQuery, can } from '../session.js';
 import {
   badge, button, empty, errorBox, h, input, pageHeader, render, select, skeleton, toast,
 } from '../ui.js';
+import { abrirCancelacion } from './cancelar-pedido.js';
 import { abrirPedido } from './pedido-detalle.js';
 
 const REFRESCO_MS = 20000;
@@ -255,6 +256,10 @@ function tarjeta(pedido, repartidores, refrescar) {
             button(estado.name, {
               variant: estado.category === 'cancelled' ? 'danger' : 'primary',
               onClick: async (event) => {
+                if (estado.category === 'cancelled') {
+                  return abrirCancelacion(pedido, estado, refrescar);
+                }
+
                 event.currentTarget.disabled = true;
                 try {
                   await api.post(`/orders/${pedido.id}/status`, { to_status_id: estado.id });
