@@ -47,6 +47,8 @@ async function montarHorarios(horarios, extra = {}) {
       '/branches': [{ id: SEDE, name: 'Centro', code: 'CEN', timezone: 'America/Bogota' }],
       '/branches/*': (url) =>
         url.includes('/schedules') ? horarios : [],
+      // El editor de estados carga el flujo del restaurante.
+      '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
       '/tax-rates': [],
       ...extra,
     },
@@ -180,6 +182,7 @@ describe('horarios de sucursal', () => {
         '/settings': AJUSTES,
         '/branches': [{ id: SEDE, name: 'Centro', code: 'CEN', timezone: 'America/Bogota' }],
         '/branches/*': (url) => (url.includes('/schedules') ? { schedules: [franja()], channels_without_windows: [] } : []),
+        '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
         '/tax-rates': [],
       },
     });

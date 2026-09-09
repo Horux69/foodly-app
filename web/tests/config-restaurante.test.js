@@ -33,6 +33,8 @@ async function montarAdmin(respuestaDeSettings = AJUSTES) {
       // La pantalla carga las franjas de la sede activa desde que existe la
       // sección de Horarios.
       '/branches/*': { schedules: [], channels_without_windows: [] },
+      // El editor de estados carga el flujo del restaurante.
+      '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
       '/tax-rates': [],
     },
   });
@@ -117,6 +119,7 @@ describe('datos del restaurante', () => {
         '/settings': AJUSTES,
         '/branches': [],
         '/branches/*': { schedules: [], channels_without_windows: [] },
+        '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
         '/tax-rates': [],
       },
     });

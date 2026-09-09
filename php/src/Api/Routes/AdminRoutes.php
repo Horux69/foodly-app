@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Routes;
 
 use App\Api\Controllers\AdminController;
+use App\Api\Controllers\OrderStatusController;
 use App\Api\Router;
 
 /** Mismas rutas (y sin prefijo /admin) que app/api/v1/admin.py monta en router.py. */
@@ -31,6 +32,14 @@ final class AdminRoutes
 
         $router->get('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::listTables($p));
         $router->post('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::createTable($p));
+
+        // Estados de pedido y transiciones (F5.2).
+        $router->get('/order-statuses', fn () => OrderStatusController::getConfiguration());
+        $router->post('/order-statuses', fn () => OrderStatusController::createStatus());
+        $router->patch('/order-statuses/{status_id:uuid}', fn ($p) => OrderStatusController::updateStatus($p));
+        $router->put('/order-statuses/{status_id:uuid}/initial', fn ($p) => OrderStatusController::setInitial($p));
+        $router->delete('/order-statuses/{status_id:uuid}', fn ($p) => OrderStatusController::deleteStatus($p));
+        $router->put('/order-statuses/{status_id:uuid}/transitions', fn ($p) => OrderStatusController::setTransitions($p));
 
         $router->get('/permissions', fn () => AdminController::listPermissions());
 

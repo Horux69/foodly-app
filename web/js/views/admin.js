@@ -35,6 +35,7 @@ const SECCIONES = [
   { clave: 'config', etiqueta: 'Cómo opera', icono: 'admin', permiso: 'settings.view' },
   { clave: 'sucursales', etiqueta: 'Sucursales', icono: 'sucursal', permiso: 'settings.view' },
   { clave: 'horarios', etiqueta: 'Horarios', icono: 'reloj', permiso: 'settings.view' },
+  { clave: 'estados', etiqueta: 'Estados', icono: 'etiqueta', permiso: 'settings.view' },
   { clave: 'impuestos', etiqueta: 'Impuestos', icono: 'impuesto', permiso: 'settings.view' },
   // Aparece si el restaurante tiene el canal de domicilios activo: por
   // configuración, no por un condicional sobre el tenant.
@@ -93,6 +94,8 @@ export async function admin(outlet) {
     estado.horarios = sede
       ? await api.get(`/branches/${sede.id}/schedules`)
       : { schedules: [], channels_without_windows: [] };
+    // Los estados son del restaurante entero, no de una sede.
+    estado.flujo = await api.get('/order-statuses');
   }
 
   const disponibles = SECCIONES.filter((s) => can(s.permiso) && (s.visible?.(estado) ?? true));
@@ -117,6 +120,7 @@ export async function admin(outlet) {
     if (clave === 'config') render(panel, seccionConfig(estado));
     else if (clave === 'sucursales') render(panel, seccionSucursales(estado, refrescar));
     else if (clave === 'horarios') render(panel, seccionHorarios(estado, refrescar));
+    else if (clave === 'estados') render(panel, seccionEstados(estado, refrescar));
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
     else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
     else render(panel, seccionEquipo(estado, refrescar));
@@ -570,6 +574,285 @@ function seccionHorarios({ horarios, sede, sucursales }, refrescar) {
       { class: 'text-xs text-stone-500 px-1' },
       'Para una sede que cierra pasada la medianoche, pon la hora de cierre menor que la de apertura: “Viernes 20:00 – 02:00” abre el viernes por la noche y cierra la madrugada del sábado.'
     ),
+  ];
+}
+
+// =========================================================
+// Estados de pedido
+// =========================================================
+
+// El vocabulario fijo de la plataforma: los nombres los pone cada
+// restaurante, estas seis categorías no. El KDS, los reportes y los filtros
+// se apoyan en ellas y nunca en el nombre.
+const CATEGORIAS = {
+  new: 'Nuevo',
+  kitchen: 'En cocina',
+  ready: 'Listo',
+  in_transit: 'En camino',
+  completed: 'Completado',
+  cancelled: 'Anulado',
+};
+
+function seccionEstados({ flujo }, refrescar) {
+  const edita = can('settings.edit');
+  const { statuses, transitions, permissions } = flujo;
+
+  const salidasDe = (id) => transitions.filter((t) => t.from === id);
+
+  /** Una tarjeta por estado: sus datos arriba y sus salidas abajo. */
+  function tarjeta(estado) {
+    const nombre = input({ value: estado.name, maxlength: '80', class: 'campo flex-1 min-w-[150px]', disabled: !edita });
+    const categoria = select(
+      Object.entries(CATEGORIAS).map(([value, label]) => ({ value, label, selected: value === estado.category })),
+      { disabled: !edita }
+    );
+    const color = h('input', {
+      type: 'color',
+      value: estado.color ?? '#78716c',
+      class: 'h-9 w-12 rounded-lg border border-stone-300 bg-white p-1',
+      disabled: !edita,
+    });
+    const orden = input({ type: 'number', value: estado.sort_order, class: 'campo w-20 tabular-nums', disabled: !edita });
+    const esFinal = h('input', {
+      type: 'checkbox',
+      class: 'w-4 h-4 rounded border-stone-300',
+      checked: estado.is_final,
+      disabled: !edita,
+    });
+
+    // Una fila por cada otro estado: marcada, se puede ir ahí. Verlas todas
+    // —y no solo las configuradas— es lo que deja ver de un vistazo que un
+    // estado se quedó sin ninguna salida.
+    const destinos = statuses
+      .filter((s) => s.id !== estado.id)
+      .map((s) => {
+        const actual = salidasDe(estado.id).find((t) => t.to === s.id);
+        const marcado = h('input', {
+          type: 'checkbox',
+          class: 'w-4 h-4 rounded border-stone-300',
+          checked: Boolean(actual),
+          disabled: !edita,
+        });
+        const permiso = select(
+          [
+            { value: '', label: 'Cualquiera', selected: !actual?.permission },
+            ...permissions.map((p) => ({
+              value: p.code,
+              label: p.description,
+              selected: actual?.permission === p.code,
+            })),
+          ],
+          { class: 'campo h-8 py-0 text-[12.5px] flex-1 min-w-[180px]', disabled: !edita }
+        );
+        return { estado: s, marcado, permiso };
+      });
+
+    return card(
+      h(
+        'div',
+        { class: 'flex flex-wrap items-end gap-2' },
+        h('div', { class: 'flex-1 min-w-[150px]' }, field('Nombre', nombre)),
+        h('div', { class: 'min-w-[130px]' }, field('Categoría', categoria)),
+        h('div', {}, field('Color', color)),
+        h('div', {}, field('Orden', orden)),
+        h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600 pb-2' }, esFinal, 'Final'),
+        estado.is_initial
+          ? badge('Inicial', 'ok')
+          : edita
+            ? button('Hacer inicial', {
+                variant: 'secondary',
+                onClick: async () => {
+                  try {
+                    await api.put(`/order-statuses/${estado.id}/initial`, {});
+                    toast(`Los pedidos nuevos nacerán en “${estado.name}”`, 'ok');
+                    await refrescar();
+                  } catch (error) {
+                    toast(error.message);
+                  }
+                },
+              })
+            : null
+      ),
+
+      h(
+        'div',
+        { class: 'mt-3 pt-3 border-t border-stone-100' },
+        h('div', { class: 'text-[12.5px] font-medium text-stone-700 mb-1.5' }, 'Desde aquí se puede pasar a'),
+        destinos.length
+          ? h(
+              'div',
+              { class: 'space-y-1' },
+              destinos.map(({ estado: destino, marcado, permiso }) =>
+                h(
+                  'div',
+                  { class: 'flex flex-wrap items-center gap-2' },
+                  h(
+                    'label',
+                    { class: 'flex items-center gap-2 text-[13px] w-44 shrink-0' },
+                    marcado,
+                    h('span', { class: 'truncate' }, destino.name)
+                  ),
+                  permiso
+                )
+              )
+            )
+          : h('p', { class: 'text-sm text-stone-500' }, 'No hay otros estados a los que ir.'),
+        estado.is_final
+          ? h(
+              'p',
+              { class: 'text-[12px] text-stone-500 mt-1.5' },
+              'Es un estado final: de aquí no se sale, así que lo que se marque no se va a usar.'
+            )
+          : null
+      ),
+
+      edita
+        ? h(
+            'div',
+            { class: 'flex flex-wrap gap-2 mt-3' },
+            button('Guardar', {
+              variant: 'secondary',
+              onClick: async (e) => {
+                const boton = e.currentTarget;
+                boton.disabled = true;
+                try {
+                  await api.patch(`/order-statuses/${estado.id}`, {
+                    name: nombre.value.trim(),
+                    category: categoria.value,
+                    color: color.value,
+                    sort_order: Number(orden.value || 0),
+                    is_final: esFinal.checked,
+                  });
+                  // Las salidas van aparte porque su comprobación mira el
+                  // flujo entero: mandarlas juntas escondería cuál de las dos
+                  // cosas se rechazó.
+                  await api.put(`/order-statuses/${estado.id}/transitions`, {
+                    transitions: destinos
+                      .filter((d) => d.marcado.checked)
+                      .map((d) => ({ to_status_id: d.estado.id, required_permission: d.permiso.value || null })),
+                  });
+                  toast('Estado actualizado', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  toast(error.message);
+                  boton.disabled = false;
+                }
+              },
+            }),
+            button('Borrar', {
+              variant: 'secondary',
+              onClick: async () => {
+                try {
+                  await api.delete(`/order-statuses/${estado.id}`);
+                  toast('Estado borrado', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  // Con pedidos encima, en la bitácora, o dejando a otro sin
+                  // salida: el backend dice cuál.
+                  toast(error.message);
+                }
+              },
+            })
+          )
+        : null
+    );
+  }
+
+  const nuevoNombre = input({ placeholder: 'Ej. En espera de repartidor' });
+  const nuevaCategoria = select(Object.entries(CATEGORIAS).map(([value, label]) => ({ value, label })));
+  const nuevoOrden = input({ type: 'number', value: String((statuses.at(-1)?.sort_order ?? 0) + 1) });
+  const nuevoFinal = h('input', { type: 'checkbox', class: 'w-4 h-4 rounded border-stone-300' });
+
+  return [
+    titledCard(
+      'Estados de pedido',
+      h(
+        'div',
+        { class: 'text-[13px] text-stone-600 space-y-1.5 border-l-2 border-amber-300 pl-3' },
+        h(
+          'p',
+          {},
+          h('b', {}, 'El nombre es tuyo; la categoría, de la plataforma.'),
+          ' Llámalo como quieras: el KDS, los reportes y los filtros se guían por la categoría y nunca por el nombre.'
+        ),
+        h(
+          'p',
+          {},
+          h('b', {}, 'Un estado que no es final necesita al menos una salida.'),
+          ' Sin ella, un pedido que llegue ahí no avanza ni se puede cerrar, y eso frena el servicio.'
+        ),
+        h('p', {}, 'El permiso de cada salida es quién puede hacer ese paso. “Cualquiera” significa que no pide ninguno.')
+      )
+    ),
+
+    // Problemas y avisos los calcula Domain\StatusMachineRules, no esta
+    // pantalla. Los primeros impiden operar y normalmente no aparecen —una
+    // edición que los introduzca se rechaza—, pero hay que poder verlos:
+    // sobre una configuración rota se sigue pudiendo editar, justamente para
+    // arreglarla.
+    ...(flujo.problems?.length
+      ? [
+          h(
+            'div',
+            { class: 'text-[13px] text-red-700 bg-red-50 border border-red-200 rounded-[--r] px-3 py-2 space-y-1' },
+            h('p', { class: 'font-medium' }, 'El flujo está roto y hay que arreglarlo:'),
+            flujo.problems.map((problema) => h('p', {}, problema))
+          ),
+        ]
+      : []),
+
+    ...(flujo.warnings.length
+      ? [
+          h(
+            'div',
+            { class: 'text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[--r] px-3 py-2 space-y-1' },
+            flujo.warnings.map((aviso) => h('p', {}, aviso))
+          ),
+        ]
+      : []),
+
+    ...statuses.map(tarjeta),
+
+    edita
+      ? titledCard(
+          'Nuevo estado',
+          h(
+            'div',
+            { class: 'flex flex-wrap items-end gap-3' },
+            h('div', { class: 'flex-1 min-w-[200px]' }, field('Nombre', nuevoNombre)),
+            h('div', { class: 'min-w-[140px]' }, field('Categoría', nuevaCategoria)),
+            h('div', { class: 'w-24' }, field('Orden', nuevoOrden)),
+            h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600 pb-2' }, nuevoFinal, 'Final'),
+            button('Crear estado', {
+              onClick: async (e) => {
+                const boton = e.currentTarget;
+                boton.disabled = true;
+                try {
+                  await api.post('/order-statuses', {
+                    name: nuevoNombre.value.trim(),
+                    category: nuevaCategoria.value,
+                    sort_order: Number(nuevoOrden.value || 0),
+                    is_final: nuevoFinal.checked,
+                  });
+                  nuevoNombre.value = '';
+                  toast('Estado creado', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  // Un estado no final nace sin salidas, así que el backend
+                  // lo rechaza y dice por qué.
+                  toast(error.message);
+                  boton.disabled = false;
+                }
+              },
+            })
+          ),
+          h(
+            'p',
+            { class: 'text-[12.5px] text-stone-500 mt-2' },
+            'Un estado nuevo nace sin salidas: créalo como final, o dale una salida desde su tarjeta apenas exista. Para que se use, marca en otro estado que se puede pasar a él.'
+          )
+        )
+      : null,
   ];
 }
 

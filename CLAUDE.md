@@ -341,10 +341,10 @@ Tailwind llega por CDN y es lo único que no se puede precargar: se guarda
 sobre la marcha la primera vez que responde, porque un `addAll` que dependa
 de un tercero dejaría al worker sin instalar y a la tableta sin nada.
 
-- **Fase 5 (configuración sin código)**, en curso y partida en trozos.
-  Hechos: catálogo único de permisos (F5.5), datos del restaurante
-  editables (F5.4), modificadores desde la web (F5.1) y horarios de
-  sucursal (F5.3).
+- **Fase 5 (configuración sin código)**, completa: catálogo único de
+  permisos (F5.5), datos del restaurante editables (F5.4), modificadores
+  desde la web (F5.1), horarios de sucursal (F5.3) y estados de pedido con
+  sus transiciones (F5.2).
 
 Sobre esos dos, tres cosas:
 
@@ -431,12 +431,45 @@ Sobre los horarios, tres cosas:
 este es el CRUD de configuración y necesita ver también las apagadas, porque
 apagar una franja sin borrarla es cómo se cierra por temporada.
 
-**Siguiente**: lo último de la fase 5 es F5.2 —estados de pedido y
-transiciones desde la web—, la más riesgosa: un error ahí congela la
-operación del restaurante, así que la validación es parte de la tarjeta y no
-un extra. La fase 4, servicio en mesa, el plan la deja condicionada a que
-haya clientes de ese modelo, y la fase 6 (confianza y pulido) corre en
-paralelo.
+Sobre el editor de estados, cinco decisiones que conviene no deshacer:
+
+- **Se valida la configuración resultante, no la edición.** Lo que deja un
+  estado sin salida casi nunca es tocarlo a él, sino borrar el único al que
+  llevaba. Cada operación relee el flujo entero y compara; como corre dentro
+  de la transacción de la petición, negarse deshace la edición.
+- **Una edición no puede introducir un problema nuevo, pero sobre un flujo ya
+  roto se sigue pudiendo editar.** Si se exigiera una configuración impecable,
+  una rota no se podría arreglar desde la web: cada paso de la reparación
+  chocaría con lo que el paso siguiente iba a resolver, y el restaurante
+  quedaría atrapado. Por eso `StatusMachineRules::problems` devuelve la lista
+  y `ensureNotWorse` compara el antes con el después.
+- **Problemas y avisos son distintos y se ven distinto.** Los problemas
+  impiden operar —sin estado inicial no se crea ningún pedido; un estado no
+  final sin salida deja el pedido atascado— y salen en rojo. Los avisos no
+  impiden nada pero casi seguro están mal —sin categoría "completado" no se
+  cierra un pedido, sin "anulado" no se anula, salidas en un estado final que
+  nunca se usan, un estado al que no se llega— y salen en ámbar, porque son
+  estados intermedios legítimos mientras alguien arma su flujo.
+- **Un estado con pedidos encima o en la bitácora no se borra.**
+  `orders.status_id` y `order_status_history.status_id` son claves foráneas
+  sin `ON DELETE`: Postgres lo bloquearía igual, pero así el mensaje dice
+  cuántos pedidos hay que mover, o que la salida es dejar de usarlo.
+- **Un solo estado inicial lo impone `idx_status_initial_per_tenant`**
+  (índice único parcial de la migración 001), no una comprobación en PHP; por
+  eso mover la marca apaga la anterior antes de encender la nueva. Y el
+  `required_permission` de cada transición se valida contra el catálogo de
+  `Core\Permissions`, que desde F5.5 es la fuente.
+
+El código del estado se genera a partir del nombre y no se pide: identifica la
+fila en la base pero no decide nada —para eso está la categoría—, así que es
+una cosa menos que inventar. `Services\StatusConfigService` define el flujo;
+`Services\OrderStatusService`, que ya existía, lo opera avanzando un pedido
+concreto.
+
+**Siguiente**: quedan la fase 4 (servicio en mesa), que el plan deja
+condicionada a que haya clientes de ese modelo, y la fase 6 (confianza y
+pulido): pruebas de las pantallas críticas, teclado en el mostrador, cambio
+de contraseña y renovación de token, y exportar reportes.
 
 Pendientes conocidos:
 
@@ -458,8 +491,8 @@ Pendientes conocidos:
   impresión de comanda y ticket, el tablero de cocina, la cola de pedidos
   tomados sin red junto con el manifiesto y el precache del service worker,
   los datos del restaurante, los grupos de modificadores con su asignación a
-  productos, los horarios de sucursal, y que un botón que falla vuelva a
-  servir.
+  productos, los horarios de sucursal, el editor de estados y transiciones, y
+  que un botón que falla vuelva a servir.
   Faltan los modificadores obligatorios al tomar el pedido y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 
