@@ -122,6 +122,58 @@ describe('cobro desde el detalle del pedido', () => {
     expect(cuerpoDe(cobro).idempotency_key).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  /**
+   * El recorrido completo, que es como se cobra de verdad: una parte en
+   * efectivo, el resto con tarjeta, y el pedido queda saldado. Lo que se
+   * comprueba es que el segundo cobro ofrezca **el saldo que queda** y no el
+   * total otra vez — cobrar de más y tener que reembolsar es el error caro.
+   */
+  it('cobra por partes hasta dejar el saldo en cero', async () => {
+    let pagados = 0;
+    const mapa = respuestas();
+    const saldo = () => ({
+      total: '40000.00',
+      paid: pagados.toFixed(2),
+      refunded: '0.00',
+      net_paid: pagados.toFixed(2),
+      pending: (40000 - pagados).toFixed(2),
+      is_settled: pagados >= 40000,
+    });
+    mapa['/orders/o1'] = () => ({ ...PEDIDO, balance: saldo() });
+    mapa['/orders/o1/payments'] = () => [];
+    mapa['/orders/o1/payments/*'] = {};
+
+    const { fetch } = await abrirPanel(mapa);
+    expect(panel().querySelector('input[type="number"]').value).toBe('40000.00');
+
+    // Primera parte en efectivo.
+    panel().querySelector('input[type="number"]').value = '15000';
+    panel().querySelector('select').value = 'cash';
+    pagados = 15000;
+    [...panel().querySelectorAll('button')].find((b) => b.textContent.includes('Cobrar')).click();
+    await reposar(6);
+
+    // El panel vuelve ofreciendo lo que falta, no los 40.000 completos.
+    expect(panel().querySelector('input[type="number"]').value).toBe('25000.00');
+    expect(textoDelPanel()).toContain('$ 25.000');
+
+    // El resto con tarjeta.
+    panel().querySelector('select').value = 'card';
+    pagados = 40000;
+    [...panel().querySelectorAll('button')].find((b) => b.textContent.includes('Cobrar')).click();
+    await reposar(6);
+
+    const cobros = fetch.mock.calls.filter(([url, o]) => String(url).includes('/payments') && o?.method === 'POST');
+    expect(cobros.map((c) => cuerpoDe(c).amount)).toEqual([15000, 25000]);
+    expect(cobros.map((c) => cuerpoDe(c).method)).toEqual(['cash', 'card']);
+    // Cada intento con su propia llave: son dos cobros distintos, no un
+    // reintento del mismo.
+    expect(cuerpoDe(cobros[0]).idempotency_key).not.toBe(cuerpoDe(cobros[1]).idempotency_key);
+
+    // Saldado: ya no se ofrece cobrar más.
+    expect([...panel().querySelectorAll('button')].some((b) => b.textContent.includes('Cobrar'))).toBe(false);
+  });
+
   it('no ofrece cobrar sin el permiso de caja', async () => {
     const sinCaja = respuestas();
     sinCaja['/auth/me'] = sesion({ permissions: ['orders.view', 'orders.create'] });

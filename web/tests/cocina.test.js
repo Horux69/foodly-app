@@ -27,13 +27,14 @@ const tablero = ({ columns = ['new', 'kitchen', 'ready'], orders = [], dispatche
   dispatched,
 });
 
-const montarCocina = (respuestaKds) =>
+const montarCocina = (respuestaKds, extra = {}) =>
   montarApp({
     token: 'un-token',
     hash: '#/cocina',
     respuestas: {
-      '/auth/me': sesion({ permissions: ['orders.view'] }),
+      '/auth/me': sesion({ permissions: ['orders.view', 'orders.advance_kitchen'] }),
       '/kitchen/orders': respuestaKds,
+      ...extra,
     },
   });
 
@@ -209,5 +210,86 @@ describe('aviso de pedido nuevo', () => {
 
     window.dispatchEvent(new Event('focus'));
     expect(document.title).toBe(original);
+  });
+});
+
+// =========================================================
+// Avanzar un pedido desde cocina
+// =========================================================
+//
+// Es la mitad de lo que hace la pantalla y no estaba probada. Los botones no
+// los inventa el tablero: son los que declara la máquina de estados del
+// restaurante, así que un tenant sin camino de vuelta no tiene ninguno — y
+// eso es correcto.
+
+const EN_COCINA = { id: 's2', code: 'preparing', name: 'En preparación', category: 'kitchen', color: null };
+const LISTO = { id: 's3', code: 'ready', name: 'Listo', category: 'ready', color: null };
+const ANULADO = { id: 's9', code: 'cancelled', name: 'Cancelado', category: 'cancelled', color: null };
+
+const conSalidas = (numero, categoria, salidas) => ({ ...pedido(numero, categoria), next_statuses: salidas });
+
+const textoDeLosBotones = () =>
+  [...document.querySelectorAll('#vista button')].map((b) => b.textContent.trim());
+
+describe('avanzar el estado desde cocina', () => {
+  it('ofrece solo los estados que declara la máquina del restaurante', async () => {
+    await montarCocina(tablero({ orders: [conSalidas('A-1', 'new', [EN_COCINA])] }));
+    await reposar(3);
+
+    const botones = textoDeLosBotones();
+    expect(botones).toContain('En preparación');
+    // 'Listo' existe como estado pero no como salida de este: no aparece.
+    expect(botones).not.toContain('Listo');
+  });
+
+  it('no ofrece ninguno si el restaurante no configuró salida', async () => {
+    await montarCocina(tablero({ orders: [conSalidas('A-1', 'ready', [])] }));
+    await reposar(3);
+
+    // Queda el de reimprimir y los de marcar líneas, pero ninguno de estado.
+    const botones = textoDeLosBotones();
+    expect(botones).toContain('Reimprimir');
+    for (const estado of ['En preparación', 'Listo', 'Cancelado']) {
+      expect(botones).not.toContain(estado);
+    }
+  });
+
+  it('manda el estado elegido y repinta el tablero', async () => {
+    let avanzado = false;
+    const { fetch } = await montarCocina(
+      () => tablero({ orders: [avanzado ? conSalidas('A-1', 'kitchen', [LISTO]) : conSalidas('A-1', 'new', [EN_COCINA])] }),
+      {
+        '/orders/id-A-1/status': () => {
+          avanzado = true;
+          return {};
+        },
+      }
+    );
+    await reposar(3);
+
+    [...document.querySelectorAll('#vista button')].find((b) => b.textContent.trim() === 'En preparación').click();
+    await reposar(4);
+
+    const llamada = fetch.mock.calls.find(([url, o]) => String(url).includes('/status') && o?.method === 'POST');
+    expect(JSON.parse(llamada[1].body)).toEqual({ to_status_id: 's2' });
+    // Y el tablero ya muestra la salida siguiente, no la anterior.
+    expect(texto()).toContain('Listo');
+  });
+
+  /**
+   * Anular no avanza: abre el diálogo que pide el motivo, porque sin él el
+   * reporte de anulaciones no responde la pregunta que se le hace.
+   */
+  it('anular pide el motivo en vez de mandar el cambio', async () => {
+    const { fetch } = await montarCocina(tablero({ orders: [conSalidas('A-1', 'new', [ANULADO])] }), {
+      '/orders/id-A-1/balance': { total: '0.00', paid: '0.00', pending: '0.00', is_settled: true },
+    });
+    await reposar(3);
+
+    [...document.querySelectorAll('#vista button')].find((b) => b.textContent.trim() === 'Cancelado').click();
+    await reposar(4);
+
+    expect(fetch.mock.calls.some(([, o]) => o?.method === 'POST')).toBe(false);
+    expect(document.body.textContent).toMatch(/motivo/i);
   });
 });

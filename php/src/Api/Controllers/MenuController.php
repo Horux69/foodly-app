@@ -9,6 +9,7 @@ use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
 use App\Core\Money;
+use App\Domain\ModifierGroupRules;
 use App\Models\MenuItem;
 use App\Models\ModifierGroup;
 use App\Services\MenuCategoryView;
@@ -31,6 +32,9 @@ final class MenuController
             'min_select' => $g->minSelect,
             'max_select' => $g->maxSelect,
             'is_required' => $g->isRequired,
+            // La misma frase que ve quien configura el grupo: la escribe el
+            // dominio, no cada pantalla.
+            'rule' => ModifierGroupRules::describe($g->minSelect, $g->maxSelect, $g->isRequired),
             'modifiers' => array_map(static fn ($m) => [
                 'id' => $m->id,
                 'name' => $m->name,

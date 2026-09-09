@@ -466,10 +466,26 @@ una cosa menos que inventar. `Services\StatusConfigService` define el flujo;
 `Services\OrderStatusService`, que ya existía, lo opera avanzando un pedido
 concreto.
 
-**Siguiente**: quedan la fase 4 (servicio en mesa), que el plan deja
-condicionada a que haya clientes de ese modelo, y la fase 6 (confianza y
-pulido): pruebas de las pantallas críticas, teclado en el mostrador, cambio
-de contraseña y renovación de token, y exportar reportes.
+- **Fase 6 (confianza y pulido)**, en curso y partida en trozos. Hecho:
+  pruebas de las pantallas críticas (F6.1).
+
+Escribir esas pruebas destapó lo que iban a destapar: **el modal de
+modificadores dejaba agregar un producto sin cumplir su grupo obligatorio, y
+dejaba pasarse del máximo.** El pedido se rechazaba al confirmarlo, con el
+carrito lleno y alguien esperando. Ahora el botón nace deshabilitado con un
+"Falta elegir: …" y las casillas se cierran al llegar al tope. No es una
+segunda fuente de verdad —quien decide sigue siendo `Domain\ModifierValidation`
+al crear el pedido— sino la guía para no llegar al final con algo que se va a
+rechazar. La frase de la regla la sigue escribiendo el dominio: `/menu`
+devuelve `rule` igual que `/menu/modifier-groups`, así que la pantalla de
+venta y la de configuración dicen lo mismo.
+
+**Siguiente**: lo que queda de la fase 6 —teclado en el mostrador (F6.2, que
+incluye el foco atrapado y el Escape del modal de modificadores), contraseña
+propia y renovación de token (F6.3), exportar reportes y comparar períodos
+(F6.4) y dar de baja un restaurante (F6.5, el pendiente de las claves
+foráneas)—. La fase 4, servicio en mesa, el plan la deja condicionada a que
+haya clientes de ese modelo.
 
 Pendientes conocidos:
 
@@ -491,10 +507,10 @@ Pendientes conocidos:
   impresión de comanda y ticket, el tablero de cocina, la cola de pedidos
   tomados sin red junto con el manifiesto y el precache del service worker,
   los datos del restaurante, los grupos de modificadores con su asignación a
-  productos, los horarios de sucursal, el editor de estados y transiciones, y
-  que un botón que falla vuelva a servir.
-  Faltan los modificadores obligatorios al tomar el pedido y el avance de
-  estado en cocina. Cada pantalla nueva debería llegar con la suya.
+  productos, los horarios de sucursal, el editor de estados y transiciones,
+  la toma de pedido con un grupo obligatorio, el avance de estado en cocina,
+  el cobro por partes hasta saldar, y que un botón que falla vuelva a servir.
+  Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta
   `99e54ea` por un `[rail, topbar, barraInferior].forEach(render)` — `forEach`
