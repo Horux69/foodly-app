@@ -255,6 +255,8 @@ export function toast(message, kind = 'error') {
     error: ['bg-red-700', 'alerta'],
     ok: ['bg-stone-900', 'check'],
     info: ['bg-stone-900', 'alerta'],
+    // Ni error ni éxito: quedó pendiente y alguien tiene que saberlo.
+    warn: ['bg-amber-700', 'alerta'],
   }[kind];
 
   render(

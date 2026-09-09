@@ -31,6 +31,11 @@ export function forget() {
   actual = null;
   sucursalActiva = null;
   clearToken();
+
+  // El service worker guarda /auth/me para poder arrancar sin red. En una
+  // tableta compartida, el turno siguiente entra con otro usuario y esa copia
+  // le daría los permisos y la sucursal del anterior mientras no haya red.
+  navigator.serviceWorker?.controller?.postMessage({ tipo: 'olvidar' });
 }
 
 // ---------- sucursal activa ----------

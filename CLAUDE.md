@@ -244,9 +244,10 @@ exige el dinero del pedido para entrar a un estado de cierta categoría. La
 máquina de estados sigue respondiendo la otra pregunta, la de qué transiciones
 configuró el tenant y con qué permiso.
 
-- **Fase 3 (impresión y piso de venta)**, en curso y partida en trozos.
-  Hechos: comanda de cocina y ticket de cliente con reimpresión (F3.1, F3.2),
-  aviso de pedido nuevo en cocina (F3.3) y KDS completo (F3.4).
+- **Fase 3 (impresión y piso de venta)**, completa: comanda de cocina y
+  ticket de cliente (F3.1), reimpresión (F3.2), aviso de pedido nuevo en
+  cocina (F3.3), KDS completo (F3.4) e instalable con tolerancia a cortes de
+  red (F3.5).
 
 Sobre la impresión, tres cosas:
 
@@ -287,16 +288,60 @@ Sobre el tablero de cocina, tres cosas:
 
 El aviso de pedido nuevo compara los ids entre refrescos, suena con dos
 pitidos sintetizados (sin archivo: no hay paso de compilación donde meter un
-binario, y así también sonará sin red en F3.5) y cuenta en el título de la
+binario, y así también suena sin red) y cuenta en el título de la
 pestaña. El interruptor se recuerda **por dispositivo**: que la cocina
 abierta al comedor quiera silencio no dice nada de lo que quiera la tableta
 del mostrador.
 
-**Siguiente**: lo último de la fase 3 es F3.5 —instalable y tolerante a
-cortes de red: `manifest.webmanifest`, un service worker que sirva la app y
-la carta desde caché, y una cola de pedidos tomados sin red. Solo es seguro
-con la llave de idempotencia de F0.2, que ya está. La fase 4, servicio en
-mesa, el plan la deja condicionada a que haya clientes de ese modelo.
+Sobre la aplicación instalable y la cola sin red, cuatro decisiones que
+conviene no deshacer:
+
+- **El service worker va a la red primero y a la caché solo como respaldo**,
+  al revés de la receta habitual de PWA. Sin paso de compilación,
+  `web/js/app.js` se llama igual antes y después de cada cambio: una caché
+  que ganara serviría código viejo hasta que alguien acertara a invalidarla.
+  Con la red primero, quien tiene conexión ve siempre lo último —el servidor
+  ya manda `Cache-Control: no-cache`, así que lo que no cambió se resuelve
+  con un 304— y por eso `VERSION` en `web/sw.js` **no** hay que subirla en
+  cada despliegue. Sí hay tope de espera (3,5 s): la red intermitente no
+  siempre falla, a veces se cuelga, que frente a la pantalla es peor.
+- **De la API solo se guardan `/auth/me` y `/menu`.** La sesión, para poder
+  arrancar sin red —sin ella la aplicación se cree sin sesión y manda a una
+  pantalla de ingreso que sin red no puede ingresar— y la carta, para poder
+  seguir vendiendo. Un tablero de cocina o un arqueo servidos de hace horas
+  serían peores que un error honesto. Al salir se tira esa caché
+  (`session.forget` avisa al worker): en una tableta compartida, el
+  `/auth/me` del turno anterior le daría al siguiente sus permisos y su
+  sucursal.
+- **La cola reenvía con la misma llave de idempotencia con que se tomó el
+  pedido, y renueva la del formulario al encolar.** Lo primero es lo que
+  hace seguro reenviar: el caso común no es que la petición no llegue, sino
+  que se pierda la respuesta, y sin la llave cada reintento sería una venta
+  duplicada. Lo segundo es su espejo: si el pedido siguiente reusara la
+  llave del que quedó en cola, el backend lo tomaría por un reintento y
+  devolvería aquel — una venta perdida sin ningún error a la vista.
+- **Lo que el servidor rechaza (4xx) sale de la cola anotado; lo que falla
+  por red o por un 5xx se conserva.** Un pedido con un producto archivado o
+  una sucursal cerrada no va a entrar nunca y al frente de la cola taparía a
+  los que sí pueden; un 500 puede ser de un minuto. Lo descartado no
+  desaparece en silencio: queda en un aviso rojo hasta que alguien lo da por
+  visto, porque hay que volver a tomar ese pedido.
+
+El precache de `web/sw.js` está escrito a mano —no hay empaquetador que lo
+derive— y `web/tests/pwa.test.js` lo compara contra los archivos en disco:
+una vista nueva que no se agregue ahí desaparecería justo al cortarse el
+internet. Los iconos se generan con `php scripts/generar-iconos.php` desde
+la misma figura que `web/iconos/app.svg`, para no dejar binarios sin origen.
+Tailwind llega por CDN y es lo único que no se puede precargar: se guarda
+sobre la marcha la primera vez que responde, porque un `addAll` que dependa
+de un tercero dejaría al worker sin instalar y a la tableta sin nada.
+
+**Siguiente**: la fase 5 del plan de obra —configuración sin código:
+modificadores, estados de pedido y transiciones, y horarios, todos
+configurables por diseño pero hoy solo poblables por SQL. Es la promesa del
+producto y hoy se cumple a medias. La fase 4, servicio en mesa, el plan la
+deja condicionada a que haya clientes de ese modelo, y la fase 6 (confianza
+y pulido) corre en paralelo.
 
 Pendientes conocidos:
 
@@ -314,9 +359,10 @@ Pendientes conocidos:
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
   domicilios, el cobro, el reembolso y la división de cuenta desde el detalle
-  del pedido, la caja, los reportes de cierre, la anulación con motivo y la
-  impresión de comanda y ticket, y el tablero de cocina.
-  Faltan la toma de pedido con modificadores obligatorios y el avance de
+  del pedido, la caja, los reportes de cierre, la anulación con motivo, la
+  impresión de comanda y ticket, el tablero de cocina, y la cola de pedidos
+  tomados sin red junto con el manifiesto y el precache del service worker.
+  Faltan los modificadores obligatorios al tomar el pedido y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

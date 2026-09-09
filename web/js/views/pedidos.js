@@ -6,6 +6,7 @@
 // configuración y no un condicional en el código.
 
 import { api, query, uuid } from '../api.js';
+import * as cola from '../cola.js';
 import { date, money, moneyExact, time } from '../format.js';
 import { icon } from '../icons.js';
 import { activeBranchId, branchQuery, can, me } from '../session.js';
@@ -462,20 +463,47 @@ async function vistaNuevo(host) {
 
   async function enviar() {
     crear.disabled = true;
+    const url = `/orders${branchQuery()}`;
+    const enviado = { ...cuerpo(), idempotency_key: intento };
     try {
-      const pedido = await api.post(`/orders${branchQuery()}`, { ...cuerpo(), idempotency_key: intento });
+      const pedido = await api.post(url, enviado);
       toast(`Pedido ${pedido.order_number} creado por ${money(pedido.total)}`, 'ok');
-      intento = uuid();
-      carrito.length = 0;
-      [telefono, nombre, mesa, direccion].forEach((el) => (el.value = ''));
-      notas.value = '';
-      render(sugerencias);
-      pintarCarrito();
+      limpiar();
     } catch (error) {
-      toast(error.message);
+      // `status` 0 es que la petición no salió del navegador: el pedido se
+      // guarda y se reenvía solo. Cualquier otro código es una respuesta del
+      // servidor —el pedido llegó y lo rechazó—, y encolarlo sería insistir
+      // con algo que ya se sabe que no entra.
+      if (error.status !== 0) {
+        toast(error.message);
+      } else {
+        const cuantos = cola.encolar(url, enviado, resumenDelPedido());
+        toast(`Sin conexión: el pedido quedó en cola (${cuantos}) y se enviará solo`, 'warn');
+        limpiar();
+      }
     } finally {
       crear.disabled = carrito.length === 0;
     }
+  }
+
+  /** Deja la pantalla lista para el siguiente pedido. */
+  function limpiar() {
+    // La llave se renueva también al encolar: el pedido de la cola se lleva
+    // la suya, y si el siguiente reusara la misma, el backend creería que es
+    // un reintento del anterior y devolvería aquel en vez de crear este.
+    intento = uuid();
+    carrito.length = 0;
+    [telefono, nombre, mesa, direccion].forEach((el) => (el.value = ''));
+    notas.value = '';
+    render(sugerencias);
+    pintarCarrito();
+  }
+
+  /** Con qué nombrar el pedido en la cola: en ella todavía no tiene número. */
+  function resumenDelPedido() {
+    const unidades = carrito.reduce((suma, l) => suma + l.cantidad, 0);
+    const quien = nombre.value.trim() || telefono.value.trim();
+    return `${unidades} ${unidades === 1 ? 'producto' : 'productos'}${quien ? ` · ${quien}` : ''}`;
   }
 
   // ---------- armado ----------

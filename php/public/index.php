@@ -61,6 +61,9 @@ function serveStaticFile(string $path): bool
         'js' => 'text/javascript; charset=utf-8',
         'css' => 'text/css; charset=utf-8',
         'json' => 'application/json; charset=utf-8',
+        // El navegador solo trata el manifiesto como tal con este tipo; con
+        // application/json lo descarta y la aplicacion deja de ser instalable.
+        'webmanifest' => 'application/manifest+json; charset=utf-8',
         'svg' => 'image/svg+xml',
         'png' => 'image/png',
         'jpg' => 'image/jpeg',

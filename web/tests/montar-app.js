@@ -22,6 +22,19 @@ function esqueleto() {
   return cuerpo[1].replace(/<script[\s\S]*?<\/script>/gi, '');
 }
 
+/** Una respuesta con un código distinto de 200, para las rutas que fallan. */
+export class Respuesta {
+  constructor(status, cuerpo) {
+    this.status = status;
+    this.cuerpo = cuerpo;
+  }
+}
+
+/** Lo que hace una ruta cuando no hay red: `fetch` rechaza sin respuesta. */
+export const sinRed = () => {
+  throw new TypeError('Failed to fetch');
+};
+
 /**
  * Deja la página en su estado inicial y monta la aplicación.
  *
@@ -54,12 +67,16 @@ export async function montarApp({ token = null, hash = '', respuestas = {} } = {
       throw new Error(`La prueba no esperaba una llamada a ${completa}`);
     }
 
-    const valor = respuestas[clave];
-    return {
-      ok: true,
-      status: 200,
-      json: async () => (typeof valor === 'function' ? valor(completa) : valor),
-    };
+    const valor = typeof respuestas[clave] === 'function' ? respuestas[clave](completa) : respuestas[clave];
+
+    // Una `Respuesta` dice con qué código contesta el servidor; cualquier
+    // otra cosa es el cuerpo de un 200. Para simular que no hay red, la
+    // función de la ruta lanza: `fetch` rechaza y api.js lo traduce a un
+    // ApiError con status 0, igual que en el navegador.
+    if (valor instanceof Respuesta) {
+      return { ok: valor.status < 400, status: valor.status, json: async () => valor.cuerpo };
+    }
+    return { ok: true, status: 200, json: async () => valor };
   });
   vi.stubGlobal('fetch', fetchFalso);
 
