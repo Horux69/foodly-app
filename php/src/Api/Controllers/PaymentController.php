@@ -83,6 +83,33 @@ final class PaymentController
     }
 
     /**
+     * Propuesta de reparto de la cuenta.
+     *
+     * El calculo esta en Domain\BillSplit y no en el navegador por el
+     * centavo suelto: 41000 entre tres no da redondo, y dos divisiones con
+     * `toFixed(2)` dejarian el pedido con un centavo pendiente para siempre.
+     */
+    public static function split(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'payments.register');
+        $parts = Request::queryInt('parts', default: 2, min: 1, max: 50);
+
+        try {
+            $proposal = PaymentService::splitProposal($ctx->tenantId, $params['order_id'], $parts);
+        } catch (PaymentError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return [
+            'pending' => Money::toDecimalString($proposal->pendingCents),
+            'parts' => array_map(Money::toDecimalString(...), $proposal->partsCents),
+            // Envio menos descuento mas propina: no esta en ninguna linea,
+            // asi que al repartir por productos hay que decirlo.
+            'non_item_total' => Money::toDecimalString($proposal->nonItemCents),
+        ];
+    }
+
+    /**
      * Reembolsa un cobro.
      *
      * Bajo 'payments.refund', el permiso que estaba en el catalogo desde el

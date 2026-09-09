@@ -168,8 +168,8 @@ Sobre eso se construyeron dos fases de trabajo en la web:
   sucursal en el menú y edición de los permisos de un rol.
 
 - **Fase 2 (cerrar el ciclo del dinero)**, en curso y partida en trozos.
-  Hechos: cobro parcial y por varios métodos (F2.1), reembolsos (F2.3) y
-  cierre de turno con arqueo (F2.5).
+  Hechos: cobro parcial y por varios métodos (F2.1), división de cuenta
+  (F2.2), reembolsos (F2.3) y cierre de turno con arqueo (F2.5).
 
 Sobre los reembolsos, tres detalles que conviene no deshacer:
 
@@ -201,9 +201,21 @@ Sobre el arqueo, cuatro decisiones que conviene no deshacer:
   arqueo. Cobrar no exige turno abierto: lo que se cobre sin turno queda con
   `cash_session_id` nulo y no entra en ningún arqueo.
 
-**Siguiente**: el resto de la fase 2 —división de cuenta (F2.2, sobre F2.1),
-cancelación con motivo (F2.4) y los reportes de cierre (F2.6), que ya tienen
-en `payments.created_by` y `payments.cash_session_id` lo que necesitan.
+Sobre la división de cuenta, dos cosas:
+
+- **El reparto en partes iguales lo calcula `Domain\BillSplit`, no el
+  navegador.** 65000 entre tres no da redondo, y dos divisiones con
+  `toFixed(2)` dejarían un centavo pendiente para siempre: el pedido nunca
+  saldaría y aparecería en el arqueo de todos los turnos siguientes. El resto
+  se reparte de a un centavo entre las primeras partes.
+- **Se cobra una parte a la vez y se vuelve a repartir el saldo que queda.**
+  Así las cuentas cierran solas sin llevar registro de quién ya pagó.
+  Dividir no cambia el pedido ni sus totales: cada parte es un pago parcial
+  más contra el mismo saldo.
+
+**Siguiente**: el resto de la fase 2 —cancelación con motivo (F2.4) y los
+reportes de cierre (F2.6), que ya tienen en `payments.created_by` y
+`payments.cash_session_id` lo que necesitan.
 
 Antes de F2.4 hay una decisión de negocio pendiente: **si un pedido con pagos
 debe exigir reembolso antes de poder cancelarse.** Ata F2.3 con F2.4 y no la
@@ -224,7 +236,8 @@ Pendientes conocidos:
   esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
-  domicilios, el cobro y reembolso desde el detalle del pedido, y la caja.
+  domicilios, el cobro, el reembolso y la división de cuenta desde el detalle
+  del pedido, y la caja.
   Faltan la toma de pedido con modificadores obligatorios y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

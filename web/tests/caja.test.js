@@ -41,7 +41,7 @@ const CIERRE = {
   totals: { ...CUADRE, counted_cash: '121500.00', difference: '-500.00' },
 };
 
-const texto = () => document.getElementById('vista').textContent.replace(/ /g, ' ');
+const texto = () => document.getElementById('vista').textContent.replace(/\u00a0/g, ' ');
 
 const montar = (respuestas) => montarApp({ token: 'un-token', hash: '#/caja', respuestas });
 

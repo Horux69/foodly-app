@@ -17,6 +17,7 @@ import {
   badge, button, empty, errorBox, h, input, loading, render, section, select, toast,
 } from '../ui.js';
 import { canal } from './cocina.js';
+import { abrirDivision } from './dividir-cuenta.js';
 
 const METODOS = {
   cash: 'Efectivo',
@@ -284,11 +285,13 @@ function formularioCobro(pedido, recargar) {
     monto,
     metodo,
     cobrar,
-    // Atajo al caso común, para no obligar a reescribir la cifra si se
-    // cambió y se quiere volver a cobrar todo.
-    Number(saldo.pending) !== Number(monto.value)
-      ? null
-      : h('span', { class: 'text-[12px] text-stone-400' }, 'Cambia el monto para cobrar solo una parte')
+    // Repartir la cuenta es cobrar varias veces contra el mismo saldo, así
+    // que su sitio natural es junto al cobro y no en otra pantalla.
+    button('Dividir', {
+      variant: 'secondary',
+      iconName: 'clientes',
+      onClick: () => abrirDivision(pedido, recargar),
+    })
   );
 }
 

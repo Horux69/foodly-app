@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Domain\BillSplit;
+use App\Domain\BillSplitError;
 use App\Domain\PaymentBalance;
 use App\Domain\RefundError;
 use App\Domain\RefundRules;
@@ -80,6 +82,37 @@ final class PaymentService
             throw new PaymentError('Pedido no encontrado');
         }
         return (new PaymentRepository(Database::app()))->listForOrder($order->id);
+    }
+
+    /**
+     * Como repartir lo que falta de un pedido entre varias personas.
+     *
+     * Cada parte se cobra despues como un pago parcial cualquiera: dividir
+     * una cuenta no cambia el pedido ni sus totales, solo reparte quien pone
+     * cuanto. Por eso esto propone importes y no escribe nada.
+     */
+    public static function splitProposal(string $tenantId, string $orderId, int $parts): BillSplitProposal
+    {
+        $order = (new OrderRepository(Database::app()))->getById($tenantId, $orderId);
+        if ($order === null) {
+            throw new PaymentError('Pedido no encontrado');
+        }
+
+        $balance = self::getBalanceForOrder($order);
+
+        try {
+            $partsCents = BillSplit::equalParts($balance->pendingCents, $parts);
+        } catch (BillSplitError $e) {
+            throw new PaymentError($e->getMessage());
+        }
+
+        // subtotal es la suma de las lineas (con su impuesto ya dentro), asi
+        // que lo que sobra del total es exactamente lo que no es producto.
+        return new BillSplitProposal(
+            $balance->pendingCents,
+            $partsCents,
+            $order->totalCents - $order->subtotalCents,
+        );
     }
 
     public static function registerPayment(
