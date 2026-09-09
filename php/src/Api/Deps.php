@@ -39,6 +39,9 @@ final class Deps
             branchId: isset($payload['branch_id']) ? (string) $payload['branch_id'] : null,
             roleCode: (string) ($payload['role'] ?? ''),
             permissions: (array) ($payload['permissions'] ?? []),
+            // Los tokens emitidos antes de que existiera el claim no lo
+            // traen: se toma su emision, que para ellos es lo mismo.
+            authTime: (int) ($payload['auth_time'] ?? $payload['iat'] ?? 0),
         );
 
         // Red de seguridad: aunque una consulta olvide el WHERE tenant_id,

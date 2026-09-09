@@ -12,6 +12,8 @@ final class AuthRoutes
     public static function register(Router $router): void
     {
         $router->post('/auth/login', fn () => AuthController::login());
+        $router->post('/auth/refresh', fn () => AuthController::refresh());
+        $router->post('/auth/password', fn () => AuthController::changePassword());
         $router->get('/auth/me', fn () => AuthController::me());
     }
 }

@@ -467,7 +467,8 @@ una cosa menos que inventar. `Services\StatusConfigService` define el flujo;
 concreto.
 
 - **Fase 6 (confianza y pulido)**, en curso y partida en trozos. Hechos:
-  pruebas de las pantallas críticas (F6.1) y teclado en el mostrador (F6.2).
+  pruebas de las pantallas críticas (F6.1), teclado en el mostrador (F6.2) y
+  contraseña propia con renovación de token (F6.3).
 
 Escribir esas pruebas destapó lo que iban a destapar: **el modal de
 modificadores dejaba agregar un producto sin cumplir su grupo obligatorio, y
@@ -497,10 +498,32 @@ Sobre el teclado, dos cosas:
   cambian su cantidad, con el nombre y el número en `aria-label` para que un
   lector de pantalla lea el cambio.
 
-**Siguiente**: lo que queda de la fase 6 —contraseña propia y renovación de
-token (F6.3), exportar reportes y comparar períodos (F6.4) y dar de baja un
-restaurante (F6.5, el pendiente de las claves foráneas)—. La fase 4, servicio
-en mesa, el plan la deja condicionada a que haya clientes de ese modelo.
+Sobre la sesión, tres cosas:
+
+- **El token se renueva antes de vencer, no después de un 401.** Dura ocho
+  horas y un turno puede ser más largo; con la renovación reactiva, el 401 ya
+  perdió el pedido que se estaba mandando. `api.js` lee el `exp` del token
+  —para saber cuándo pedir uno nuevo, no para confiar en él: quien lo valida
+  es el servidor con la firma— y renueva con diez minutos de margen, una sola
+  vez aunque salgan varias peticiones a la vez.
+- **Renovar no alarga la sesión indefinidamente.** El token lleva `auth_time`
+  —cuándo la persona escribió su contraseña— y se arrastra de un token al
+  siguiente, así que `Domain\SessionRenewal` lo mide contra ese momento y no
+  contra la última emisión: si se midiera contra la emisión, cada renovación
+  correría el límite y no sería un límite. Son 24 horas, más que cualquier
+  turno. También se releen el rol y los permisos, así que un cambio de rol
+  entra en vigor sin volver a entrar.
+- **Cambiar la contraseña exige la actual, aunque la sesión esté abierta.**
+  Una tableta desatendida en el mostrador es el caso común, y sin esa
+  comprobación cualquiera que pase deja al dueño fuera de su propio sistema.
+  Los tokens ya emitidos siguen valiendo hasta que venzan: no hay versión de
+  sesión en el modelo, así que para cortar todo de inmediato hay que rotar
+  `SECRET_KEY` —y eso echa a todo el mundo—.
+
+**Siguiente**: lo que queda de la fase 6 —exportar reportes y comparar
+períodos (F6.4) y dar de baja un restaurante (F6.5, el pendiente de las
+claves foráneas)—. La fase 4, servicio en mesa, el plan la deja condicionada
+a que haya clientes de ese modelo.
 
 Pendientes conocidos:
 
@@ -525,7 +548,8 @@ Pendientes conocidos:
   productos, los horarios de sucursal, el editor de estados y transiciones,
   la toma de pedido con un grupo obligatorio, el avance de estado en cocina,
   el cobro por partes hasta saldar, los atajos de teclado y el foco de los
-  diálogos, y que un botón que falla vuelva a servir.
+  diálogos, la renovación del token y el cambio de contraseña, y que un botón
+  que falla vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

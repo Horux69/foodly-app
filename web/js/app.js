@@ -6,6 +6,7 @@ import * as router from './router.js';
 import * as session from './session.js';
 import { confirm, h, render, select, toast } from './ui.js';
 import { admin } from './views/admin.js';
+import { abrirCuenta } from './views/cuenta.js';
 import { caja } from './views/caja.js';
 import { clientes } from './views/clientes.js';
 import { cocina } from './views/cocina.js';
@@ -219,6 +220,16 @@ function pintarRail(rutaActiva, usuario) {
         'button',
         {
           class: 'rail-item w-full justify-center lg:justify-start',
+          title: 'Mi cuenta',
+          onClick: abrirCuenta,
+        },
+        icon('usuario', { size: 18 }),
+        h('span', { class: 'hidden lg:inline' }, 'Mi cuenta')
+      ),
+      h(
+        'button',
+        {
+          class: 'rail-item w-full justify-center lg:justify-start',
           title: 'Cerrar sesión',
           onClick: () => {
             session.forget();
@@ -262,6 +273,11 @@ function pintarTopbar(rutaActiva, usuario) {
       ),
       selectorSucursal({ compacto: true }),
       avisoCola({ compacto: true }),
+      h(
+        'button',
+        { class: 'boton boton-sutil', 'aria-label': 'Mi cuenta', onClick: abrirCuenta },
+        icon('usuario', { size: 18 })
+      ),
       h(
         'button',
         {

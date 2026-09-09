@@ -39,6 +39,7 @@ final class Security
         ?string $branchId,
         string $roleCode,
         array $permissions,
+        ?int $authTime = null,
     ): string {
         $config = Config::get();
         $now = time();
@@ -49,12 +50,16 @@ final class Security
             'role' => $roleCode,
             'permissions' => $permissions,
             'iat' => $now,
+            // Cuando la persona escribio su contrasena. Se arrastra de un
+            // token al siguiente al renovar, porque es lo que acota cuanto
+            // puede vivir una sesion (ver Domain\SessionRenewal).
+            'auth_time' => $authTime ?? $now,
             'exp' => $now + $config->accessTokenExpireMinutes * 60,
         ];
         return JWT::encode($payload, $config->secretKey, $config->algorithm);
     }
 
-    /** @return array{sub:string, tenant_id:string, branch_id:?string, role:string, permissions:string[]} */
+    /** @return array{sub:string, tenant_id:string, branch_id:?string, role:string, permissions:string[], auth_time?:int} */
     public static function decodeAccessToken(string $token): array
     {
         $config = Config::get();

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Controllers;
 
 use App\Api\Deps;
+use App\Api\JsonResponse;
 use App\Api\Request;
 use App\Services\AuthError;
 use App\Services\AuthService;
@@ -25,6 +26,43 @@ final class AuthController
         }
 
         return ['access_token' => $token, 'token_type' => 'bearer'];
+    }
+
+    /**
+     * Renueva el token de una sesion viva.
+     *
+     * La web lo llama sola cuando el token esta por vencer: sin esto, a las
+     * ocho horas se cierra la sesion en mitad de un pedido.
+     */
+    public static function refresh(): array
+    {
+        $ctx = Deps::getContext();
+        try {
+            $token = AuthService::refresh($ctx->tenantId, $ctx->userId, $ctx->authTime);
+        } catch (AuthError $e) {
+            throw new \App\Api\ApiException(401, $e->getMessage());
+        }
+        return ['access_token' => $token, 'token_type' => 'bearer'];
+    }
+
+    /** Cambiar la propia contrasena, sin pasar por un administrador. */
+    public static function changePassword(): JsonResponse
+    {
+        $ctx = Deps::getContext();
+        $body = Request::json();
+
+        try {
+            AuthService::changePassword(
+                $ctx->tenantId,
+                $ctx->userId,
+                Request::string($body, 'current_password', 1, 200),
+                Request::string($body, 'new_password', 1, 200),
+            );
+        } catch (AuthError $e) {
+            throw new \App\Api\ApiException(422, $e->getMessage());
+        }
+
+        return new JsonResponse(null, 204);
     }
 
     public static function me(): array

@@ -120,6 +120,12 @@ final class UserRepository
         return $this->get($tenantId, $id);
     }
 
+    public function setPasswordHash(string $userId, string $passwordHash): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE users SET password_hash = :hash WHERE id = :id');
+        $stmt->execute(['hash' => $passwordHash, 'id' => $userId]);
+    }
+
     public function setActive(string $tenantId, string $userId, bool $isActive): User
     {
         $stmt = $this->pdo->prepare(

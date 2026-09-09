@@ -6,6 +6,10 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Core\Security;
+use App\Domain\PasswordError;
+use App\Domain\PasswordRules;
+use App\Domain\SessionError;
+use App\Domain\SessionRenewal;
 use App\Domain\TenantSettings;
 use App\Models\Branch;
 use App\Models\Tenant;
@@ -41,6 +45,74 @@ final class AuthService
         }
 
         return Security::createAccessToken($user->id, $user->tenantId, $user->branchId, $user->roleCode, $user->permissionCodes);
+    }
+
+    /**
+     * Emite un token nuevo para una sesion que sigue viva.
+     *
+     * Sin esto el token vence a las ocho horas y api.js manda a la pantalla
+     * de ingreso en mitad de un pedido. Se releen el rol y los permisos, asi
+     * que un cambio de rol entra en vigor sin volver a entrar — antes habia
+     * que cerrar sesion para que se notara.
+     *
+     * El limite de cuanto puede vivir la sesion lo pone
+     * Domain\SessionRenewal contra el `auth_time` que se arrastra: renovar
+     * no corre ese limite.
+     */
+    public static function refresh(string $tenantId, string $userId, int $authTime): string
+    {
+        try {
+            SessionRenewal::ensureRenewable($authTime, time());
+        } catch (SessionError $e) {
+            throw new AuthError($e->getMessage());
+        }
+
+        $pdo = Database::app();
+        $user = (new UserRepository($pdo, new RoleRepository($pdo)))->get($tenantId, $userId);
+        if ($user === null || !$user->isActive) {
+            throw new AuthError('La cuenta ya no esta activa');
+        }
+
+        return Security::createAccessToken(
+            $user->id,
+            $user->tenantId,
+            $user->branchId,
+            $user->roleCode,
+            $user->permissionCodes,
+            $authTime,
+        );
+    }
+
+    /**
+     * Cambiar la propia contrasena.
+     *
+     * Se exige la actual aunque la sesion ya este abierta: una tableta
+     * desatendida en el mostrador es el caso comun, y sin esa comprobacion
+     * cualquiera que pase deja al dueno fuera de su propio sistema.
+     *
+     * Los tokens ya emitidos siguen valiendo hasta que venzan: no hay
+     * version de sesion en el modelo. Para cortar todo de inmediato hay que
+     * rotar SECRET_KEY, que echa a todo el mundo.
+     */
+    public static function changePassword(string $tenantId, string $userId, string $actual, string $nueva): void
+    {
+        $pdo = Database::app();
+        $repo = new UserRepository($pdo, new RoleRepository($pdo));
+        $user = $repo->get($tenantId, $userId);
+        if ($user === null) {
+            throw new AuthError('El usuario ya no existe');
+        }
+        if (!Security::verifyPassword($actual, $user->passwordHash)) {
+            throw new AuthError('La contrasena actual no es correcta');
+        }
+
+        try {
+            PasswordRules::validate($nueva, $actual);
+        } catch (PasswordError $e) {
+            throw new AuthError($e->getMessage());
+        }
+
+        $repo->setPasswordHash($user->id, Security::hashPassword($nueva));
     }
 
     /**

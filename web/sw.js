@@ -48,6 +48,7 @@ const ESQUELETO = [
   '/js/views/cancelar-pedido.js',
   '/js/views/clientes.js',
   '/js/views/cocina.js',
+  '/js/views/cuenta.js',
   '/js/views/dividir-cuenta.js',
   '/js/views/domicilios.js',
   '/js/views/impresion.js',
