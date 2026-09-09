@@ -51,7 +51,16 @@ final class AuthController
             // del token sigue siendo la predeterminada; la elegida viaja
             // como ?branch_id= y se valida en Deps::activeBranchId.
             'branches' => array_map(
-                static fn ($b) => ['id' => $b->id, 'name' => $b->name, 'code' => $b->code],
+                // Direccion y telefono van aqui porque el ticket del cliente
+                // los lleva impresos: sin ellos habria que pedir /branches,
+                // que es de administracion y la caja no tiene por que poder.
+                static fn ($b) => [
+                    'id' => $b->id,
+                    'name' => $b->name,
+                    'code' => $b->code,
+                    'address' => $b->address,
+                    'phone' => $b->phone,
+                ],
                 $branches,
             ),
             'tenant_name' => $tenant->name,

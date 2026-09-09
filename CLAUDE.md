@@ -244,11 +244,35 @@ exige el dinero del pedido para entrar a un estado de cierta categoría. La
 máquina de estados sigue respondiendo la otra pregunta, la de qué transiciones
 configuró el tenant y con qué permiso.
 
-**Siguiente**: la fase 3 del plan de obra —impresión y piso de venta: comanda
-de cocina y ticket de cliente, reimpresión, aviso de pedido nuevo en cocina,
-KDS completo, e instalable con tolerancia a cortes de red (que se apoya en la
-llave de idempotencia de F0.2). La fase 4, servicio en mesa, el plan la deja
-condicionada a que haya clientes de ese modelo.
+- **Fase 3 (impresión y piso de venta)**, en curso y partida en trozos. Hecho
+  el primero: comanda de cocina y ticket de cliente (F3.1) con reimpresión
+  (F3.2).
+
+Sobre la impresión, tres cosas:
+
+- **Se imprime con el navegador, no por ESC/POS**, a propósito: funciona con
+  cualquier impresora que tenga driver, no ata el producto a un modelo y no
+  exige un servicio local corriendo en el restaurante. ESC/POS queda para
+  cuando un cliente lo pida.
+- **El documento se arma en `#impresion`**, hijo directo de `<body>`, y
+  `@media print` esconde a sus hermanos. No se abre otra ventana: habría que
+  recargar la aplicación entera y suele chocar con el bloqueador de
+  emergentes justo cuando hay cola.
+- **La limpieza va por `afterprint` y por el foco de la ventana, nunca por
+  temporizador.** `print()` no bloquea en todos los navegadores, y un plazo
+  ciego puede borrar el documento con el diálogo abierto — que es imprimir
+  una hoja en blanco. Si aun así no se limpiara, la aplicación no se ve
+  afectada: `#impresion` está oculto fuera de `@media print`.
+
+La comanda no lleva precios (a la cocina el dinero no le sirve) y el ticket no
+lleva las notas de preparación. La reimpresión sale marcada en grande: una
+comanda repetida sin avisar es un plato preparado dos veces.
+
+**Siguiente**: el resto de la fase 3 —aviso de pedido nuevo en cocina (F3.3),
+KDS completo con la columna `in_transit` (F3.4) e instalable con tolerancia a
+cortes de red (F3.5, que se apoya en la llave de idempotencia de F0.2). La
+fase 4, servicio en mesa, el plan la deja condicionada a que haya clientes de
+ese modelo.
 
 Pendientes conocidos:
 
@@ -266,7 +290,8 @@ Pendientes conocidos:
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
   domicilios, el cobro, el reembolso y la división de cuenta desde el detalle
-  del pedido, la caja, los reportes de cierre y la anulación con motivo.
+  del pedido, la caja, los reportes de cierre, la anulación con motivo y la
+  impresión de comanda y ticket.
   Faltan la toma de pedido con modificadores obligatorios y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

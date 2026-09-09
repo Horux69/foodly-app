@@ -18,6 +18,7 @@ import {
 } from '../ui.js';
 import { abrirCancelacion } from './cancelar-pedido.js';
 import { canal } from './cocina.js';
+import { imprimirComanda, imprimirTicket } from './impresion.js';
 import { abrirDivision } from './dividir-cuenta.js';
 
 const METODOS = {
@@ -104,6 +105,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
     render(
       cuerpo,
       encabezado(pedido, cerrar),
+      bloqueImpresion(pedido, pagos),
       pedido.delivery ? bloqueEntrega(pedido.delivery) : null,
       bloqueLineas(pedido),
       bloqueTotales(pedido),
@@ -147,6 +149,28 @@ function encabezado(pedido, cerrar) {
       { class: 'text-stone-400 hover:text-stone-900 p-1 shrink-0', onClick: cerrar, 'aria-label': 'Cerrar' },
       icon('cerrar', { size: 20 })
     )
+  );
+}
+
+/**
+ * Imprimir es una acción del pedido, no de la pantalla desde la que se abrió:
+ * por eso vive en el panel, que se alcanza desde Pedidos, Cocina y
+ * Domicilios.
+ */
+function bloqueImpresion(pedido, pagos) {
+  return h(
+    'div',
+    { class: 'flex flex-wrap gap-2' },
+    button('Comanda', {
+      variant: 'secondary',
+      iconName: 'cocina',
+      onClick: () => imprimirComanda(pedido),
+    }),
+    button('Ticket', {
+      variant: 'secondary',
+      iconName: 'etiqueta',
+      onClick: () => imprimirTicket(pedido, pagos),
+    })
   );
 }
 

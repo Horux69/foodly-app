@@ -24,6 +24,11 @@
     <div id="barra-inferior"></div>
     <div id="toast-host" class="fixed bottom-20 md:bottom-5 right-5 z-50"></div>
 
+    <!-- Aquí se arma lo que se va a imprimir. Vive fuera de la aplicación y
+         es hijo directo de <body> porque la hoja de impresión esconde a
+         todos sus hermanos: ver `@media print` en app.css. -->
+    <div id="impresion"></div>
+
     <script type="module" src="/js/app.js"></script>
     <noscript><p class="p-4">Esta aplicación necesita JavaScript para funcionar.</p></noscript>
   </body>

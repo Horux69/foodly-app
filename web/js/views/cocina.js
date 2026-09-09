@@ -15,6 +15,7 @@ import { icon } from '../icons.js';
 import { branchQuery } from '../session.js';
 import { badge, button, empty, errorBox, h, render, skeleton, toast } from '../ui.js';
 import { abrirCancelacion } from './cancelar-pedido.js';
+import { imprimirComanda } from './impresion.js';
 import { abrirPedido } from './pedido-detalle.js';
 
 const REFRESCO_MS = 15000;
@@ -199,6 +200,13 @@ function ticket(pedido, refrescar) {
     h(
       'div',
       { class: 'flex flex-wrap gap-2 mt-auto pt-1' },
+      // Sale marcada como reimpresión: una comanda repetida sin avisar es
+      // un plato preparado dos veces.
+      button('Reimprimir', {
+        variant: 'secondary',
+        iconName: 'archivar',
+        onClick: () => imprimirComanda(pedido, { reimpresion: true }),
+      }),
       pedido.next_statuses.map((estado) =>
         button(estado.name, {
           variant: estado.category === 'cancelled' ? 'danger' : 'primary',
