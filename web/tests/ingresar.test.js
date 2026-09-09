@@ -67,7 +67,7 @@ describe('con una sesión abierta', () => {
     await montarApp({
       token: 'un-token',
       hash: '#/cocina',
-      respuestas: { '/auth/me': sesion, '/kitchen/orders': [] },
+      respuestas: { '/auth/me': sesion, '/kitchen/orders': { columns: ['new', 'kitchen', 'ready'], orders: [], dispatched: [] } },
     });
 
     const rail = document.getElementById('rail');
@@ -83,7 +83,7 @@ describe('con una sesión abierta', () => {
     const { fetch } = await montarApp({
       token: 'un-token',
       hash: '#/cocina',
-      respuestas: { '/auth/me': sesion, '/kitchen/orders': [] },
+      respuestas: { '/auth/me': sesion, '/kitchen/orders': { columns: ['new', 'kitchen', 'ready'], orders: [], dispatched: [] } },
     });
 
     const tablero = fetch.mock.calls.map(([url]) => String(url)).find((url) => url.includes('/kitchen/orders'));

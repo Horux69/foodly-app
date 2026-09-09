@@ -163,15 +163,33 @@ final class OrderRepository
      * @param string[] $categories
      * @return Order[]
      */
-    public function listByStatusCategories(string $tenantId, string $branchId, array $categories): array
-    {
+    public function listByStatusCategories(
+        string $tenantId,
+        string $branchId,
+        array $categories,
+        ?int $sinceMinutes = null,
+    ): array {
         $placeholders = implode(',', array_fill(0, count($categories), '?'));
+
+        // Con ventana de tiempo para lo ya despachado: los completados del
+        // dia se acumulan y el tablero solo quiere los de hace un rato. Mira
+        // updated_at, que es cuando cambio de estado, no cuando se creo.
+        $reciente = $sinceMinutes !== null
+            ? ' AND o.updated_at > now() - make_interval(mins => ?)'
+            : '';
+
         $stmt = $this->pdo->prepare(
             self::SELECT_ORDER
             . " WHERE o.tenant_id = ? AND o.branch_id = ? AND s.category IN ({$placeholders})"
+            . $reciente
             . ' ORDER BY o.created_at'
         );
-        $stmt->execute([$tenantId, $branchId, ...array_values($categories)]);
+
+        $params = [$tenantId, $branchId, ...array_values($categories)];
+        if ($sinceMinutes !== null) {
+            $params[] = $sinceMinutes;
+        }
+        $stmt->execute($params);
 
         return $this->hydrateAll($stmt->fetchAll());
     }

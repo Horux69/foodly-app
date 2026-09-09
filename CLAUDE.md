@@ -244,9 +244,9 @@ exige el dinero del pedido para entrar a un estado de cierta categoría. La
 máquina de estados sigue respondiendo la otra pregunta, la de qué transiciones
 configuró el tenant y con qué permiso.
 
-- **Fase 3 (impresión y piso de venta)**, en curso y partida en trozos. Hecho
-  el primero: comanda de cocina y ticket de cliente (F3.1) con reimpresión
-  (F3.2).
+- **Fase 3 (impresión y piso de venta)**, en curso y partida en trozos.
+  Hechos: comanda de cocina y ticket de cliente con reimpresión (F3.1, F3.2),
+  aviso de pedido nuevo en cocina (F3.3) y KDS completo (F3.4).
 
 Sobre la impresión, tres cosas:
 
@@ -268,11 +268,35 @@ La comanda no lleva precios (a la cocina el dinero no le sirve) y el ticket no
 lleva las notas de preparación. La reimpresión sale marcada en grande: una
 comanda repetida sin avisar es un plato preparado dos veces.
 
-**Siguiente**: el resto de la fase 3 —aviso de pedido nuevo en cocina (F3.3),
-KDS completo con la columna `in_transit` (F3.4) e instalable con tolerancia a
-cortes de red (F3.5, que se apoya en la llave de idempotencia de F0.2). La
-fase 4, servicio en mesa, el plan la deja condicionada a que haya clientes de
-ese modelo.
+Sobre el tablero de cocina, tres cosas:
+
+- **Las columnas las decide la configuración del restaurante**, no la
+  pantalla: `GET /kitchen/orders` devuelve `columns` con las categorías para
+  las que el tenant tiene estados. Uno de comida rápida no ve `in_transit`, y
+  esa columna siempre vacía sería ruido en la pantalla que más se mira de
+  lejos.
+- **Lo despachado hace poco (30 min) sigue en el tablero**, para recuperar el
+  pedido que se marcó listo por error. Los botones son los que declara la
+  máquina de estados: si el restaurante no configuró camino de vuelta no
+  habrá ninguno, y eso es correcto — el tablero no inventa atajos.
+- **Las marcas de "línea ya preparada" viven en el navegador**, no en la
+  base: son una ayuda para quien está cocinando ahora, no un dato del
+  pedido. La consecuencia es que dos pantallas de cocina no las comparten. Si
+  hiciera falta que sí, es una columna en `order_items` y un endpoint, no un
+  parche sobre esto. Se podan cuando el pedido deja el tablero.
+
+El aviso de pedido nuevo compara los ids entre refrescos, suena con dos
+pitidos sintetizados (sin archivo: no hay paso de compilación donde meter un
+binario, y así también sonará sin red en F3.5) y cuenta en el título de la
+pestaña. El interruptor se recuerda **por dispositivo**: que la cocina
+abierta al comedor quiera silencio no dice nada de lo que quiera la tableta
+del mostrador.
+
+**Siguiente**: lo último de la fase 3 es F3.5 —instalable y tolerante a
+cortes de red: `manifest.webmanifest`, un service worker que sirva la app y
+la carta desde caché, y una cola de pedidos tomados sin red. Solo es seguro
+con la llave de idempotencia de F0.2, que ya está. La fase 4, servicio en
+mesa, el plan la deja condicionada a que haya clientes de ese modelo.
 
 Pendientes conocidos:
 
@@ -291,7 +315,7 @@ Pendientes conocidos:
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
   domicilios, el cobro, el reembolso y la división de cuenta desde el detalle
   del pedido, la caja, los reportes de cierre, la anulación con motivo y la
-  impresión de comanda y ticket.
+  impresión de comanda y ticket, y el tablero de cocina.
   Faltan la toma de pedido con modificadores obligatorios y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

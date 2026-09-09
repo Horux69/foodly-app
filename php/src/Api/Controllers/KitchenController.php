@@ -16,7 +16,21 @@ final class KitchenController
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
         $board = KitchenService::getBoard($ctx->tenantId, Deps::activeBranchId($ctx));
 
-        return array_map(static fn (KitchenOrder $entry) => [
+        return [
+            // Que columnas mostrar lo decide la configuracion del
+            // restaurante, no la pantalla: ver KitchenService::columnsFor.
+            'columns' => $board->columns,
+            'orders' => array_map(self::orderOut(...), $board->orders),
+            // Lo despachado hace poco, para recuperar el que se marco listo
+            // por error. Trae sus next_statuses: si el tenant no configuro
+            // camino de vuelta, no habra nada que pulsar y eso es correcto.
+            'dispatched' => array_map(self::orderOut(...), $board->dispatched),
+        ];
+    }
+
+    private static function orderOut(KitchenOrder $entry): array
+    {
+        return [
             'id' => $entry->order->id,
             'order_number' => $entry->order->orderNumber,
             'channel' => $entry->order->channel,
@@ -24,12 +38,14 @@ final class KitchenController
             'created_at' => $entry->order->createdAt,
             'status' => OrderController::statusOut($entry->order->status),
             'items' => array_map(static fn ($item) => [
+                // El id lo usa el tablero para marcar lineas ya preparadas.
+                'id' => $item->id,
                 'name_snapshot' => $item->nameSnapshot,
                 'quantity' => $item->quantity,
                 'notes' => $item->notes,
                 'modifiers' => array_map(static fn ($m) => $m->nameSnapshot, $item->modifiers),
             ], $entry->order->items),
             'next_statuses' => array_map(OrderController::statusOut(...), $entry->nextStatuses),
-        ], $board);
+        ];
     }
 }

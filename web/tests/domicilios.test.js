@@ -104,7 +104,7 @@ describe('tablero de domicilios', () => {
       hash: '#/domicilios',
       respuestas: {
         '/auth/me': sesion({ permissions: ['orders.view', 'delivery.assign'], channels: ['counter'] }),
-        '/kitchen/orders': [],
+        '/kitchen/orders': { columns: ['new', 'kitchen', 'ready'], orders: [], dispatched: [] },
       },
     });
     await reposar();

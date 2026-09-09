@@ -153,18 +153,22 @@ describe('reimpresión desde cocina', () => {
   // El KDS manda los modificadores como texto plano y el detalle como
   // objeto: la comanda tiene que entender los dos o se imprimiría "[object
   // Object]" delante del cocinero.
-  const TABLERO = [
-    {
-      id: 'o1',
-      order_number: 'SUR-00004',
-      channel: 'delivery',
-      table_code: null,
-      created_at: '2026-09-09T12:03:00Z',
-      status: { id: 's1', code: 'preparing', name: 'Preparación', category: 'kitchen', color: null },
-      items: [{ name_snapshot: 'Pizza margarita', quantity: 1, notes: 'Sin albahaca', modifiers: ['Masa delgada'] }],
-      next_statuses: [],
-    },
-  ];
+  const TABLERO = {
+    columns: ['new', 'kitchen', 'ready'],
+    dispatched: [],
+    orders: [
+      {
+        id: 'o1',
+        order_number: 'SUR-00004',
+        channel: 'delivery',
+        table_code: null,
+        created_at: '2026-09-09T12:03:00Z',
+        status: { id: 's1', code: 'preparing', name: 'Preparación', category: 'kitchen', color: null },
+        items: [{ id: 'ki1', name_snapshot: 'Pizza margarita', quantity: 1, notes: 'Sin albahaca', modifiers: ['Masa delgada'] }],
+        next_statuses: [],
+      },
+    ],
+  };
 
   const enCocina = () =>
     montarApp({
