@@ -76,6 +76,63 @@ final class ReportService
         return (new ReportRepository(Database::app()))->prepTimes($tenantId, $branchId, $start, $end);
     }
 
+    /** @return array<string, mixed> */
+    public static function incomeByMethod(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+    ): array {
+        [$start, $end] = self::resolveRange($fromDate, $toDate);
+        self::checkBranch($tenantId, $branchId);
+
+        return [
+            'from_date' => $start,
+            'to_date' => $end,
+            'by_method' => (new ReportRepository(Database::app()))
+                ->incomeByMethod($tenantId, $branchId, $start, $end),
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public static function salesByUser(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+    ): array {
+        [$start, $end] = self::resolveRange($fromDate, $toDate);
+        self::checkBranch($tenantId, $branchId);
+        return (new ReportRepository(Database::app()))->salesByUser($tenantId, $branchId, $start, $end);
+    }
+
+    /**
+     * Lo que hubo que autorizar: anulaciones, reembolsos y descuentos.
+     *
+     * Los tres se fechan por cuando ocurrio el ajuste y no por cuando se creo
+     * el pedido, que es lo que se necesita para cuadrar un dia.
+     *
+     * @return array<string, mixed>
+     */
+    public static function adjustments(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+    ): array {
+        [$start, $end] = self::resolveRange($fromDate, $toDate);
+        self::checkBranch($tenantId, $branchId);
+
+        $repo = new ReportRepository(Database::app());
+        return [
+            'from_date' => $start,
+            'to_date' => $end,
+            'cancellations' => $repo->cancellations($tenantId, $branchId, $start, $end),
+            'refunds' => $repo->refunds($tenantId, $branchId, $start, $end),
+            'discounts' => $repo->discounts($tenantId, $branchId, $start, $end),
+        ];
+    }
+
     /** @return array<int, array<string, mixed>> */
     public static function peakHours(string $tenantId, ?string $branchId, ?string $fromDate, ?string $toDate): array
     {

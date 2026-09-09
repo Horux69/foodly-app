@@ -6,10 +6,11 @@
 // tabla para lo que el ojo no deba estimar.
 
 import { api, query } from '../api.js';
-import { isoDate, money, number } from '../format.js';
+import { date as fecha, isoDate, money, number, time } from '../format.js';
 import { branches } from '../session.js';
-import { button, card, errorBox, h, pageHeader, render, skeleton } from '../ui.js';
+import { badge, button, card, errorBox, h, pageHeader, render, skeleton, tabs } from '../ui.js';
 import { canal } from './cocina.js';
+import { metodoPago } from './pedido-detalle.js';
 
 const SERIE = '#2a78d6'; // validado para contraste sobre superficie blanca
 const RANGOS = [
@@ -23,6 +24,11 @@ export async function reportes(outlet) {
   const hasta = h('input', { type: 'date', class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
   const sucursal = h('select', { class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
   const contenido = h('div', { class: 'space-y-4' });
+  const pestanas = h('div');
+  // Dos maneras de mirar el mismo período: la venta (qué se vendió) y el
+  // cierre (qué plata se movió). No son el mismo número y no deberían
+  // parecerlo, así que van en vistas separadas.
+  let vista = 'venta';
 
   function aplicarRango(dias) {
     const fin = new Date();
@@ -49,7 +55,29 @@ export async function reportes(outlet) {
     )
   );
 
-  render(outlet, pageHeader('Reportes', { hint: 'Solo cuenta lo que se completó y se pagó.' }), h('div', { class: 'space-y-4' }, filtros, contenido));
+  function pintarPestanas() {
+    render(
+      pestanas,
+      tabs(
+        [
+          { key: 'venta', label: 'Venta' },
+          { key: 'cierre', label: 'Cierre' },
+        ],
+        vista,
+        (clave) => {
+          vista = clave;
+          pintarPestanas();
+          cargar();
+        }
+      )
+    );
+  }
+
+  render(
+    outlet,
+    pageHeader('Reportes', { hint: 'La venta cuenta pedidos completados; el cierre sigue la plata que se movió.' }),
+    h('div', { class: 'space-y-4' }, filtros, pestanas, contenido)
+  );
 
   // Aquí "ninguna" sí significa algo —toda la empresa—, así que este
   // selector no es el de la barra lateral y arranca en vacío a propósito.
@@ -63,22 +91,30 @@ export async function reportes(outlet) {
     render(contenido, skeleton({ rows: 3 }));
     const qs = query({ from_date: desde.value, to_date: hasta.value, branch_id: sucursal.value });
 
-    let ventas, productos, tiempos, horas;
     try {
-      [ventas, productos, tiempos, horas] = await Promise.all([
-        api.get(`/reports/sales${qs}`),
-        api.get(`/reports/top-products${qs}`),
-        api.get(`/reports/prep-times${qs}`),
-        api.get(`/reports/peak-hours${qs}`),
-      ]);
+      if (vista === 'venta') {
+        const [ventas, productos, tiempos, horas] = await Promise.all([
+          api.get(`/reports/sales${qs}`),
+          api.get(`/reports/top-products${qs}`),
+          api.get(`/reports/prep-times${qs}`),
+          api.get(`/reports/peak-hours${qs}`),
+        ]);
+        render(contenido, panel(ventas, productos, tiempos, horas));
+      } else {
+        const [ingresos, porUsuario, ajustes] = await Promise.all([
+          api.get(`/reports/payment-methods${qs}`),
+          api.get(`/reports/sales-by-user${qs}`),
+          api.get(`/reports/adjustments${qs}`),
+        ]);
+        render(contenido, panelCierre(ingresos, porUsuario, ajustes));
+      }
     } catch (error) {
       render(contenido, errorBox(error.message, cargar));
-      return;
     }
-
-    render(contenido, panel(ventas, productos, tiempos, horas));
   }
 
+  pintarPestanas();
+  // aplicarRango deja las fechas puestas y dispara la primera carga.
   aplicarRango(29);
 }
 
@@ -158,6 +194,164 @@ function panel(ventas, productos, tiempos, horas) {
 
     tablaDeDatos(ventas.by_day),
   ];
+}
+
+// =========================================================
+// Cierre: lo que se mira para cuadrar el día
+// =========================================================
+
+/**
+ * A diferencia de la vista de venta, esto sigue la plata: se fecha por el
+ * cobro y cuenta también lo cobrado sobre pedidos que aún no están
+ * completados. Por eso su total no tiene por qué coincidir con el de venta —
+ * miden cosas distintas y la pantalla lo dice, para que la diferencia no
+ * parezca un error.
+ */
+function panelCierre(ingresos, porUsuario, ajustes) {
+  const metodos = ingresos.by_method;
+  const neto = metodos.reduce((suma, m) => suma + Number(m.net), 0);
+  const devuelto = metodos.reduce((suma, m) => suma + Number(m.refunded), 0);
+
+  return [
+    card(
+      h('div', { class: 'text-sm text-stone-600' }, 'Ingresos del período'),
+      h('div', { class: 'text-5xl font-semibold text-stone-900 mt-1' }, money(neto)),
+      h(
+        'div',
+        { class: 'text-sm text-stone-500 mt-2' },
+        `${ingresos.from_date} a ${ingresos.to_date} · lo cobrado menos lo devuelto, por fecha del cobro`
+      ),
+      h(
+        'p',
+        { class: 'text-xs text-stone-500 mt-2' },
+        'No tiene por qué coincidir con la venta: aquí entra lo cobrado sobre pedidos todavía abiertos, y no entra lo vendido que aún no se ha cobrado.'
+      )
+    ),
+
+    metodos.length
+      ? card(
+          h('h3', { class: 'font-semibold text-stone-900 mb-3' }, 'Ingresos por método de pago'),
+          h(
+            'table',
+            { class: 'w-full text-sm' },
+            h(
+              'thead',
+              { class: 'text-left text-stone-500 border-b border-stone-200' },
+              h(
+                'tr',
+                {},
+                h('th', { class: 'py-1' }, 'Método'),
+                h('th', { class: 'py-1 text-right' }, 'Cobros'),
+                h('th', { class: 'py-1 text-right' }, 'Cobrado'),
+                h('th', { class: 'py-1 text-right' }, 'Devuelto'),
+                h('th', { class: 'py-1 text-right' }, 'Neto')
+              )
+            ),
+            h(
+              'tbody',
+              { class: 'tabular-nums' },
+              metodos.map((m) =>
+                h(
+                  'tr',
+                  { class: 'border-b border-stone-100' },
+                  h('td', { class: 'py-1.5' }, metodoPago(m.method)),
+                  h('td', { class: 'py-1.5 text-right' }, number(m.charges)),
+                  h('td', { class: 'py-1.5 text-right' }, money(m.charged)),
+                  h(
+                    'td',
+                    { class: `py-1.5 text-right ${Number(m.refunded) ? 'text-red-700' : 'text-stone-400'}` },
+                    Number(m.refunded) ? `− ${money(m.refunded)}` : '—'
+                  ),
+                  h('td', { class: 'py-1.5 text-right font-semibold' }, money(m.net))
+                )
+              )
+            ),
+            h(
+              'tfoot',
+              {},
+              h(
+                'tr',
+                { class: 'font-semibold tabular-nums' },
+                h('td', { class: 'py-2' }, 'Total'),
+                h('td', {}),
+                h('td', {}),
+                h('td', { class: 'py-2 text-right text-red-700' }, devuelto ? `− ${money(devuelto)}` : '—'),
+                h('td', { class: 'py-2 text-right' }, money(neto))
+              )
+            )
+          )
+        )
+      : sinDatos('Ingresos por método de pago'),
+
+    barras('Ventas por usuario', porUsuario, {
+      etiquetaDe: (r) => r.user_name ?? 'Sin usuario',
+      valorDe: (r) => Number(r.revenue),
+      formato: money,
+      detalleDe: (r) => `${r.orders} pedido${r.orders === 1 ? '' : 's'}`,
+    }),
+
+    h(
+      'div',
+      { class: 'grid grid-cols-1 lg:grid-cols-3 gap-4 items-start' },
+      seccionAjuste('Anulaciones', ajustes.cancellations, 'Pedidos que no se vendieron.', (i) =>
+        h('span', {}, i.order_number, h('span', { class: 'text-stone-400' }, ` · ${canal(i.channel)}`))
+      ),
+      seccionAjuste('Reembolsos', ajustes.refunds, 'Plata que volvió al cliente.', (i) =>
+        h('span', {}, i.order_number, h('span', { class: 'text-stone-400' }, ` · ${metodoPago(i.method)}`))
+      ),
+      seccionAjuste('Descuentos', ajustes.discounts, 'Lo que se dejó de cobrar.', (i) =>
+        h('span', {}, i.order_number, h('span', { class: 'text-stone-400' }, ` · de ${money(i.order_total)}`))
+      )
+    ),
+  ];
+}
+
+/**
+ * Una lista de ajustes con su total.
+ *
+ * El total viene del backend calculado sobre todo el período, no sumando lo
+ * que se ve: la lista puede venir recortada y un total que solo sume las
+ * filas visibles no sirve para cuadrar.
+ */
+function seccionAjuste(titulo, grupo, descripcion, tituloDe) {
+  return card(
+    h(
+      'div',
+      { class: 'flex items-baseline justify-between gap-2 mb-1' },
+      h('h3', { class: 'font-semibold text-stone-900' }, titulo),
+      h('span', { class: 'text-lg font-semibold tabular-nums' }, money(grupo.total))
+    ),
+    h('p', { class: 'text-xs text-stone-500 mb-3' }, `${grupo.count} en el período · ${descripcion}`),
+
+    grupo.items.length
+      ? h(
+          'div',
+          { class: 'divide-y divide-stone-100 -mx-1' },
+          grupo.items.map((i) =>
+            h(
+              'div',
+              { class: 'py-2 px-1' },
+              h(
+                'div',
+                { class: 'flex justify-between gap-2 text-sm' },
+                tituloDe(i),
+                h('span', { class: 'tabular-nums whitespace-nowrap' }, money(i.amount))
+              ),
+              h(
+                'div',
+                { class: 'text-xs text-stone-500 mt-0.5' },
+                [i.by_name ?? 'sin usuario', i.at ? `${fecha(i.at)} ${time(i.at)}` : null].filter(Boolean).join(' · ')
+              ),
+              i.reason ? h('div', { class: 'text-xs text-stone-600 mt-0.5' }, i.reason) : null
+            )
+          )
+        )
+      : h('p', { class: 'text-sm text-stone-500' }, 'Nada en este período.'),
+
+    grupo.truncated
+      ? h('p', { class: 'text-xs text-amber-800 mt-3' }, badge('Lista recortada', 'warn'), ' El total sí es del período completo.')
+      : null
+  );
 }
 
 const tarjetaDato = (titulo, valor, pie) =>

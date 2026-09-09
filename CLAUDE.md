@@ -169,7 +169,8 @@ Sobre eso se construyeron dos fases de trabajo en la web:
 
 - **Fase 2 (cerrar el ciclo del dinero)**, en curso y partida en trozos.
   Hechos: cobro parcial y por varios métodos (F2.1), división de cuenta
-  (F2.2), reembolsos (F2.3) y cierre de turno con arqueo (F2.5).
+  (F2.2), reembolsos (F2.3), cierre de turno con arqueo (F2.5) y los
+  reportes de cierre (F2.6).
 
 Sobre los reembolsos, tres detalles que conviene no deshacer:
 
@@ -213,9 +214,22 @@ Sobre la división de cuenta, dos cosas:
   Dividir no cambia el pedido ni sus totales: cada parte es un pago parcial
   más contra el mismo saldo.
 
-**Siguiente**: el resto de la fase 2 —cancelación con motivo (F2.4) y los
-reportes de cierre (F2.6), que ya tienen en `payments.created_by` y
-`payments.cash_session_id` lo que necesitan.
+Sobre los reportes de cierre, dos cosas:
+
+- **Siguen la plata, no el pedido.** Los ingresos por método se fechan por el
+  cobro y cuentan también lo cobrado sobre pedidos aún abiertos; los ajustes,
+  por cuándo se anuló, se devolvió o se aplicó el descuento. Por eso su total
+  no coincide con el de venta, y la pantalla lo dice: si no, la diferencia
+  parece un error de la aplicación.
+- **Las listas de ajustes se recortan a 200 filas, pero sus totales no.** Se
+  calculan con funciones de ventana, que corren antes del `LIMIT`. Un reporte
+  que muestre 200 anulaciones y diga que suman solo esas 200 no sirve para
+  cuadrar.
+
+**Siguiente**: lo único que queda de la fase 2 es la cancelación con motivo
+(F2.4). El endpoint de cambio de estado ya acepta `note` y la guarda en
+`order_status_history`, y el reporte de anulaciones ya la muestra: falta el
+campo en la pantalla y la regla de negocio.
 
 Antes de F2.4 hay una decisión de negocio pendiente: **si un pedido con pagos
 debe exigir reembolso antes de poder cancelarse.** Ata F2.3 con F2.4 y no la
@@ -237,7 +251,7 @@ Pendientes conocidos:
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
   Cubre el arranque con y sin sesión, la pantalla de clientes, el tablero de
   domicilios, el cobro, el reembolso y la división de cuenta desde el detalle
-  del pedido, y la caja.
+  del pedido, la caja y los reportes de cierre.
   Faltan la toma de pedido con modificadores obligatorios y el avance de
   estado en cocina. Cada pantalla nueva debería llegar con la suya.
 

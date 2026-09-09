@@ -16,5 +16,10 @@ final class ReportRoutes
         $router->get('/reports/top-products', fn () => ReportController::topProducts());
         $router->get('/reports/prep-times', fn () => ReportController::prepTimes());
         $router->get('/reports/peak-hours', fn () => ReportController::peakHours());
+
+        // Los de cierre: siguen la plata, no el pedido.
+        $router->get('/reports/payment-methods', fn () => ReportController::paymentMethods());
+        $router->get('/reports/sales-by-user', fn () => ReportController::salesByUser());
+        $router->get('/reports/adjustments', fn () => ReportController::adjustments());
     }
 }
