@@ -7,6 +7,8 @@ namespace App\Services;
 use App\Core\Database;
 use App\Domain\BillSplit;
 use App\Domain\BillSplitError;
+use App\Domain\ChargeError;
+use App\Domain\ChargeRules;
 use App\Domain\PaymentBalance;
 use App\Domain\RefundError;
 use App\Domain\RefundRules;
@@ -136,6 +138,16 @@ final class PaymentService
             if ($existing !== null) {
                 return $existing;
             }
+        }
+
+        // No se cobra mas de lo que falta. Es el espejo de la regla de los
+        // reembolsos, y va despues de la llave de idempotencia a proposito:
+        // un reintento del mismo cobro tiene que devolver el que ya existe,
+        // no chocar contra un saldo que el propio cobro ya bajo.
+        try {
+            ChargeRules::validate(self::getBalanceForOrder($order), $amountCents);
+        } catch (ChargeError $e) {
+            throw new PaymentError($e->getMessage());
         }
 
         $provider = PaymentProviders::get($method);

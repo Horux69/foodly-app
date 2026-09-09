@@ -118,7 +118,8 @@ no tener lógica de negocio propia.
 ./scripts/setup-php.sh          # Postgres + esquema + semillas + composer install
 cd php && php -S localhost:8000 -t public public/index.php   # app en :8000
 
-cd php && vendor/bin/phpunit    # pruebas del dominio
+cd php && vendor/bin/phpunit    # dominio + integración (esta se salta sin base)
+./scripts/setup-test-db.sh      # base de las pruebas de integración
 npm install && npm test         # pruebas del frontend (Vitest + jsdom)
 cd php && php bin/create_tenant.php "Nombre" --branch="Sede" --branch-code=SED \
     --admin-email=dueno@x.com --admin-password="clave-larga"
@@ -545,13 +546,34 @@ Sobre los reportes y la baja de un restaurante, tres cosas:
   y exige repetir el nombre exacto.
 
 `php/tests/Core/LlamadasTest.php` recorre `php/src` y comprueba por reflexión
-que los métodos que el código llama existan. No reemplaza a las pruebas de
-integración que faltan, pero atrapa la forma concreta en que esta sesión
-rompió dos veces: `OrderStatusService::buildMachine()` dejó de existir al
-pisar el archivo con una clase nueva del mismo nombre, y
+que los métodos que el código llama existan. Atrapa la forma concreta en que
+esta sesión rompió dos veces: `OrderStatusService::buildMachine()` dejó de
+existir al pisar el archivo con una clase nueva del mismo nombre, y
 `RoleRepository::listPermissions()` se borró por parecer código muerto
-mientras `TenantProvisioning` lo seguía usando —el alta de restaurantes
-quedó rota y la suite en verde—.
+mientras `TenantProvisioning` lo seguía usando —el alta de restaurantes quedó
+rota y la suite en verde—.
+
+**Pruebas de integración contra un Postgres de verdad**, en
+`php/tests/Integration/`. Se saltan enteras si no hay base configurada, así
+que nadie necesita Postgres para correr las de dominio; con
+`./scripts/setup-test-db.sh` y las dos variables `TEST_*` en `php/.env`,
+corren con `vendor/bin/phpunit` como el resto. Cada prueba crea su propia
+empresa por el mismo camino que `bin/create_tenant.php` —el que estuvo roto—
+y de ahí en adelante habla por la conexión `app()`, bajo RLS.
+
+Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
+obligatorio, cobro por partes, reembolso, las tres reglas de
+`StatusChangeRules` contra el saldo real) y el aislamiento entre empresas,
+que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
+que la hace funcionar —que el rol de la aplicación no sea dueño de las
+tablas— no se ve desde PHP. Hay una prueba que comprueba justo eso.
+
+Escribirlas encontró un agujero real: **nada impedía cobrar más de lo que el
+pedido debe.** Un 200000 donde iban 20000 dejaba el pedido "saldado" con el
+saldo en negativo, la plata entraba al arqueo y el cajón cuadraba de más sin
+que nada dijera por qué. `Domain\ChargeRules` es el espejo de
+`RefundRules`: no se cobra más de lo que falta, ni sobre un pedido ya
+saldado. Un vuelto no se registra como cobro, se entrega.
 
 **Siguiente**: solo queda la fase 4 (servicio en mesa), que el plan deja
 condicionada a que haya clientes de ese modelo y que arrastra la pieza más
@@ -559,11 +581,7 @@ pesada que le falta al backend: modificar un pedido abierto.
 
 Pendientes conocidos:
 
-- No hay pruebas de integración en PHP. El dominio sí tiene suite (PHPUnit);
-  el resto se validó a mano contra un Postgres real y manejando el frontend en
-  un navegador. La suite `tests/` de Python cubre el backend retirado.
-- No hay pruebas de integración en PHP (ver arriba): `LlamadasTest` tapa una
-  parte del agujero, no todo.
+- La suite `tests/` de Python cubre el backend retirado y no se corre.
 - **El frontend tiene arnés de pruebas, pero cubre poco todavía.**
   `web/tests/` corre con Vitest sobre jsdom y monta la aplicación real —el
   esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
