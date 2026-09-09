@@ -36,6 +36,22 @@ const PEDIDO = {
       modifiers: [{ modifier_id: 'x', name_snapshot: 'Masa delgada', price_delta: '0.00' }],
     },
     { id: 'i2', menu_item_id: 'm2', name_snapshot: 'Gaseosa', quantity: 2, unit_price: '4500.00', tax_amount: '0.00', line_total: '9000.00', notes: null, modifiers: [] },
+    {
+      id: 'i3',
+      menu_item_id: 'm3',
+      name_snapshot: 'Combo del día',
+      quantity: 1,
+      unit_price: '28000.00',
+      tax_amount: '0.00',
+      line_total: '28000.00',
+      notes: null,
+      modifiers: [],
+      // Ya multiplicados por la cantidad y congelados al vender.
+      components: [
+        { menu_item_id: 'm1', name_snapshot: 'Hamburguesa', quantity: 1 },
+        { menu_item_id: 'm2', name_snapshot: 'Papas', quantity: 2 },
+      ],
+    },
   ],
   balance: { total: '44000.00', paid: '9000.00', refunded: '0.00', net_paid: '9000.00', pending: '35000.00', is_settled: false },
   delivery: { order_id: 'o1', address: 'Calle 1 #2-3', zone_id: null, zone_name: 'Norte', courier_id: null, courier_name: null, estimated_time: null, dispatched_at: null, delivered_at: null },
@@ -95,6 +111,17 @@ describe('comanda de cocina', () => {
     expect(d).toContain('Sin albahaca');
     // La dirección va en la comanda de un domicilio: sale con el pedido.
     expect(d).toContain('Calle 1 #2-3');
+  });
+
+  // A la cocina no le sirve "Combo del día": le sirven los platos.
+  it('desarma el combo en lo que hay que preparar', async () => {
+    await abrirPanel();
+    pulsarEnPanel('Comanda');
+    await reposar();
+
+    const d = documento();
+    expect(d).toContain('Combo del día');
+    expect(d).toContain('1× Hamburguesa · 2× Papas');
   });
 
   it('no lleva precios', async () => {

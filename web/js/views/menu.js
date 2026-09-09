@@ -114,6 +114,7 @@ export async function menu(outlet) {
           'div',
           { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
           item.name,
+          item.components?.length ? badge('Combo', 'ok') : null,
           item.is_archived ? badge('Archivado') : null,
           !item.is_available && !item.is_archived ? badge('Agotado', 'warn') : null
         ),
@@ -124,7 +125,14 @@ export async function menu(outlet) {
           porSucursal && ajuste !== null
             ? h('span', { class: 'text-amber-800' }, ` · en ${porSucursal.name} ${money(ajuste)}`)
             : null
-        )
+        ),
+        item.components?.length
+          ? h(
+              'div',
+              { class: 'text-xs text-stone-600' },
+              `Lleva: ${item.components.map((c) => `${c.quantity}× ${c.name}`).join(', ')}`
+            )
+          : null
       ),
       precio,
       precioSucursal,
@@ -181,6 +189,12 @@ export async function menu(outlet) {
         ? button(`Opciones · ${item.modifier_group_ids.length}`, {
             variant: 'secondary',
             onClick: () => abrirGruposDelProducto(item),
+          })
+        : null,
+      !item.is_archived
+        ? button(item.components?.length ? `Combo · ${item.components.length}` : 'Combo', {
+            variant: 'secondary',
+            onClick: () => abrirComponentes(item),
           })
         : null,
       button(item.is_archived ? 'Desarchivar' : 'Archivar', {
@@ -293,6 +307,118 @@ export async function menu(outlet) {
                     : 'Sin opciones todavía'
                 )
               )
+            )
+          )
+        ),
+        h(
+          'div',
+          { class: 'flex justify-end gap-2 mt-5' },
+          button('Cancelar', { variant: 'secondary', onClick: cerrar }),
+          guardar
+        )
+      )
+    );
+
+    desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  }
+
+
+  // =========================================================
+  // Combos
+  // =========================================================
+
+  /**
+   * Qué lleva un combo.
+   *
+   * Se marca lo que entra y con qué cantidad. La lista que se manda reemplaza
+   * a la anterior entera, y vaciarla devuelve el producto a suelto.
+   *
+   * El precio no se toca aquí: un combo se cobra por su propio `base_price`,
+   * el del paquete. Repartir un descuento entre los componentes es de donde
+   * salen los centavos que no cuadran.
+   */
+  function abrirComponentes(item) {
+    // Ni él mismo ni los archivados: lo primero lo rechaza el backend, y lo
+    // segundo sería armar un combo con algo que ya no se vende.
+    const candidatos = catalogo.items.filter((i) => i.id !== item.id && !i.is_archived);
+    if (!candidatos.length) {
+      return toast('Hace falta al menos otro producto para armar un combo', 'warn');
+    }
+
+    const actuales = new Map((item.components ?? []).map((c) => [c.item_id, c.quantity]));
+    const filas = candidatos.map((candidato) => {
+      const cantidad = input({
+        type: 'number',
+        min: '1',
+        value: actuales.get(candidato.id) ?? 1,
+        class: 'w-16 rounded-lg border border-stone-300 px-2 py-1 text-sm tabular-nums',
+        'aria-label': `Cantidad de ${candidato.name}`,
+      });
+      const marca = h('input', {
+        type: 'checkbox',
+        class: 'w-4 h-4 rounded border-stone-300 shrink-0',
+        checked: actuales.has(candidato.id),
+      });
+      return { candidato, marca, cantidad };
+    });
+
+    const elegidos = () =>
+      filas
+        .filter((f) => f.marca.checked)
+        .map((f) => ({ item_id: f.candidato.id, quantity: Math.max(1, Number(f.cantidad.value) || 1) }));
+
+    let desmontar;
+    const cerrar = () => desmontar();
+    const guardar = button('Guardar', {
+      onClick: async () => {
+        guardar.disabled = true;
+        try {
+          await api.put(`/menu/items/${item.id}/components`, { components: elegidos() });
+          cerrar();
+          toast('Combo actualizado', 'ok');
+          await recargar();
+        } catch (error) {
+          toast(error.message);
+          guardar.disabled = false;
+        }
+      },
+    });
+
+    const overlay = h(
+      'div',
+      {
+        class: 'fixed inset-0 z-50 bg-stone-900/30 flex items-center justify-center p-4',
+        onClick: (e) => e.target === overlay && cerrar(),
+      },
+      h(
+        'div',
+        {
+          class: 'aparece bg-white rounded-[--r-g] max-w-md w-full p-5 shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+          role: 'dialog',
+          'aria-modal': 'true',
+        },
+        h('h3', { class: 'text-[15px] font-semibold' }, `¿Qué lleva “${item.name}”?`),
+        h(
+          'p',
+          { class: 'text-[13px] text-stone-500 mt-1 mb-3' },
+          `Se vende como una sola línea, a ${money(item.base_price)}. La cocina recibe los productos marcados; ` +
+            'sin ninguno, vuelve a ser un producto suelto.'
+        ),
+        h(
+          'div',
+          { class: 'space-y-1' },
+          filas.map(({ candidato, marca, cantidad }) =>
+            h(
+              'div',
+              { class: 'flex items-center gap-2 text-sm' },
+              h(
+                'label',
+                { class: 'flex items-center gap-2 flex-1 min-w-0 cursor-pointer' },
+                marca,
+                h('span', { class: 'truncate' }, candidato.name),
+                candidato.components?.length ? badge('Combo', 'ok') : null
+              ),
+              cantidad
             )
           )
         ),

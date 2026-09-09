@@ -63,6 +63,7 @@ final class MenuController
                 'price' => Money::toDecimalString($i->priceCents),
                 'is_available' => $i->isAvailable,
                 'modifier_groups' => self::modifierGroupsOut($i->modifierGroups),
+                'components' => $i->components,
             ], $c->items),
         ], $categories);
     }
@@ -72,7 +73,8 @@ final class MenuController
     {
         $ctx = Deps::require(Deps::getContext(), 'menu.view');
         $branchId = Deps::activeBranchIdOrNull($ctx);
-        [$categories, $items, $overrides, $groupsByItem] = MenuService::getCatalog($ctx->tenantId, $branchId);
+        [$categories, $items, $overrides, $groupsByItem, $componentsByItem] =
+            MenuService::getCatalog($ctx->tenantId, $branchId);
 
         return [
             // Cual sucursal se esta mirando, para que la pantalla pueda decir
@@ -107,6 +109,9 @@ final class MenuController
                 // enteros de /menu/modifier-groups y no hace falta repetirlos
                 // en cada producto.
                 'modifier_group_ids' => $groupsByItem[$i->id] ?? [],
+                // Vacio en todos los productos menos en los combos, que son
+                // pocos: no vale la pena una consulta aparte por producto.
+                'components' => $componentsByItem[$i->id] ?? [],
             ], $items),
         ];
     }
@@ -235,6 +240,44 @@ final class MenuController
         }
 
         return ['id' => $item->id, 'is_available' => $item->isAvailable];
+    }
+
+    /**
+     * Define que lleva un combo.
+     *
+     * Se manda la lista entera y reemplaza a la anterior, como los grupos de
+     * modificadores de un producto: un PUT y no un POST por componente,
+     * porque lo que se edita es la composicion completa y no cada pieza.
+     * Una lista vacia lo devuelve a producto suelto.
+     */
+    public static function setComponents(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'menu.edit');
+        $body = Request::json();
+
+        $raw = $body['components'] ?? null;
+        if (!is_array($raw) || array_is_list($raw) === false) {
+            throw new ApiException(422, "'components' tiene que ser una lista");
+        }
+
+        $componentes = [];
+        foreach ($raw as $entrada) {
+            if (!is_array($entrada)) {
+                throw new ApiException(422, 'Cada componente es un objeto con item_id y quantity');
+            }
+            $componentes[] = [
+                'item_id' => Request::uuid($entrada, 'item_id'),
+                'quantity' => array_key_exists('quantity', $entrada) ? Request::int($entrada, 'quantity', min: 1) : 1,
+            ];
+        }
+
+        try {
+            $guardados = MenuService::setComponents($ctx->tenantId, $params['item_id'], $componentes);
+        } catch (MenuError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return ['item_id' => $params['item_id'], 'components' => $guardados];
     }
 
     /**

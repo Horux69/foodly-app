@@ -271,6 +271,15 @@ async function vistaNuevo(host) {
         'div',
         {},
         h('div', { class: 'font-medium text-sm text-stone-900 leading-snug' }, item.name),
+        // Lo que lleva el combo, para poder responder "¿y qué trae?" sin
+        // salir de la pantalla de venta.
+        item.components?.length
+          ? h(
+              'div',
+              { class: 'text-[11px] text-stone-500 mt-0.5' },
+              item.components.map((c) => `${c.quantity}× ${c.name}`).join(' · ')
+            )
+          : null,
         item.modifier_groups.length
           ? h('div', { class: 'text-[11px] text-stone-400 mt-0.5' }, 'Con opciones')
           : null

@@ -44,6 +44,13 @@ final class KitchenController
                 'quantity' => $item->quantity,
                 'notes' => $item->notes,
                 'modifiers' => array_map(static fn ($m) => $m->nameSnapshot, $item->modifiers),
+                // Un combo llega al tablero como una linea con lo que lleva
+                // debajo: la cocina necesita la lista de platos, no el nombre
+                // comercial del paquete.
+                'components' => array_map(static fn ($c) => [
+                    'name_snapshot' => $c->nameSnapshot,
+                    'quantity' => $c->quantity,
+                ], $item->components),
             ], $entry->order->items),
             'next_statuses' => array_map(OrderController::statusOut(...), $entry->nextStatuses),
         ];

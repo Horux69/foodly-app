@@ -7,6 +7,7 @@ namespace App\Repositories;
 use App\Core\Money;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemComponent;
 use App\Models\OrderItemModifier;
 use App\Models\OrderStatusEvent;
 use App\Models\OrderStatusRow;
@@ -244,11 +245,17 @@ final class OrderRepository
             return [];
         }
 
-        $modifiersByItem = $this->modifiersForItems(array_column($itemRows, 'id'));
+        $itemIds = array_column($itemRows, 'id');
+        $modifiersByItem = $this->modifiersForItems($itemIds);
+        $componentsByItem = $this->componentsForItems($itemIds);
 
         $result = [];
         foreach ($itemRows as $row) {
-            $result[$row['order_id']][] = OrderItem::fromRow($row, $modifiersByItem[$row['id']] ?? []);
+            $result[$row['order_id']][] = OrderItem::fromRow(
+                $row,
+                $modifiersByItem[$row['id']] ?? [],
+                $componentsByItem[$row['id']] ?? [],
+            );
         }
         return $result;
     }
@@ -266,6 +273,27 @@ final class OrderRepository
         $result = [];
         foreach ($stmt->fetchAll() as $row) {
             $result[$row['order_item_id']][] = OrderItemModifier::fromRow($row);
+        }
+        return $result;
+    }
+
+    /**
+     * Lo que llevaba cada combo vendido, en el orden en que se guardo.
+     *
+     * @param string[] $itemIds
+     * @return array<string, OrderItemComponent[]>
+     */
+    private function componentsForItems(array $itemIds): array
+    {
+        $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM order_item_components WHERE order_item_id IN ({$placeholders}) ORDER BY sort_order"
+        );
+        $stmt->execute(array_values($itemIds));
+
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['order_item_id']][] = OrderItemComponent::fromRow($row);
         }
         return $result;
     }
@@ -349,6 +377,29 @@ final class OrderRepository
             'notes' => $notes,
         ]);
         return (string) $stmt->fetchColumn();
+    }
+
+    /**
+     * Congela lo que lleva un combo en la linea recien creada.
+     *
+     * @param array<int, array{item_id: string, name: string, quantity: int}> $componentes
+     *        ya expandidos por la cantidad pedida
+     */
+    public function addItemComponents(string $orderItemId, array $componentes): void
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO order_item_components (order_item_id, menu_item_id, name_snapshot, quantity, sort_order)
+             VALUES (:order_item_id, :menu_item_id, :name_snapshot, :quantity, :sort_order)'
+        );
+        foreach (array_values($componentes) as $posicion => $componente) {
+            $stmt->execute([
+                'order_item_id' => $orderItemId,
+                'menu_item_id' => $componente['item_id'],
+                'name_snapshot' => $componente['name'],
+                'quantity' => $componente['quantity'],
+                'sort_order' => $posicion,
+            ]);
+        }
     }
 
     public function addItemModifier(

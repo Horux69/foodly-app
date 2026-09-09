@@ -56,6 +56,13 @@ final class OrderController
                     'name_snapshot' => $m->nameSnapshot,
                     'price_delta' => Money::toDecimalString($m->priceDeltaCents),
                 ], $i->modifiers),
+                // Lo que llevaba el combo cuando se vendio, no lo que lleva
+                // hoy: sin precio, porque el paquete se cobra entero.
+                'components' => array_map(static fn ($c) => [
+                    'menu_item_id' => $c->menuItemId,
+                    'name_snapshot' => $c->nameSnapshot,
+                    'quantity' => $c->quantity,
+                ], $i->components),
             ], $order->items),
         ];
     }

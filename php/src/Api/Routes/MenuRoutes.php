@@ -34,5 +34,8 @@ final class MenuRoutes
         $router->delete('/menu/modifiers/{modifier_id:uuid}', fn ($p) => ModifierController::deleteModifier($p));
 
         $router->put('/menu/items/{item_id:uuid}/modifier-groups', fn ($p) => ModifierController::setItemGroups($p));
+
+        // Combos: que productos lleva uno dentro.
+        $router->put('/menu/items/{item_id:uuid}/components', fn ($p) => MenuController::setComponents($p));
     }
 }

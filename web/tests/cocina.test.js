@@ -111,6 +111,35 @@ describe('lo despachado hace poco', () => {
   });
 });
 
+describe('un combo en el tablero', () => {
+  it('llega con los platos que lo componen, no solo con su nombre', async () => {
+    await montarCocina(
+      tablero({
+        orders: [
+          pedido('A-1', 'kitchen', [
+            {
+              id: 'li-1',
+              name_snapshot: 'Combo del día',
+              quantity: 2,
+              notes: null,
+              modifiers: [],
+              // Vienen ya multiplicados por la cantidad: dos combos son dos
+              // hamburguesas y cuatro papas.
+              components: [
+                { name_snapshot: 'Hamburguesa', quantity: 2 },
+                { name_snapshot: 'Papas', quantity: 4 },
+              ],
+            },
+          ]),
+        ],
+      })
+    );
+
+    expect(texto()).toContain('Combo del día');
+    expect(texto()).toContain('2× Hamburguesa · 4× Papas');
+  });
+});
+
 describe('marcar una línea como preparada', () => {
   const conDosLineas = tablero({
     orders: [

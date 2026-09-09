@@ -57,6 +57,16 @@ function imprimir(nodo) {
 /** Los modificadores llegan como texto desde el KDS y como objeto desde el detalle. */
 const nombreModificador = (m) => (typeof m === 'string' ? m : m.name_snapshot);
 
+/**
+ * Lo que lleva un combo, ya multiplicado por las veces que se pidió.
+ *
+ * Sale del pedido y no de la carta: `order_item_components` guarda la
+ * composición del momento de la venta, así que una comanda reimpresa dice lo
+ * que se preparó y no lo que el combo llevaría hoy.
+ */
+const componentes = (item) =>
+  (item.components ?? []).map((c) => `${c.quantity}× ${c.name_snapshot}`).join(' · ');
+
 const cabecera = (pedido, titulo) =>
   h(
     'div',
@@ -102,6 +112,7 @@ export function imprimirComanda(pedido, { reimpresion = false } = {}) {
               h('span', { class: 'doc-cantidad' }, `${item.quantity}×`),
               h('span', {}, item.name_snapshot)
             ),
+            item.components?.length ? h('div', { class: 'doc-detalle' }, componentes(item)) : null,
             item.modifiers?.length
               ? h('div', { class: 'doc-detalle' }, item.modifiers.map(nombreModificador).join(' · '))
               : null,
@@ -165,6 +176,7 @@ export function imprimirTicket(pedido, pagos = []) {
               h('span', {}, `${item.quantity}× ${item.name_snapshot}`),
               h('span', {}, money(item.line_total))
             ),
+            item.components?.length ? h('div', { class: 'doc-detalle' }, componentes(item)) : null,
             item.modifiers?.length
               ? h('div', { class: 'doc-detalle' }, item.modifiers.map(nombreModificador).join(' · '))
               : null

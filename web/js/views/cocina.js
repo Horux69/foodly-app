@@ -247,6 +247,15 @@ function linea(item, listas) {
           { class: `text-[15px] font-medium text-stone-900 ${marcada ? 'line-through' : ''}` },
           item.name_snapshot
         ),
+        // Un combo se prepara por partes: la cocina necesita los platos, no
+        // el nombre del paquete.
+        item.components?.length
+          ? h(
+              'div',
+              { class: 'text-xs text-stone-700' },
+              item.components.map((c) => `${c.quantity}× ${c.name_snapshot}`).join(' · ')
+            )
+          : null,
         item.modifiers.length
           ? h('div', { class: 'text-xs text-stone-500' }, item.modifiers.join(' · '))
           : null,

@@ -210,6 +210,13 @@ function bloqueLineas(pedido) {
           'div',
           { class: 'flex-1 min-w-0' },
           h('div', { class: 'text-[13.5px] text-stone-900' }, i.name_snapshot),
+          i.components?.length
+            ? h(
+                'div',
+                { class: 'text-[12px] text-stone-500' },
+                i.components.map((c) => `${c.quantity}× ${c.name_snapshot}`).join(' · ')
+              )
+            : null,
           i.modifiers.length
             ? h('div', { class: 'text-[12px] text-stone-500' }, i.modifiers.map((m) => m.name_snapshot).join(' · '))
             : null,

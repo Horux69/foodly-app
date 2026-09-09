@@ -563,7 +563,9 @@ y de ahí en adelante habla por la conexión `app()`, bajo RLS.
 
 Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
 obligatorio, cobro por partes, reembolso, las tres reglas de
-`StatusChangeRules` contra el saldo real) y el aislamiento entre empresas,
+`StatusChangeRules` contra el saldo real), los combos —el precio del paquete,
+la composición congelada y el bloqueo al archivar— y el aislamiento entre
+empresas,
 que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
 que la hace funcionar —que el rol de la aplicación no sea dueño de las
 tablas— no se ve desde PHP. Hay una prueba que comprueba justo eso.
@@ -591,6 +593,36 @@ Sobre entrar cuando el correo se repite, dos cosas:
   pantalla revela el campo solo ante ese 409, y conserva la contraseña:
   volver a escribirla para responder "¿cuál?" sería absurdo.
 
+
+Sobre los combos —varios productos completos a precio de paquete—, cuatro
+decisiones que conviene no deshacer:
+
+- **Un combo es un producto normal que declara qué lleva dentro.** No es un
+  descuento repartido entre líneas ni un modificador gigante: tiene su propio
+  `base_price`, su impuesto y su disponibilidad, y se vende como **una sola
+  línea** a ese precio. Repartir el precio del paquete entre los componentes
+  es de donde salen los centavos que no cuadran, y además dejaría el pedido
+  con líneas cuyo precio no está en ninguna carta.
+- **La composición se congela en el pedido**, igual que el nombre y el precio
+  (principio 8). `order_item_components` guarda lo que llevaba al venderse, ya
+  multiplicado por la cantidad pedida —dos combos son dos hamburguesas y
+  cuatro gaseosas, y quien multiplica es `Domain\ComboRules::expand`—. Sin
+  eso, la comanda de un pedido de ayer diría lo que el combo lleva hoy.
+- **Archivar un producto que un combo lleva dentro está bloqueado.** El
+  componente es `ON DELETE RESTRICT`, pero archivar no borra: vaciaría el
+  combo en silencio, que se seguiría vendiendo al mismo precio con una cosa
+  menos. El mensaje dice en qué combos está.
+- **Un combo no se contiene a sí mismo, ni a través de otro.** El `CHECK` de
+  la base atrapa el caso directo; el indirecto —A lleva B y B llevaría A— lo
+  recorre `ComboRules` sobre la composición guardada. Un ciclo no se puede
+  expandir para la comanda: la cocina necesita una lista de platos, no un
+  bucle.
+
+La cocina, la comanda impresa, el detalle del pedido y la pantalla de venta
+muestran lo que lleva; el ticket también, porque el cliente compró un paquete
+y tiene derecho a ver qué era. Con precio solo la línea del combo: los
+componentes no llevan cifra propia porque no la tienen.
+
 **Siguiente**: solo queda la fase 4 (servicio en mesa), que el plan deja
 condicionada a que haya clientes de ese modelo y que arrastra la pieza más
 pesada que le falta al backend: modificar un pedido abierto.
@@ -612,8 +644,8 @@ Pendientes conocidos:
   la toma de pedido con un grupo obligatorio, el avance de estado en cocina,
   el cobro por partes hasta saldar, los atajos de teclado y el foco de los
   diálogos, la renovación del token y el cambio de contraseña, la comparación
-  entre períodos con su descarga en CSV, y que un botón que falla vuelva a
-  servir.
+  entre períodos con su descarga en CSV, los combos en la pantalla del menú, y
+  que un botón que falla vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta
@@ -625,9 +657,10 @@ Pendientes conocidos:
   se comprobó que falla al reintroducir el `forEach`.
 - El slug de empresa se escribe a mano cuando hace falta; con subdominio por
   empresa no haría falta nunca, pero eso es despliegue, no código.
-- Un combo (varios productos completos a precio de paquete) no se puede
-  modelar: los modificadores suman o restan sobre una línea, no "son" otro
-  producto con su propia receta.
+- Un combo no puede llevar modificadores propios de sus componentes: se
+  eligen sobre la línea del combo, no "el término de la carne que va dentro".
+  Para eso haría falta que cada componente fuese su propia línea, y entonces
+  el precio del paquete tendría que repartirse.
 
 Ya resuelto en la migración: el avance de estado usa `SELECT ... FOR UPDATE`,
 así que dos cajeros que avancen el mismo pedido a la vez ya no se pisan.

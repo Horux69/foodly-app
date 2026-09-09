@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Domain\BranchSchedule;
+use App\Domain\ComboRules;
 use App\Domain\DeliveryError;
 use App\Domain\DeliveryRules;
 use App\Domain\DeliveryZoneRules;
@@ -144,7 +145,16 @@ final class OrderService
                 modifierDeltasCents: array_map(static fn ($m) => $m->priceDeltaCents, $selectedModifiers),
             );
 
-            $resolved[] = new ResolvedLine($item, $line, $selectedModifiers, $lineInput);
+            $resolved[] = new ResolvedLine(
+                $item,
+                $line,
+                $selectedModifiers,
+                $lineInput,
+                // Un combo se vende como una sola linea al precio del
+                // paquete: lo que lleva no entra en la aritmetica, solo se
+                // congela para que la cocina sepa que preparar.
+                $repo->componentsOf($item->id),
+            );
         }
 
         return $resolved;
@@ -296,6 +306,14 @@ final class OrderService
             );
             foreach ($resolved->modifiers as $modifier) {
                 $orders->addItemModifier($orderItemId, $modifier->id, $modifier->name, $modifier->priceDeltaCents);
+            }
+            if ($resolved->components !== []) {
+                // Dos combos son dos de cada cosa: multiplica el dominio, no
+                // la pantalla ni la consulta.
+                $orders->addItemComponents(
+                    $orderItemId,
+                    ComboRules::expand($resolved->components, $resolved->line->quantity),
+                );
             }
         }
 
