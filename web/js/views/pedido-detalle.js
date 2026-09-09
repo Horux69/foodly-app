@@ -492,7 +492,11 @@ function bloqueAvance(pedido, siguientes, recargar) {
               return abrirCancelacion(pedido, estado, recargar);
             }
 
-            event.currentTarget.disabled = true;
+            // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+            // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+            // no podria volver a habilitar el boton.
+            const boton = event.currentTarget;
+            boton.disabled = true;
             try {
               await api.post(`/orders/${pedido.id}/status`, { to_status_id: estado.id });
               await recargar();
@@ -500,7 +504,7 @@ function bloqueAvance(pedido, siguientes, recargar) {
               // Aquí aterrizan las reglas del backend: falta de permiso para
               // esa transición, o una que el tenant no configuró.
               toast(error.message);
-              event.currentTarget.disabled = false;
+              boton.disabled = false;
             }
           },
         })

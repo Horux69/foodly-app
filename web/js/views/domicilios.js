@@ -260,13 +260,17 @@ function tarjeta(pedido, repartidores, refrescar) {
                   return abrirCancelacion(pedido, estado, refrescar);
                 }
 
-                event.currentTarget.disabled = true;
+                // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+                // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+                // no podria volver a habilitar el boton.
+                const boton = event.currentTarget;
+                boton.disabled = true;
                 try {
                   await api.post(`/orders/${pedido.id}/status`, { to_status_id: estado.id });
                   await refrescar();
                 } catch (error) {
                   toast(error.message);
-                  event.currentTarget.disabled = false;
+                  boton.disabled = false;
                 }
               },
             })

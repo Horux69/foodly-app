@@ -979,7 +979,11 @@ function tarjetaPedido(pedido, refrescar) {
                 variant: 'secondary',
                 iconName: ICONO_METODO[metodo] ?? 'dinero',
                 onClick: async (event) => {
-                  event.currentTarget.disabled = true;
+                  // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+                  // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+                  // no podria volver a habilitar el boton.
+                  const boton = event.currentTarget;
+                  boton.disabled = true;
                   try {
                     await api.post(`/orders/${pedido.id}/payments`, {
                       method: metodo,
@@ -990,7 +994,7 @@ function tarjetaPedido(pedido, refrescar) {
                     refrescar();
                   } catch (error) {
                     toast(error.message);
-                    event.currentTarget.disabled = false;
+                    boton.disabled = false;
                   }
                 },
               })

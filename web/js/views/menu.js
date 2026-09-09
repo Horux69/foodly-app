@@ -123,7 +123,11 @@ export async function menu(outlet) {
       button('Guardar', {
         variant: 'secondary',
         onClick: async (e) => {
-          e.currentTarget.disabled = true;
+          // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+          // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+          // no podria volver a habilitar el boton.
+          const boton = e.currentTarget;
+          boton.disabled = true;
           try {
             await api.patch(`/menu/items/${item.id}`, {
               base_price: Number(precio.value),
@@ -147,7 +151,7 @@ export async function menu(outlet) {
             await recargar();
           } catch (error) {
             toast(error.message);
-            e.currentTarget.disabled = false;
+            boton.disabled = false;
           }
         },
       }),

@@ -563,7 +563,11 @@ function seccionDomicilios({ zonas, sede }, refrescar) {
             { class: 'mt-3' },
             button('Crear zona', {
               onClick: async (e) => {
-                e.currentTarget.disabled = true;
+                // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+                // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+                // no podria volver a habilitar el boton.
+                const boton = e.currentTarget;
+                boton.disabled = true;
                 try {
                   await api.post(`/branches/${sede.id}/delivery-zones`, {
                     name: nombre.value.trim(),
@@ -575,7 +579,7 @@ function seccionDomicilios({ zonas, sede }, refrescar) {
                   await refrescar();
                 } catch (error) {
                   toast(error.message);
-                  e.currentTarget.disabled = false;
+                  boton.disabled = false;
                 }
               },
             })
