@@ -119,7 +119,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
       cuerpo,
       encabezado(pedido, cerrar),
       bloqueImpresion(pedido, pagos),
-      pedido.delivery ? bloqueEntrega(pedido.delivery) : null,
+      pedido.delivery ? bloqueEntrega(pedido.delivery, pedido) : null,
       bloqueLineas(pedido, recargarTrasCambio),
       bloqueMesa(pedido, recargarTrasCambio),
       bloqueMesero(pedido, recargarTrasCambio),
@@ -200,8 +200,29 @@ function bloqueImpresion(pedido, pagos) {
   );
 }
 
-function bloqueEntrega(entrega) {
+function bloqueEntrega(entrega, pedido) {
   return section('Entrega', {
+    // El enlace que se le manda al cliente. Se copia en vez de abrirse:
+    // quien lo mira es él, por WhatsApp, y abrirlo aquí solo gastaría una
+    // pestaña.
+    actions: pedido.tracking_token
+      ? button('Copiar enlace', {
+          variant: 'secondary',
+          onClick: async (e) => {
+            const enlace = `${location.origin}/seguimiento.html?t=${pedido.tracking_token}`;
+            try {
+              await navigator.clipboard.writeText(enlace);
+              toast('Enlace de seguimiento copiado', 'ok');
+            } catch {
+              // Sin permiso de portapapeles —o sin HTTPS— se muestra para
+              // copiarlo a mano: peor sería no dar ninguna forma.
+              e.currentTarget.replaceWith(
+                h('input', { class: 'campo text-[12px]', value: enlace, readonly: '' })
+              );
+            }
+          },
+        })
+      : null,
     body: h(
       'div',
       { class: 'space-y-1 text-[13.5px]' },

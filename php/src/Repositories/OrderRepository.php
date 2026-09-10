@@ -78,6 +78,32 @@ final class OrderRepository
      * relee, asi que valida la transicion contra el estado que quedo de
      * verdad.
      */
+    /**
+     * El pedido de un enlace de seguimiento.
+     *
+     * Con el tenant ya fijado —lo resuelve `tracking_tenant_for_token`
+     * antes—, asi que esta consulta corre bajo RLS como cualquier otra: el
+     * token de una empresa no puede leer el pedido de otra ni por error.
+     */
+    public function getByTrackingToken(string $tenantId, string $token): ?Order
+    {
+        $stmt = $this->pdo->prepare(
+            self::SELECT_ORDER . ' WHERE o.tenant_id = :tenant_id AND o.tracking_token = :token'
+        );
+        $stmt->execute(['tenant_id' => $tenantId, 'token' => $token]);
+        $row = $stmt->fetch();
+        return $row === false ? null : $this->hydrateAll([$row])[0];
+    }
+
+    /** A que empresa pertenece un token de seguimiento, sin sesion ni tenant fijado. */
+    public function tenantForTrackingToken(string $token): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT tracking_tenant_for_token(:token)');
+        $stmt->execute(['token' => $token]);
+        $valor = $stmt->fetchColumn();
+        return $valor === false || $valor === null ? null : (string) $valor;
+    }
+
     public function getByIdForUpdate(string $tenantId, string $orderId): ?Order
     {
         // FOR UPDATE OF o y no FOR UPDATE a secas: se quiere bloquear el
@@ -319,6 +345,7 @@ final class OrderRepository
         ?string $tableId,
         ?string $createdBy,
         ?string $serverId,
+        ?string $trackingToken,
         ?string $idempotencyKey,
         ?string $notes,
         int $subtotalCents,
@@ -333,11 +360,11 @@ final class OrderRepository
         $stmt = $this->pdo->prepare(
             'INSERT INTO orders (
                 tenant_id, branch_id, status_id, order_number, channel, customer_id, table_id,
-                created_by, server_id, idempotency_key, notes, subtotal, tax_total, delivery_fee, discount, tip, total,
+                created_by, server_id, tracking_token, idempotency_key, notes, subtotal, tax_total, delivery_fee, discount, tip, total,
                 discount_reason_id, discount_by
              ) VALUES (
                 :tenant_id, :branch_id, :status_id, :order_number, :channel, :customer_id, :table_id,
-                :created_by, :server_id, :idempotency_key, :notes, :subtotal, :tax_total, :delivery_fee, :discount, :tip, :total,
+                :created_by, :server_id, :tracking_token, :idempotency_key, :notes, :subtotal, :tax_total, :delivery_fee, :discount, :tip, :total,
                 :discount_reason_id, :discount_by
              ) RETURNING id'
         );
@@ -351,6 +378,7 @@ final class OrderRepository
             'table_id' => $tableId,
             'created_by' => $createdBy,
             'server_id' => $serverId,
+            'tracking_token' => $trackingToken,
             'idempotency_key' => $idempotencyKey,
             'notes' => $notes,
             'subtotal' => Money::toDecimalString($subtotalCents),

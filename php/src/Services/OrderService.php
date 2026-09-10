@@ -330,6 +330,11 @@ final class OrderService
             $tableId,
             $createdBy,
             $serverId,
+            // El enlace de seguimiento nace con el pedido: si se generara al
+            // pedirlo, el primero en abrirlo decidiria el token y dos
+            // pantallas a la vez crearian dos. 16 bytes: es un enlace que
+            // viaja por WhatsApp y tiene que ser inadivinable.
+            bin2hex(random_bytes(16)),
             $idempotencyKey,
             $notes,
             $totals->subtotalCents,

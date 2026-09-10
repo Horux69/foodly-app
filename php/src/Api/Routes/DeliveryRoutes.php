@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Routes;
 
 use App\Api\Controllers\DeliveryController;
+use App\Api\Controllers\TrackingController;
 use App\Api\Router;
 
 /** Mismas rutas que app/api/v1/delivery.py monta en router.py. */
@@ -24,6 +25,10 @@ final class DeliveryRoutes
             '/delivery-zones/{zone_id:uuid}/active',
             fn ($p) => DeliveryController::setZoneActive($p),
         );
+
+        // Seguimiento del cliente (F9.2): publico, sin sesion. Lo protege
+        // el token, no un permiso.
+        $router->get('/public/orders/{token}', fn ($p) => TrackingController::show($p));
 
         $router->get('/couriers', fn () => DeliveryController::listCouriers());
 

@@ -30,6 +30,8 @@ final class Order
         // Quien atiende la cuenta, que no siempre es quien la digito.
         public readonly ?string $serverId = null,
         public readonly ?string $serverName = null,
+        /** La llave del enlace publico de seguimiento (F9.2). */
+        public readonly ?string $trackingToken = null,
     ) {
     }
 
@@ -63,6 +65,7 @@ final class Order
             tableCode: $tableCode,
             serverId: $row['server_id'] ?? null,
             serverName: $row['server_name'] ?? null,
+            trackingToken: $row['tracking_token'] ?? null,
         );
     }
 }

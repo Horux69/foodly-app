@@ -304,6 +304,10 @@ final class OrderController
             // Como llama este restaurante a sus tiempos, y cuales esperan
             // todavia: el detalle los agrupa y ofrece marcharlos.
             'courses' => $tiempos,
+            // La llave del enlace publico, solo en el detalle: es lo que se
+            // copia para mandarle al cliente. En la lista serian veinte
+            // tokens que nadie va a usar viajando en cada refresco.
+            'tracking_token' => $order->trackingToken,
             'pending_courses' => KitchenTickets::pending($salida['items'], $tiempos),
             'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
             // Solo los domicilios tienen entrega; su presencia es lo que

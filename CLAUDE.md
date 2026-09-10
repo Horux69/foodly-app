@@ -909,7 +909,7 @@ tablero vacío para siempre. Una estación con categorías encima no se borra,
 y el mensaje dice cuántas hay que mover.
 
 - **Fase 9 (domicilios que compiten)**, en curso: el cuadre del repartidor
-  (F9.1).
+  (F9.1) y el seguimiento para el cliente (F9.2).
 
 Sobre el cuadre del repartidor, cuatro decisiones:
 
@@ -932,6 +932,40 @@ Sobre el cuadre del repartidor, cuatro decisiones:
   el cobro del pedido; registrarlo además como entrada de cajón lo contaría
   dos veces en el arqueo. El cuadre dice quién trajo qué, no vuelve a
   contar la plata.
+
+Sobre el seguimiento del cliente (F9.2), cuatro decisiones:
+
+- **Es el único camino sin sesión aparte del login, y por eso devuelve
+  poco.** No se responde lo que se tiene a mano sino lo que el cliente ya
+  sabe de su propio pedido: número, estado, qué pidió, cuánto, y a dónde va.
+  Ni su teléfono, ni su nombre, ni ids internos, ni el motivo de una
+  anulación, ni con qué método se cobró. Una prueba lo comprueba buscando
+  esos datos en la respuesta.
+- **El tenant sale del token, y de ahí en adelante manda RLS.** La misma
+  salida del login: una función `SECURITY DEFINER` deliberadamente miserable
+  (`tracking_tenant_for_token`) que solo devuelve a qué empresa pertenece.
+  Con eso se fija el contexto y la lectura va filtrada como cualquier otra,
+  así que un token no puede alcanzar el pedido de otra empresa ni por un
+  error de programación.
+- **El token nace con el pedido y son 16 bytes al azar.** Generarlo al
+  pedirlo dejaría que dos pantallas crearan dos; y un enlace que viaja por
+  WhatsApp tiene que ser inadivinable —el id del pedido no sirve: es lo que
+  el panel enseña en sus URL—. La forma se comprueba antes de consultar, así
+  que quien prueba tokens no pone a la base a trabajar.
+- **El paso lo decide la categoría del estado; el nombre lo pone el
+  restaurante.** `Domain\OrderTracking` dibuja la línea de progreso por
+  categoría —igual en cualquier flujo— y al lado se lee el nombre que el
+  restaurante le puso, que es el que usa cuando el cliente llama. Un pedido
+  que se recoge no muestra "En camino": un paso que nunca se va a encender
+  parece un pedido atascado. Y anulado no es el último paso, es la
+  interrupción del camino.
+
+`web/seguimiento.html` va aparte de la aplicación y no comparte sus módulos:
+quien la abre no tiene sesión —la aplicación lo mandaría a la pantalla de
+ingreso—, llega desde un enlace de WhatsApp con datos móviles y la abre una
+vez. Se explica sola, sin Tailwind por CDN, y arma el DOM con su propio `h()`
+por lo mismo que la aplicación: el nombre de un producto es texto de la base.
+El enlace se copia desde el detalle del pedido, en el bloque de entrega.
 
 - **Fase 12 (cumplimiento y confianza)**, en curso: el documento electrónico
   (F12.1).
