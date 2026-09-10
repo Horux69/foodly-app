@@ -78,3 +78,37 @@ export function elapsed(iso) {
   const horas = Math.floor(mins / 60);
   return horas === 1 ? 'hace 1 hora' : `hace ${horas} horas`;
 }
+
+// ---------------------------------------------------------------------
+// Vuelto (F7.6)
+// ---------------------------------------------------------------------
+//
+// Vive aquí y no en el backend a propósito: el vuelto no se guarda en
+// ninguna parte —no es un cobro, es plata que sale del cajón por un cobro
+// que ya se registró entero— y se recalcula con cada tecla que escribe el
+// cajero. Un viaje al servidor por pulsación, con cola en la caja, sería
+// peor que la resta. Lo que sí es del backend es lo que se cobra, y eso no
+// cambia: el vuelto no viaja en ninguna petición.
+//
+// Es el mismo criterio de `propinaSugerida`: la aritmética del pedido vive
+// en `Domain\OrderTotalsCalculator`; una ayuda de pantalla que no se
+// persiste, no.
+
+/** Los billetes con los que se paga en Colombia. */
+export const BILLETES = [2000, 5000, 10000, 20000, 50000, 100000];
+
+/** Lo que hay que devolver. Cero cuando entregó justo o de menos. */
+export const vuelto = (recibido, aCobrar) => Math.max(0, Number(recibido || 0) - Number(aCobrar || 0));
+
+/** Lo que falta cuando entregó menos: no es un error, es un cobro parcial. */
+export const falta = (recibido, aCobrar) => Math.max(0, Number(aCobrar || 0) - Number(recibido || 0));
+
+/**
+ * Los billetes que tiene sentido ofrecer como atajo: el importe exacto y
+ * los que alcanzan a cubrirlo. Ofrecer 2.000 para una cuenta de 80.000 es
+ * ruido en una pantalla donde hay cola.
+ */
+export function billetesUtiles(aCobrar) {
+  const monto = Number(aCobrar || 0);
+  return [monto, ...BILLETES.filter((b) => b > monto)].slice(0, 4);
+}

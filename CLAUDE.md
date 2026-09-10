@@ -808,8 +808,8 @@ del KDS, que es de la tableta—: encontrarse el salón filtrado por lo que
 eligió el turno anterior es ver libres mesas que no lo están.
 
 - **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
-  (F7.1), descuentos con motivo, autor y tope (F7.2) y la propina al cobrar
-  (F7.3).
+  (F7.1), descuentos con motivo, autor y tope (F7.2), la propina al cobrar
+  (F7.3) y el vuelto (F7.6).
 
 Sobre los movimientos del cajón, tres cosas:
 
@@ -874,6 +874,21 @@ Sobre la propina (F7.3), dos cosas:
 
 Con F4.4 ya se reparte por mesero: el reporte de ventas por mesero lleva su
 propina en una columna aparte.
+
+Sobre el vuelto (F7.6), dos cosas:
+
+- **El vuelto no es un cobro y no se guarda.** Es plata que sale del cajón
+  por un cobro que ya se registró entero: como movimiento negativo se
+  contaría dos veces en el arqueo, y como cobro es justo lo que
+  `Domain\ChargeRules` impide. Se calcula, se muestra en grande y ahí
+  termina; el cobro manda lo que se cobra y nada más. Una prueba comprueba
+  que no viaje en la petición.
+- **Su aritmética vive en el navegador, a diferencia de la del pedido.** Se
+  recalcula con cada tecla y no se persiste en ninguna parte: un viaje al
+  servidor por pulsación, con cola en la caja, sería peor que la resta. Es
+  el mismo criterio de la propina sugerida. Los billetes de atajo
+  (`billetesUtiles`) son los que alcanzan a cubrir el cobro más el importe
+  exacto: ofrecer 2.000 para una cuenta de 80.000 es ruido.
 
 - **Fase 8 (impresión y estaciones)**, en curso: estaciones de preparación
   (F8.1) y perfiles de impresión (F8.2).

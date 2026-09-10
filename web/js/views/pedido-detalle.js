@@ -10,7 +10,7 @@
 // día y solo la leía el reporte de tiempos.
 
 import { api, uuid } from '../api.js';
-import { date, money, time } from '../format.js';
+import { billetesUtiles, date, falta, money, time, vuelto } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery, can, me } from '../session.js';
 import {
@@ -931,18 +931,90 @@ function formularioCobro(pedido, recargar) {
     value: saldo.pending,
     class: 'campo w-32 tabular-nums',
     'aria-label': 'Monto a cobrar',
+    oninput: () => pintarVuelto(),
   });
 
   const metodo = select(
     metodos.map((m) => ({ value: m, label: metodoPago(m) })),
-    { class: 'campo w-auto', 'aria-label': 'Método de pago' }
+    {
+      class: 'campo w-auto',
+      'aria-label': 'Método de pago',
+      onChange: () => pintarVuelto(),
+    }
   );
+
+  // Con cuánto paga el cliente. Solo en efectivo: con tarjeta no hay vuelto
+  // que dar, y un campo que nunca se usa estorba en la pantalla que más
+  // prisa tiene.
+  const recibido = input({
+    type: 'number',
+    min: '0',
+    step: '0.01',
+    placeholder: 'Con cuánto paga',
+    class: 'campo w-36 tabular-nums',
+    'aria-label': 'Con cuánto paga',
+    oninput: () => pintarVuelto(),
+  });
+
+  const bloqueVuelto = h('div', { class: 'space-y-2' });
+
+  /**
+   * El vuelto, en grande.
+   *
+   * No se guarda en ninguna parte: no es un cobro —eso ya se registró
+   * entero— sino plata que sale del cajón por ese cobro. Registrarlo lo
+   * contaría dos veces en el arqueo, y como cobro es justo lo que
+   * `Domain\ChargeRules` impide.
+   */
+  function pintarVuelto() {
+    if (metodo.value !== 'cash') return render(bloqueVuelto);
+
+    const aCobrar = Number(monto.value || 0);
+    const entregado = Number(recibido.value || 0);
+    const devolver = vuelto(entregado, aCobrar);
+    const pendiente = falta(entregado, aCobrar);
+
+    render(
+      bloqueVuelto,
+      h(
+        'div',
+        { class: 'flex flex-wrap items-center gap-2' },
+        recibido,
+        // Atajos con los billetes que alcanzan: en el mostrador se teclea
+        // menos y se equivoca menos.
+        billetesUtiles(aCobrar).map((billete) =>
+          button(money(billete), {
+            variant: 'subtle',
+            onClick: () => {
+              recibido.value = String(billete);
+              pintarVuelto();
+            },
+          })
+        )
+      ),
+      entregado
+        ? h(
+            'div',
+            {
+              class: `text-[15px] font-semibold ${pendiente ? 'text-amber-700' : 'text-stone-900'}`,
+              'aria-live': 'polite',
+            },
+            devolver
+              ? `Vuelto ${money(devolver)}`
+              : pendiente
+                ? `Faltan ${money(pendiente)} para cubrir este cobro`
+                : 'Sin vuelto: pagó justo'
+          )
+        : null
+    );
+  }
 
   const cobrar = button('Cobrar', {
     iconName: 'dinero',
     onClick: async () => {
       const importe = Number(monto.value);
       if (!(importe > 0)) return toast('El monto debe ser mayor que cero');
+      // El vuelto no viaja: lo que se cobra es lo que se cobra.
 
       cobrar.disabled = true;
       try {
@@ -959,6 +1031,10 @@ function formularioCobro(pedido, recargar) {
       }
     },
   });
+
+  // El efectivo suele venir preseleccionado: se pinta al montar para que
+  // los atajos de billetes estén ahí sin tocar nada.
+  pintarVuelto();
 
   return h(
     'div',
@@ -977,7 +1053,8 @@ function formularioCobro(pedido, recargar) {
       iconName: 'clientes',
       onClick: () => abrirDivision(pedido, recargar),
     })
-    )
+    ),
+    bloqueVuelto
   );
 }
 
