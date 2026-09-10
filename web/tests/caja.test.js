@@ -8,12 +8,13 @@
 // Y quien solo puede cobrar no debe ver el esperado antes de contar el
 // cajón: contar sabiendo el resultado no es un arqueo.
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { montarApp, reposar } from './montar-app.js';
 import { sesion } from './sesion.js';
 
 const TURNO = {
   id: 'cs1',
+  number: 7,
   branch_id: '22222222-2222-4222-8222-222222222222',
   opening_float: '50000.00',
   counted_cash: null,
@@ -131,5 +132,71 @@ describe('quien solo cobra', () => {
     const { fetch } = await montar(cajera);
     const historial = fetch.mock.calls.map(([u]) => String(u)).filter((u) => u.includes('/cash/sessions'));
     expect(historial).toEqual([]);
+  });
+});
+
+/**
+ * El corte X y el consecutivo (F7.5).
+ *
+ * Un arqueo se archiva en papel y se busca por su número; y el corte a
+ * mitad de turno —el X— existe para revisar o entregar la caja sin
+ * cerrarla. Lo que se protege: que el papel diga cuál de los dos es, y que
+ * el X no mande nada al servidor.
+ */
+describe('corte de caja', () => {
+  beforeEach(() => {
+    vi.stubGlobal('print', vi.fn());
+  });
+
+  const documento = () => document.getElementById('impresion').textContent.replace(/\u00a0/g, ' ');
+  const boton = (etiqueta) =>
+    [...document.querySelectorAll('#vista button')].find((b) => b.textContent.trim() === etiqueta);
+
+  it('muestra el número del turno', async () => {
+    await montar(supervisor());
+    expect(texto()).toContain('N.º 7');
+  });
+
+  it('el corte X sale marcado como que no cierra nada, y no manda nada', async () => {
+    const { fetch } = await montar(supervisor());
+    const antes = fetch.mock.calls.filter(([, o]) => o?.method && o.method !== 'GET').length;
+
+    boton('Corte X').click();
+    await reposar();
+
+    const d = documento();
+    expect(d).toContain('CORTE X');
+    expect(d).toContain('Turno 7');
+    expect(d).toContain('NO cierra el turno');
+    expect(d).toContain('122.000');
+    expect(fetch.mock.calls.filter(([, o]) => o?.method && o.method !== 'GET')).toHaveLength(antes);
+  });
+
+  /** Quien no puede cerrar no ve el esperado, así que tampoco lo imprime. */
+  it('sin permiso de cierre no hay corte X', async () => {
+    await montar({
+      '/auth/me': sesion({ permissions: ['payments.register'] }),
+      '/cash/session': { session: TURNO, totals: null },
+      '/cash/sessions': [],
+    });
+
+    expect(boton('Corte X')).toBeUndefined();
+  });
+
+  it('al cerrar ofrece el papel del cierre, con lo contado y la diferencia', async () => {
+    await montar(supervisor({ '/cash/sessions/*': CIERRE }));
+
+    document.querySelector('#vista input[type="number"]:not([value])').value = '121500';
+    boton('Cerrar turno').click();
+    await reposar(3);
+
+    boton('Imprimir cierre').click();
+    await reposar();
+
+    const d = documento();
+    expect(d).toContain('CIERRE DE CAJA');
+    expect(d).toContain('121.500');
+    expect(d).toContain('Turno cerrado');
+    expect(d).not.toContain('CORTE X');
   });
 });

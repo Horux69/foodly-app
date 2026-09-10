@@ -27,8 +27,10 @@ final class CashSessionRepository
     public function open(string $tenantId, string $branchId, ?string $openedBy, int $openingFloatCents): CashSession
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO cash_sessions (tenant_id, branch_id, opened_by, opening_float)
-             VALUES (:tenant_id, :branch_id, :opened_by, :opening_float)
+            // El consecutivo lo da Postgres en la misma sentencia: dos
+            // cajeros abriendo a la vez no pueden sacar el mismo numero.
+            'INSERT INTO cash_sessions (tenant_id, branch_id, opened_by, opening_float, session_number)
+             VALUES (:tenant_id, :branch_id, :opened_by, :opening_float, next_cash_number(:branch_id))
              RETURNING id'
         );
         $stmt->execute([

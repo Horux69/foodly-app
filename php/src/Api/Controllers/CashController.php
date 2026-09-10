@@ -38,6 +38,8 @@ final class CashController
         return [
             'id' => $s->id,
             'branch_id' => $s->branchId,
+            // El consecutivo con el que se archiva el arqueo en papel.
+            'number' => $s->number,
             'opening_float' => Money::toDecimalString($s->openingFloatCents),
             'counted_cash' => $s->countedCashCents === null
                 ? null

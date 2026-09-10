@@ -809,7 +809,7 @@ eligió el turno anterior es ver libres mesas que no lo están.
 
 - **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
   (F7.1), descuentos con motivo, autor y tope (F7.2), la propina al cobrar
-  (F7.3) y el vuelto (F7.6).
+  (F7.3), el corte X con su consecutivo (F7.5) y el vuelto (F7.6).
 
 Sobre los movimientos del cajón, tres cosas:
 
@@ -874,6 +874,23 @@ Sobre la propina (F7.3), dos cosas:
 
 Con F4.4 ya se reparte por mesero: el reporte de ventas por mesero lleva su
 propina en una columna aparte.
+
+Sobre el corte X y el consecutivo (F7.5), tres cosas:
+
+- **El corte X no necesitó backend.** Los totales ya se calculaban en vivo
+  y `GET /cash/session` los devuelve a quien tiene `cash.close`; lo que
+  faltaba era el papel. Sale del mismo documento que el cierre —quien
+  archiva compara dos cortes del mismo formato— con la diferencia dicha en
+  grande: un X que se confunda con un cierre hace contar el cajón dos
+  veces.
+- **El consecutivo se asigna al abrir, no al cerrar.** Un arqueo se archiva
+  en papel y se busca por su número; si se asignara al cerrar, el corte X
+  de un turno abierto no tendría con qué nombrarse. Lo da Postgres en la
+  misma sentencia del `INSERT` (`next_cash_number`, como el número de
+  pedido): dos cajeros abriendo a la vez no pueden sacar el mismo.
+- **Al cerrar, la pantalla ya no se va sola.** Antes volvía a la apertura a
+  los 2,5 segundos; ahora espera, porque la cifra del cierre es la que el
+  cajero anota y hay un papel que imprimir.
 
 Sobre el vuelto (F7.6), dos cosas:
 

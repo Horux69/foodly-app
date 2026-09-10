@@ -335,3 +335,87 @@ export function imprimirTicket(pedido, pagos = [], { precuenta = false } = {}) {
     { copias: precuenta ? 1 : null }
   );
 }
+
+/**
+ * El corte de caja, en papel (F7.5).
+ *
+ * Dos usos con el mismo documento: el **corte X** a mitad de turno, que no
+ * cierra nada y sirve para revisar o para entregar el turno, y el **corte
+ * Z**, que es el cierre. Es el mismo papel a propósito —quien lo archiva
+ * compara dos cortes del mismo formato— con la diferencia dicha en grande,
+ * porque un X que se confunda con un cierre hace contar dos veces.
+ *
+ * Los importes salen del backend tal como los calculó `CashSessionTotals`.
+ * Aquí no se suma nada: un corte que dijera un esperado distinto al de la
+ * pantalla no serviría para cuadrar.
+ */
+export function imprimirCorte({ sesion, totales, movimientos = [], tipo = 'X' }) {
+  const esCierre = tipo === 'Z';
+  const sede = activeBranch();
+
+  const fila = (etiqueta, valor) =>
+    h('div', { class: 'doc-fila' }, h('span', {}, etiqueta), h('span', {}, valor));
+
+  imprimirDocumento(
+    h(
+      'div',
+      { class: 'doc' },
+      h(
+        'div',
+        { class: 'doc-cabeza' },
+        h('div', { class: 'doc-titulo' }, esCierre ? 'CIERRE DE CAJA' : 'CORTE X'),
+        h('div', { class: 'doc-numero' }, `Turno ${sesion.number ?? ''}`),
+        h('div', {}, me()?.tenant_name ?? ''),
+        sede ? h('div', {}, sede.name) : null,
+        h('div', {}, `Abrió ${date(sesion.opened_at)} ${time(sesion.opened_at)} · ${sesion.opened_by_name ?? ''}`),
+        sesion.closed_at
+          ? h('div', {}, `Cerró ${date(sesion.closed_at)} ${time(sesion.closed_at)} · ${sesion.closed_by_name ?? ''}`)
+          : h('div', {}, `Impreso ${date(new Date().toISOString())} ${time(new Date().toISOString())}`)
+      ),
+
+      // Lo cobrado por método: la tarjeta no pasa por el cajón, pero al
+      // cuadrar el día hay que verla igual.
+      h(
+        'div',
+        {},
+        Object.entries(totales.by_method ?? {}).map(([metodo, importe]) =>
+          fila(metodoPago(metodo), money(importe))
+        )
+      ),
+
+      h(
+        'div',
+        { class: 'doc-total' },
+        fila('Base', money(totales.opening_float)),
+        fila('Cobrado', money(totales.charged)),
+        Number(totales.refunded) ? fila('Reembolsado', `- ${money(totales.refunded)}`) : null,
+        Number(totales.cash_in) ? fila('Entradas al cajón', money(totales.cash_in)) : null,
+        Number(totales.cash_out) ? fila('Salidas del cajón', `- ${money(totales.cash_out)}`) : null,
+        fila('EFECTIVO ESPERADO', money(totales.expected_cash)),
+        totales.counted_cash === null ? null : fila('Contado', money(totales.counted_cash)),
+        totales.difference === null ? null : fila('Diferencia', money(totales.difference))
+      ),
+
+      // En qué se fue la plata: es la pregunta que el arqueo le hace a la
+      // lista de movimientos.
+      movimientos.length
+        ? h(
+            'div',
+            { class: 'doc-pie', style: 'text-align:left' },
+            movimientos.map((m) =>
+              fila(`${m.kind === 'in' ? '+' : '−'} ${m.reason}`, money(m.amount))
+            )
+          )
+        : null,
+
+      h(
+        'div',
+        { class: 'doc-pie' },
+        esCierre ? 'Turno cerrado.' : 'Este corte NO cierra el turno.'
+      )
+    ),
+    'ticket',
+    // Una sola hoja: el corte se archiva, no se entrega al cliente.
+    { copias: 1 }
+  );
+}

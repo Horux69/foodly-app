@@ -21,6 +21,7 @@ import { activeBranch, branchQuery, can } from '../session.js';
 import {
   badge, button, empty, errorBox, field, h, input, pageHeader, render, section, select, skeleton, toast,
 } from '../ui.js';
+import { imprimirCorte } from './impresion.js';
 import { metodoPago } from './pedido-detalle.js';
 
 export async function caja(outlet) {
@@ -116,7 +117,18 @@ function sinTurno(recargar) {
 
 function turnoAbierto({ session, totals }, movimientos, recargar) {
   const bloques = [
-    section('Turno abierto', {
+    section(`Turno abierto${session.number ? ` · N.º ${session.number}` : ''}`, {
+      // El corte X no cierra nada: se imprime para revisar a mitad de
+      // turno o para entregarle la caja a otro cajero. Solo para quien
+      // puede cerrar, porque lleva el esperado: verlo antes de contar es
+      // lo que ese permiso separa.
+      actions: totals
+        ? button('Corte X', {
+            variant: 'secondary',
+            iconName: 'archivar',
+            onClick: () => imprimirCorte({ sesion: session, totales: totals, movimientos, tipo: 'X' }),
+          })
+        : null,
       body: h(
         'div',
         { class: 'flex flex-wrap items-center gap-x-6 gap-y-2 text-[13.5px]' },
@@ -130,7 +142,7 @@ function turnoAbierto({ session, totals }, movimientos, recargar) {
   if (can('cash.movements')) bloques.push(bloqueMovimientos(movimientos, recargar));
 
   if (totals) {
-    bloques.push(cuadre(totals), formularioCierre(session, totals, recargar));
+    bloques.push(cuadre(totals), formularioCierre(session, totals, recargar, movimientos));
   } else {
     bloques.push(
       h(
@@ -275,7 +287,7 @@ function cuadre(totals) {
   });
 }
 
-function formularioCierre(session, totals, recargar) {
+function formularioCierre(session, totals, recargar, movimientos = []) {
   const contado = input({ type: 'number', min: '0', step: '0.01', placeholder: '0', class: 'campo w-40 tabular-nums' });
   const nota = input({ placeholder: 'Nota del cierre (opcional)', maxlength: '255' });
   const resultado = h('div');
@@ -291,11 +303,34 @@ function formularioCierre(session, totals, recargar) {
           counted_cash: Number(contado.value),
           note: nota.value.trim() || null,
         });
-        render(resultado, resumenDiferencia(cerrado.totals));
+        render(
+          resultado,
+          resumenDiferencia(cerrado.totals),
+          // El papel del cierre se ofrece, no se impone: en un mostrador
+          // sin impresora, un diálogo de impresión al cerrar es un estorbo.
+          h(
+            'div',
+            { class: 'mt-3 flex flex-wrap gap-2' },
+            button('Imprimir cierre', {
+              variant: 'secondary',
+              iconName: 'archivar',
+              onClick: () =>
+                imprimirCorte({
+                  sesion: cerrado.session,
+                  totales: cerrado.totals,
+                  movimientos,
+                  tipo: 'Z',
+                }),
+            }),
+            button('Listo', { onClick: recargar })
+          )
+        );
         toast('Turno cerrado', 'ok');
         // Se deja el resultado a la vista un momento antes de volver a la
         // pantalla de apertura: es la cifra que el cajero anota.
-        setTimeout(recargar, 2500);
+        // Antes volvía sola a los 2,5 s. Ahora espera: la cifra del cierre
+        // es la que el cajero anota y hay un papel que imprimir, y
+        // recargar debajo de la mano sería quitarle las dos cosas.
       } catch (error) {
         toast(error.message);
         cerrar.disabled = false;
