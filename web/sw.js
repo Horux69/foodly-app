@@ -54,10 +54,11 @@ const ESQUELETO = [
   '/js/views/impresion.js',
   '/js/views/ingresar.js',
   '/js/views/menu.js',
-  '/js/views/pedido-detalle.js',
   '/js/views/modificadores-dialogo.js',
+  '/js/views/pedido-detalle.js',
   '/js/views/pedidos.js',
   '/js/views/reportes.js',
+  '/js/views/salon.js',
 ];
 
 /**

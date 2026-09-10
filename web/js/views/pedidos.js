@@ -65,6 +65,18 @@ export async function pedidos(outlet) {
 
 const ESPERA_CLIENTE_MS = 350;
 
+/**
+ * La mesa que venga en el hash (`#/pedidos?mesa=M4`).
+ *
+ * El enrutador trabaja con la ruta sin query, así que se lee aquí. Es lo que
+ * hace que tocar una mesa libre en el salón abra la venta con la mesa ya
+ * escrita en vez de obligar a teclearla otra vez.
+ */
+function mesaDelHash() {
+  const [, consulta = ''] = window.location.hash.split('?');
+  return new URLSearchParams(consulta).get('mesa') ?? '';
+}
+
 async function vistaNuevo(host) {
   render(host, skeleton({ rows: 2 }));
 
@@ -131,7 +143,8 @@ async function vistaNuevo(host) {
     );
   }
 
-  const mesa = input({ placeholder: 'Ej. M1' });
+  // Si se llegó tocando una mesa libre en el salón, ya viene puesta.
+  const mesa = input({ placeholder: 'Ej. M1', value: mesaDelHash() });
   const nombre = input({ placeholder: 'Nombre del cliente' });
   const domicilio = input({ type: 'number', min: '0', value: '0' });
   // El descuento es el único ajuste que saca plata de la venta sin dejar

@@ -52,6 +52,9 @@ final class TableRepository
                     t.code,
                     t.capacity,
                     t.is_active,
+                    t.pos_x,
+                    t.pos_y,
+                    t.shape,
                     o.id AS order_id,
                     o.order_number,
                     o.total,
@@ -85,6 +88,29 @@ final class TableRepository
         );
         $stmt->execute(['branch_id' => $branchId]);
         return $stmt->fetchAll();
+    }
+
+    /**
+     * Coloca una mesa en el plano.
+     *
+     * Se guarda una a una y no el plano entero: arrastrar una mesa es un
+     * cambio, y mandar las veinte cada vez pisaria lo que otra persona
+     * acabara de mover desde otra tableta.
+     */
+    public function place(string $branchId, string $tableId, int $x, int $y, string $shape): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE tables SET pos_x = :x, pos_y = :y, shape = :shape
+              WHERE branch_id = :branch_id AND id = :id'
+        );
+        $stmt->execute([
+            'x' => $x,
+            'y' => $y,
+            'shape' => $shape,
+            'branch_id' => $branchId,
+            'id' => $tableId,
+        ]);
+        return $stmt->rowCount() > 0;
     }
 
     public function create(string $branchId, string $code, int $capacity): Table

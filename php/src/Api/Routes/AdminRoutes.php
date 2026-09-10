@@ -45,6 +45,10 @@ final class AdminRoutes
         $router->post('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::createTable($p));
         // El salon (F4.1): que mesa esta ocupada y desde cuando.
         $router->get('/branches/{branch_id:uuid}/tables/status', fn ($p) => AdminController::tableStatus($p));
+        $router->put(
+            '/branches/{branch_id:uuid}/tables/{table_id:uuid}/place',
+            fn ($p) => AdminController::placeTable($p)
+        );
 
         // Estados de pedido y transiciones (F5.2).
         $router->get('/order-statuses', fn () => OrderStatusController::getConfiguration());

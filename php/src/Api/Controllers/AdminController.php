@@ -339,6 +339,28 @@ final class AdminController
         }
     }
 
+    /** Coloca una mesa en el plano del salon. */
+    public static function placeTable(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'branches.manage');
+        $body = Request::json();
+
+        try {
+            FloorService::place(
+                $ctx->tenantId,
+                $params['branch_id'],
+                $params['table_id'],
+                Request::int($body, 'pos_x', min: 0),
+                Request::int($body, 'pos_y', min: 0),
+                Request::string($body, 'shape', 1, 10),
+            );
+        } catch (FloorError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return ['id' => $params['table_id']];
+    }
+
     public static function createTable(array $params): JsonResponse
     {
         $ctx = Deps::require(Deps::getContext(), 'branches.manage');

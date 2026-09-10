@@ -629,8 +629,9 @@ muestran lo que lleva; el ticket también, porque el cliente compró un paquete
 y tiene derecho a ver qué era. Con precio solo la línea del combo: los
 componentes no llevan cifra propia porque no la tienen.
 
-- **Fase 4 (servicio en mesa)**, en curso. La primera tarjeta es la pieza
-  pesada que le faltaba al backend: **modificar un pedido abierto** (F4.0).
+- **Fase 4 (servicio en mesa)**, en curso: modificar un pedido abierto
+  (F4.0) —la pieza pesada que le faltaba al backend—, el estado de cada mesa
+  (F4.1) y el mapa del salón (F4.2).
 
 Sobre editar un pedido, cuatro decisiones que conviene no deshacer:
 
@@ -661,6 +662,31 @@ con su autor: "Agrego 2x Gaseosa", "Quito 1x Papas", "Cambio Combo de 1 a 3".
 El diálogo de modificadores se mudó a `web/js/views/modificadores-dialogo.js`
 porque ahora lo abren dos pantallas; importarlo desde `pedidos.js` habría
 creado un ciclo entre módulos.
+
+Sobre el salón (F4.1 y F4.2), cuatro cosas:
+
+- **Que una mesa esté ocupada no es una columna, es una consulta.** Sale de
+  la categoría del estado de su pedido —nunca de su código— así que al
+  cerrarse la cuenta la mesa se libera sola. Un `is_occupied` guardado se
+  desincroniza en cuanto alguien cobra desde otra pantalla.
+- **Dos cuentas en la misma mesa se cuentan y se dicen.** Se muestra la más
+  antigua, que es la que lleva más rato ocupándola, y el número de pedido
+  desempata cuando comparten instante: sin ese desempate el salón las
+  alternaría entre refrescos, porque `now()` es el mismo en toda una
+  transacción.
+- **Las coordenadas no tienen unidad y la pantalla las interpreta.** Guardar
+  píxeles haría que el mismo plano se viera movido en una tableta y en un
+  portátil. Todas las mesas nacen en 0,0, así que `Domain\FloorPlan` reparte
+  en rejilla las que nadie colocó —sin ponerlas encima de las que sí— o el
+  salón de quien nunca abrió el modo de edición sería una pila de mesas en
+  una esquina.
+- **Se coloca una mesa a la vez.** Arrastrar una mesa es un cambio; mandar el
+  plano entero pisaría lo que otra persona acabara de mover desde otra
+  tableta.
+
+Tocar una mesa libre abre la venta con la mesa ya escrita (viaja en el hash);
+tocar una ocupada abre su cuenta. Los minutos los calcula el servidor: el
+reloj de una tableta que nadie sincroniza puede ir muy lejos.
 
 - **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
   (F7.1), descuentos con motivo, autor y tope (F7.2) y la propina al cobrar

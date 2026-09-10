@@ -10,6 +10,7 @@ import { abrirCuenta } from './views/cuenta.js';
 import { caja } from './views/caja.js';
 import { clientes } from './views/clientes.js';
 import { cocina } from './views/cocina.js';
+import { salon, usaMesas } from './views/salon.js';
 import { domicilios } from './views/domicilios.js';
 import { ingresar } from './views/ingresar.js';
 import { menu } from './views/menu.js';
@@ -20,6 +21,16 @@ import { reportes } from './views/reportes.js';
 // cocinero no debería aterrizar en la caja.
 const RUTAS = [
   { path: 'pedidos', label: 'Pedidos', icon: 'pedidos', permission: 'orders.create', view: pedidos },
+  {
+    path: 'salon',
+    label: 'Salón',
+    icon: 'mesa',
+    permission: 'orders.view',
+    // Solo si el restaurante maneja mesas: por configuración, igual que
+    // Domicilios con su canal.
+    visible: usaMesas,
+    view: salon,
+  },
   { path: 'cocina', label: 'Cocina', icon: 'cocina', permission: 'orders.view', view: cocina },
   {
     path: 'caja',
