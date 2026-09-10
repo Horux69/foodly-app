@@ -31,6 +31,9 @@ final class CashSession
         public readonly ?string $closedByName = null,
         /** El consecutivo del turno en su sucursal, con el que se archiva en papel. */
         public readonly ?int $number = null,
+        /** En que caja se abrio. Nulo es el cajon de la sucursal (F7.4). */
+        public readonly ?string $registerId = null,
+        public readonly ?string $registerName = null,
     ) {
     }
 
@@ -58,6 +61,8 @@ final class CashSession
             openedByName: $row['opened_by_name'] ?? null,
             closedByName: $row['closed_by_name'] ?? null,
             number: isset($row['session_number']) ? (int) $row['session_number'] : null,
+            registerId: $row['register_id'] ?? null,
+            registerName: $row['register_name'] ?? null,
         );
     }
 }

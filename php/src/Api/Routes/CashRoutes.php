@@ -12,6 +12,9 @@ final class CashRoutes
 {
     public static function register(Router $router): void
     {
+        // Las cajas abiertas ahora, para elegir dónde cobrar (F7.4).
+        $router->get('/cash/registers/open', fn () => CashController::openRegisters());
+
         $router->get('/cash/session', fn () => CashController::current());
         $router->post('/cash/session', fn () => CashController::open());
         $router->post('/cash/sessions/{session_id:uuid}/close', fn ($p) => CashController::close($p));

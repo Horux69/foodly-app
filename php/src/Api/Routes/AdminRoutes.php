@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Routes;
 
 use App\Api\Controllers\AdminController;
+use App\Api\Controllers\RegisterController;
 use App\Api\Controllers\SalesSourceController;
 use App\Api\Controllers\OrderStatusController;
 use App\Api\Controllers\FiscalController;
@@ -41,6 +42,13 @@ final class AdminRoutes
         $router->get('/tax-rates', fn () => AdminController::listTaxRates());
         $router->post('/tax-rates', fn () => AdminController::createTaxRate());
         $router->put('/tax-rates/{tax_rate_id:uuid}/default', fn ($p) => AdminController::setDefaultTaxRate($p));
+
+        // Cajas de la sucursal (F7.4): existen solo si el restaurante tiene
+        // mas de un punto de cobro.
+        $router->get('/branches/{branch_id:uuid}/registers', fn ($p) => RegisterController::index($p));
+        $router->post('/branches/{branch_id:uuid}/registers', fn ($p) => RegisterController::create($p));
+        $router->patch('/registers/{register_id:uuid}', fn ($p) => RegisterController::update($p));
+        $router->delete('/registers/{register_id:uuid}', fn ($p) => RegisterController::delete($p));
 
         $router->get('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::listTables($p));
         $router->post('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::createTable($p));

@@ -40,6 +40,11 @@ final class CashController
             'branch_id' => $s->branchId,
             // El consecutivo con el que se archiva el arqueo en papel.
             'number' => $s->number,
+            // En que caja se abrio (F7.4). Nulo es el cajon de la
+            // sucursal, que es lo que tienen todos los turnos si el
+            // restaurante no configura mas de una caja.
+            'register_id' => $s->registerId,
+            'register_name' => $s->registerName,
             'opening_float' => Money::toDecimalString($s->openingFloatCents),
             'counted_cash' => $s->countedCashCents === null
                 ? null
@@ -88,12 +93,33 @@ final class CashController
     public static function current(): array
     {
         $ctx = Deps::requireAny(Deps::getContext(), 'payments.register', 'cash.close');
-        $session = CashSessionService::current($ctx->tenantId, Deps::activeBranchId($ctx));
+        $session = CashSessionService::current(
+            $ctx->tenantId,
+            Deps::activeBranchId($ctx),
+            Request::queryUuid('register_id'),
+        );
 
         if ($session === null) {
             return ['session' => null, 'totals' => null];
         }
         return self::viewOut($ctx, CashSessionService::view($session));
+    }
+
+    /**
+     * Las cajas con turno abierto ahora mismo, para elegir dónde cobrar.
+     *
+     * Sin totales: solo el nombre. La pide `payments.register`, que es quien
+     * cobra y no necesariamente puede ver el cuadre —eso sigue siendo
+     * `cash.close`—; saber en cuál caja se está cobrando no es lo mismo que
+     * ver cuánto debería haber en ella.
+     */
+    public static function openRegisters(): array
+    {
+        $ctx = Deps::requireAny(Deps::getContext(), 'payments.register', 'cash.close');
+        return array_map(static fn (CashSession $s) => [
+            'register_id' => $s->registerId,
+            'register_name' => $s->registerName,
+        ], CashSessionService::openSessions($ctx->tenantId, Deps::activeBranchId($ctx)));
     }
 
     public static function open(): JsonResponse
@@ -107,6 +133,7 @@ final class CashController
                 Deps::activeBranchId($ctx),
                 $ctx->userId,
                 Money::fromDecimalString(Request::decimalString($body, 'opening_float', '0')),
+                Request::optionalUuid($body, 'register_id'),
             );
         } catch (CashSessionError $e) {
             throw new ApiException(422, $e->getMessage());
@@ -169,6 +196,7 @@ final class CashController
                 Money::fromDecimalString(Request::decimalString($body, 'amount')),
                 Request::string($body, 'reason', 1, DrawerRules::MOTIVO_MAX),
                 $ctx->userId,
+                Request::optionalUuid($body, 'register_id'),
             );
         } catch (CashSessionError $e) {
             throw new ApiException(422, $e->getMessage());
@@ -195,6 +223,10 @@ final class CashController
             'amount' => Money::toDecimalString($m['amount']),
             'created_at' => $m['created_at'],
             'by_name' => $m['by_name'],
-        ], CashSessionService::drawerMovements($ctx->tenantId, Deps::activeBranchId($ctx)));
+        ], CashSessionService::drawerMovements(
+            $ctx->tenantId,
+            Deps::activeBranchId($ctx),
+            Request::queryUuid('register_id'),
+        ));
     }
 }

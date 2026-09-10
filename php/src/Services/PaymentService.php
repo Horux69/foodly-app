@@ -10,6 +10,8 @@ use App\Domain\BillSplitError;
 use App\Domain\ChargeError;
 use App\Domain\ChargeRules;
 use App\Domain\PaymentBalance;
+use App\Domain\RegisterChoice;
+use App\Domain\RegisterChoiceError;
 use App\Domain\RefundError;
 use App\Domain\RefundRules;
 use App\Models\Order;
@@ -24,17 +26,34 @@ final class PaymentService
     private const UNIQUE_VIOLATION = '23505';
 
     /**
-     * El turno de caja abierto en la sucursal del pedido, si lo hay.
+     * El turno de caja al que entra este cobro, si hay alguno abierto.
      *
      * Cobrar no exige turno abierto: un restaurante que no lleve caja por
      * turnos tiene que poder seguir vendiendo. Lo que se cobre sin turno
      * queda con cash_session_id nulo y no entra en ningun arqueo — que es
      * exactamente lo que significa.
+     *
+     * Con varias cajas (F7.4) la eleccion la hace `Domain\RegisterChoice`:
+     * con una sola abierta no pregunta nada, con dos exige saber en cual
+     * se esta cobrando. Mandar la plata al cajon equivocado no se descubre
+     * hasta el arqueo, cuando a una le sobra lo que a la otra le falta.
      */
-    private static function openSessionId(string $tenantId, string $branchId): ?string
+    private static function openSessionId(string $tenantId, string $branchId, ?string $registerId): ?string
     {
-        return (new CashSessionRepository(Database::app()))
-            ->currentForBranch($tenantId, $branchId)?->id;
+        $abiertas = (new CashSessionRepository(Database::app()))->openForBranch($tenantId, $branchId);
+
+        try {
+            return RegisterChoice::sessionFor(
+                array_map(static fn ($s) => [
+                    'id' => $s->id,
+                    'register_id' => $s->registerId,
+                    'register_name' => $s->registerName,
+                ], $abiertas),
+                $registerId,
+            );
+        } catch (RegisterChoiceError $e) {
+            throw new PaymentError($e->getMessage());
+        }
     }
 
     public static function getBalanceForOrder(Order $order): PaymentBalance
@@ -125,6 +144,7 @@ final class PaymentService
         ?string $externalReference = null,
         ?string $idempotencyKey = null,
         ?string $createdBy = null,
+        ?string $registerId = null,
     ): Payment {
         $pdo = Database::app();
         $order = (new OrderRepository($pdo))->getById($tenantId, $orderId);
@@ -179,7 +199,7 @@ final class PaymentService
                 $idempotencyKey,
                 $result->paidAt,
                 createdBy: $createdBy,
-                cashSessionId: self::openSessionId($tenantId, $order->branchId),
+                cashSessionId: self::openSessionId($tenantId, $order->branchId, $registerId),
             );
         } catch (\PDOException $e) {
             $pdo->exec('ROLLBACK TO SAVEPOINT registrar_pago');
@@ -213,6 +233,7 @@ final class PaymentService
         ?int $amountCents = null,
         ?string $note = null,
         ?string $createdBy = null,
+        ?string $registerId = null,
     ): Payment {
         $pdo = Database::app();
         $order = (new OrderRepository($pdo))->getById($tenantId, $orderId);
@@ -272,7 +293,7 @@ final class PaymentService
             refundOfPaymentId: $original->id,
             // La devolucion pertenece al turno en que se hace, no al turno en
             // que se cobro: la plata sale del cajon que este abierto ahora.
-            cashSessionId: self::openSessionId($tenantId, $order->branchId),
+            cashSessionId: self::openSessionId($tenantId, $order->branchId, $registerId),
         );
 
         // Si ya no queda nada por devolver, el cobro original queda marcado.

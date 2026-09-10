@@ -81,7 +81,7 @@ describe('movimientos del cajón', () => {
     await reposar(3);
 
     const post = ultimoPost(fetch);
-    expect(post.cuerpo).toEqual({ kind: 'out', amount: 25000, reason: 'Sangría al banco' });
+    expect(post.cuerpo).toEqual({ kind: 'out', amount: 25000, reason: 'Sangría al banco', register_id: null });
     // Sobre la sucursal activa, no sobre la del token: con dos sedes, cuadrar
     // el cajón de la otra es un descuadre garantizado.
     expect(post.url).toBe('/api/v1/cash/movements?branch_id=22222222-2222-4222-8222-222222222222');

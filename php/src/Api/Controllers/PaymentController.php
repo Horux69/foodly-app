@@ -51,6 +51,9 @@ final class PaymentController
                 Request::optionalString($body, 'external_reference'),
                 Request::optionalString($body, 'idempotency_key'),
                 $ctx->userId,
+                // En que caja se esta cobrando (F7.4): con una sola caja
+                // abierta no hace falta decirlo.
+                Request::optionalUuid($body, 'register_id'),
             );
         } catch (PaymentError $e) {
             throw new ApiException(422, $e->getMessage());
@@ -133,6 +136,7 @@ final class PaymentController
                 $amount,
                 Request::optionalString($body, 'note'),
                 $ctx->userId,
+                Request::optionalUuid($body, 'register_id'),
             );
         } catch (PaymentError $e) {
             throw new ApiException(422, $e->getMessage());

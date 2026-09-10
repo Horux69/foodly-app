@@ -37,6 +37,7 @@ const ESQUELETO = [
   '/iconos/app.svg',
   '/js/api.js',
   '/js/app.js',
+  '/js/caja-elegida.js',
   '/js/cola.js',
   '/js/format.js',
   '/js/icons.js',

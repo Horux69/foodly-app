@@ -10,6 +10,7 @@
 // día y solo la leía el reporte de tiempos.
 
 import { api, uuid } from '../api.js';
+import { cajaGuardada, cajasAbiertas, recordarCaja } from '../caja-elegida.js';
 import { billetesUtiles, date, falta, money, time, vuelto } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery, can, me } from '../session.js';
@@ -958,6 +959,50 @@ function formularioCobro(pedido, recargar) {
 
   const bloqueVuelto = h('div', { class: 'space-y-2' });
 
+  // En qué caja se está cobrando (F7.4). Con una sola abierta —o
+  // ninguna configurada, el caso de casi todos— no se pregunta nada:
+  // `cajasAbiertas` resuelve sola. Se recuerda por dispositivo con la
+  // misma llave que la pantalla de Caja, así que elegir "Barra" ahí no
+  // hay que repetirlo aquí.
+  let registerId = null;
+  const bloqueCaja = h('div');
+
+  function pintarSelectorCaja(abiertas) {
+    render(
+      bloqueCaja,
+      h(
+        'div',
+        { class: 'flex flex-wrap items-center gap-1.5' },
+        h('span', { class: 'text-[12px] text-stone-500' }, 'Caja:'),
+        abiertas.map((c) =>
+          button(c.register_name ?? 'Sucursal', {
+            variant: c.register_id === registerId ? 'primary' : 'secondary',
+            onClick: () => {
+              registerId = c.register_id;
+              recordarCaja(c.register_id);
+              pintarSelectorCaja(abiertas);
+            },
+          })
+        )
+      )
+    );
+  }
+
+  cajasAbiertas()
+    .then((abiertas) => {
+      if (abiertas.length <= 1) {
+        registerId = abiertas[0]?.register_id ?? null;
+        return;
+      }
+      const guardada = cajaGuardada();
+      registerId = abiertas.some((c) => c.register_id === guardada) ? guardada : null;
+      pintarSelectorCaja(abiertas);
+    })
+    .catch(() => {
+      // Sin la lista se cobra sin decir caja, como antes de F7.4: es mejor
+      // que cobrar se caiga por completo.
+    });
+
   /**
    * El vuelto, en grande.
    *
@@ -1022,6 +1067,7 @@ function formularioCobro(pedido, recargar) {
           method: metodo.value,
           amount: importe,
           idempotency_key: llave,
+          register_id: registerId,
         });
         toast('Cobro registrado', 'ok');
         await recargar();
@@ -1040,6 +1086,7 @@ function formularioCobro(pedido, recargar) {
     'div',
     { class: 'space-y-2 pt-3 mt-1 border-t border-[--linea]' },
     filaPropina(pedido, recargar),
+    bloqueCaja,
     h(
     'div',
     { class: 'flex flex-wrap items-center gap-2' },

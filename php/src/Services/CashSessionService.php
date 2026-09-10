@@ -10,6 +10,7 @@ use App\Domain\DrawerError;
 use App\Domain\DrawerRules;
 use App\Models\CashSession;
 use App\Repositories\BranchRepository;
+use App\Repositories\RegisterRepository;
 use App\Repositories\CashSessionRepository;
 
 /**
@@ -35,9 +36,25 @@ final class CashSessionService
         return new CashSessionRepository(Database::app());
     }
 
-    public static function current(string $tenantId, string $branchId): ?CashSession
+    /**
+     * El turno abierto de la caja en la que esta el dispositivo.
+     *
+     * Sin cajas configuradas —el caso de casi todos— `registerId` es nulo y
+     * esto devuelve el turno de la sucursal, como siempre.
+     */
+    public static function current(string $tenantId, string $branchId, ?string $registerId = null): ?CashSession
     {
-        return self::repo()->currentForBranch($tenantId, $branchId);
+        return self::repo()->currentForRegister($tenantId, $branchId, $registerId);
+    }
+
+    /**
+     * Los turnos abiertos de la sucursal, uno por caja.
+     *
+     * @return CashSession[]
+     */
+    public static function openSessions(string $tenantId, string $branchId): array
+    {
+        return self::repo()->openForBranch($tenantId, $branchId);
     }
 
     public static function open(
@@ -45,6 +62,7 @@ final class CashSessionService
         string $branchId,
         ?string $userId,
         int $openingFloatCents,
+        ?string $registerId = null,
     ): CashSessionView {
         if ($openingFloatCents < 0) {
             throw new CashSessionError('La base de caja no puede ser negativa');
@@ -56,8 +74,24 @@ final class CashSessionService
         }
 
         $repo = self::repo();
-        if ($repo->currentForBranch($tenantId, $branchId) !== null) {
-            throw new CashSessionError('Esta sucursal ya tiene un turno de caja abierto');
+        // La caja tiene que ser de esta sucursal: abrir el turno de la caja
+        // de otra sede mandaria los cobros de aqui a aquel arqueo.
+        if ($registerId !== null) {
+            $registro = (new RegisterRepository($pdo))->get($tenantId, $registerId);
+            if ($registro === null || $registro->branchId !== $branchId) {
+                throw new CashSessionError('Esa caja no existe en esta sucursal');
+            }
+            if (!$registro->isActive) {
+                throw new CashSessionError("La caja '{$registro->name}' esta apagada");
+            }
+        }
+
+        if ($repo->currentForRegister($tenantId, $branchId, $registerId) !== null) {
+            throw new CashSessionError(
+                $registerId === null
+                    ? 'Esta sucursal ya tiene un turno de caja abierto'
+                    : 'Esa caja ya tiene un turno abierto'
+            );
         }
 
         // La comprobacion de arriba da el mensaje bueno; esta atrapa la
@@ -67,7 +101,7 @@ final class CashSessionService
         // peticion entera.
         $pdo->exec('SAVEPOINT abrir_turno');
         try {
-            $session = $repo->open($tenantId, $branchId, $userId, $openingFloatCents);
+            $session = $repo->open($tenantId, $branchId, $userId, $openingFloatCents, $registerId);
         } catch (\PDOException $e) {
             $pdo->exec('ROLLBACK TO SAVEPOINT abrir_turno');
             if ($e->getCode() === self::UNIQUE_VIOLATION) {
@@ -138,11 +172,12 @@ final class CashSessionService
         int $amountCents,
         string $reason,
         ?string $userId,
+        ?string $registerId = null,
     ): array {
         $repo = self::repo();
-        $session = $repo->currentForBranch($tenantId, $branchId);
+        $session = $repo->currentForRegister($tenantId, $branchId, $registerId);
         if ($session === null) {
-            throw new CashSessionError('No hay un turno de caja abierto en esta sucursal');
+            throw new CashSessionError('No hay un turno de caja abierto en esta caja');
         }
 
         // Contra lo que hay ahora mismo en el cajon, no contra lo cobrado:
@@ -164,9 +199,9 @@ final class CashSessionService
      *
      * @return array<int, array<string, mixed>>
      */
-    public static function drawerMovements(string $tenantId, string $branchId): array
+    public static function drawerMovements(string $tenantId, string $branchId, ?string $registerId = null): array
     {
-        $session = self::repo()->currentForBranch($tenantId, $branchId);
+        $session = self::repo()->currentForRegister($tenantId, $branchId, $registerId);
         return $session === null ? [] : self::repo()->drawerDetail($session->id);
     }
 

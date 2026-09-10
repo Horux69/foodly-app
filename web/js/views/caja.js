@@ -15,6 +15,7 @@
 // permitir. El backend decide eso, aquí solo se pinta lo que llegó.
 
 import { api } from '../api.js';
+import { cajaGuardada, recordarCaja } from '../caja-elegida.js';
 import { date, money, time } from '../format.js';
 import { icon } from '../icons.js';
 import { activeBranch, branchQuery, can } from '../session.js';
@@ -27,6 +28,12 @@ import { metodoPago } from './pedido-detalle.js';
 export async function caja(outlet) {
   const panel = h('div', { class: 'space-y-4' });
   const historial = h('div');
+  const selectorCaja = h('div');
+
+  // Las cajas configuradas para esta sede (F7.4). Vacío es el caso de casi
+  // todos: un solo turno por sucursal, como siempre y sin preguntar nada.
+  let cajas = [];
+  let registerId = null;
 
   render(
     outlet,
@@ -36,24 +43,76 @@ export async function caja(outlet) {
       // con dos sedes es un descuadre garantizado.
       hint: `Turno de ${activeBranch()?.name ?? 'la sucursal'}. Cada cobro y cada reembolso queda en el turno que esté abierto.`,
     }),
+    selectorCaja,
     panel,
     historial
   );
   render(panel, skeleton({ rows: 2 }));
 
+  try {
+    cajas = await api.get(`/branches/${activeBranch()?.id}/registers${branchQuery()}`);
+  } catch {
+    // Sin la lista, esta pantalla sigue sirviendo como si no hubiera cajas
+    // configuradas: es mejor un turno único que ninguna pantalla de caja.
+    cajas = [];
+  }
+
+  if (cajas.length) {
+    const guardada = cajaGuardada();
+    registerId = cajas.some((c) => c.id === guardada) ? guardada : cajas[0].id;
+    pintarSelectorCaja();
+  }
+
+  function pintarSelectorCaja() {
+    render(
+      selectorCaja,
+      section('Caja', {
+        hint: 'Esta sede tiene más de un punto de cobro: cada uno cuadra su propio arqueo.',
+        body: h(
+          'div',
+          { class: 'flex flex-wrap gap-1.5' },
+          cajas.map((c) =>
+            h(
+              'button',
+              {
+                class: `px-3 py-1.5 rounded-full text-[13px] border transition ${
+                  c.id === registerId
+                    ? 'bg-stone-900 text-white border-stone-900'
+                    : 'bg-white text-stone-600 border-stone-300 hover:border-stone-900'
+                }`,
+                'aria-pressed': String(c.id === registerId),
+                onClick: () => {
+                  registerId = c.id;
+                  recordarCaja(c.id);
+                  pintarSelectorCaja();
+                  cargar();
+                },
+              },
+              c.name
+            )
+          )
+        ),
+      })
+    );
+  }
+
   async function cargar() {
     let actual;
     let movimientos = [];
     try {
-      actual = await api.get(`/cash/session${branchQuery()}`);
+      // El `register_id` va en la query, como el `branch_id`: dice a cuál
+      // caja se refiere la lectura. Nulo cuando esta sede no usa cajas.
+      actual = await api.get(`/cash/session${branchQuery({ register_id: registerId })}`);
       // Solo si hay turno: sin él la lista siempre está vacía y sería una
       // petición por nada cada vez que se entra a la pantalla.
-      if (actual.session && can('cash.movements')) movimientos = await api.get(`/cash/movements${branchQuery()}`);
+      if (actual.session && can('cash.movements')) {
+        movimientos = await api.get(`/cash/movements${branchQuery({ register_id: registerId })}`);
+      }
     } catch (error) {
       return render(panel, errorBox(error.message, cargar));
     }
 
-    render(panel, actual.session ? turnoAbierto(actual, movimientos, cargar) : sinTurno(cargar));
+    render(panel, actual.session ? turnoAbierto(actual, movimientos, cargar, registerId) : sinTurno(cargar, registerId));
     if (can('cash.close')) await cargarHistorial();
   }
 
@@ -79,7 +138,7 @@ export async function caja(outlet) {
 
 // ---------- sin turno ----------
 
-function sinTurno(recargar) {
+function sinTurno(recargar, registerId) {
   if (!can('payments.register')) {
     return h('div', { class: 'seccion' }, empty('No hay un turno abierto', 'Lo abre quien va a cobrar.', null, 'dinero'));
   }
@@ -91,7 +150,12 @@ function sinTurno(recargar) {
     onClick: async () => {
       abrir.disabled = true;
       try {
-        await api.post(`/cash/session${branchQuery()}`, { opening_float: Number(base.value || 0) });
+        // El `register_id` va en el cuerpo, no en la query: es el mismo
+        // POST /cash/session de siempre con un dato más, no una ruta nueva.
+        await api.post(`/cash/session${branchQuery()}`, {
+          opening_float: Number(base.value || 0),
+          register_id: registerId,
+        });
         toast('Turno abierto', 'ok');
         await recargar();
       } catch (error) {
@@ -115,9 +179,10 @@ function sinTurno(recargar) {
 
 // ---------- turno abierto ----------
 
-function turnoAbierto({ session, totals }, movimientos, recargar) {
+function turnoAbierto({ session, totals }, movimientos, recargar, registerId) {
+  const titulo = [session.register_name, session.number ? `N.º ${session.number}` : null].filter(Boolean).join(' · ');
   const bloques = [
-    section(`Turno abierto${session.number ? ` · N.º ${session.number}` : ''}`, {
+    section(`Turno abierto${titulo ? ` · ${titulo}` : ''}`, {
       // El corte X no cierra nada: se imprime para revisar a mitad de
       // turno o para entregarle la caja a otro cajero. Solo para quien
       // puede cerrar, porque lleva el esperado: verlo antes de contar es
@@ -139,7 +204,7 @@ function turnoAbierto({ session, totals }, movimientos, recargar) {
     }),
   ];
 
-  if (can('cash.movements')) bloques.push(bloqueMovimientos(movimientos, recargar));
+  if (can('cash.movements')) bloques.push(bloqueMovimientos(movimientos, recargar, registerId));
 
   if (totals) {
     bloques.push(cuadre(totals), formularioCierre(session, totals, recargar, movimientos));
@@ -173,7 +238,7 @@ function turnoAbierto({ session, totals }, movimientos, recargar) {
  * cerrar, en qué se fue la plata. Quien la ve no ve el cuadre: son permisos
  * distintos a propósito.
  */
-function bloqueMovimientos(movimientos, recargar) {
+function bloqueMovimientos(movimientos, recargar, registerId) {
   const tipo = select(
     [
       { value: 'out', label: 'Sale del cajón' },
@@ -194,6 +259,7 @@ function bloqueMovimientos(movimientos, recargar) {
           kind: tipo.value,
           amount: Number(importe.value || 0),
           reason: motivo.value.trim(),
+          register_id: registerId,
         });
         toast('Movimiento registrado', 'ok');
         await recargar();
@@ -402,7 +468,10 @@ function filaHistorial({ session, totals }) {
       h(
         'div',
         { class: 'text-[13.5px] font-medium text-stone-900' },
-        `${date(session.opened_at)} · ${time(session.opened_at)} → ${time(session.closed_at)}`
+        `${date(session.opened_at)} · ${time(session.opened_at)} → ${time(session.closed_at)}`,
+        // Solo cuando la sede tiene más de una caja: en las demás sería
+        // repetir "sucursal" en cada fila del historial.
+        session.register_name ? h('span', { class: 'text-stone-400 font-normal' }, ` · ${session.register_name}`) : null
       ),
       h(
         'div',

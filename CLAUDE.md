@@ -809,7 +809,8 @@ eligió el turno anterior es ver libres mesas que no lo están.
 
 - **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
   (F7.1), descuentos con motivo, autor y tope (F7.2), la propina al cobrar
-  (F7.3), el corte X con su consecutivo (F7.5) y el vuelto (F7.6).
+  (F7.3), varias cajas por sucursal (F7.4), el corte X con su consecutivo
+  (F7.5) y el vuelto (F7.6).
 
 Sobre los movimientos del cajón, tres cosas:
 
@@ -906,6 +907,34 @@ Sobre el vuelto (F7.6), dos cosas:
   el mismo criterio de la propina sugerida. Los billetes de atajo
   (`billetesUtiles`) son los que alcanzan a cubrir el cobro más el importe
   exacto: ofrecer 2.000 para una cuenta de 80.000 es ruido.
+
+Sobre varias cajas por sucursal (F7.4), cuatro decisiones:
+
+- **La caja es opcional y de la sucursal, no del tenant.** Sin ninguna
+  configurada —el caso de casi todos— nada cambia: el turno sigue siendo de
+  la sede entera, como siempre. En cuanto hay dos, cada una cuadra por
+  separado: el turno cuelga de la caja (`cash_sessions.register_id`), no de
+  la sucursal, y son dos índices únicos parciales los que lo imponen —uno
+  para "abierta sin caja asignada", otro para "abierta con caja"— en vez de
+  uno solo como antes. Dos cajeros no pueden abrir la misma caja dos veces,
+  pero sí pueden tener cada uno la suya abierta a la vez.
+- **Elegir la caja es silencioso cuando no hay ambigüedad.**
+  `Domain\RegisterChoice` resuelve sola: sin cajas configuradas, con una sola
+  abierta, o cuando el cliente ya sabe en cuál está. Solo con dos o más
+  abiertas y sin decir cuál, rechaza con un mensaje que las nombra ("Hay más
+  de una caja abierta en esta sede (Mostrador, Barra): elige en cuál estás
+  cobrando") en vez de adivinar una: adivinar mal metería el cobro en el
+  arqueo de otra persona, que es justo lo que una caja aparte existe para
+  evitar. Cobrar, un movimiento de cajón y abrir turno pasan los tres por la
+  misma resolución.
+- **Una caja con turnos no se borra, se apaga.** Igual que un motivo de
+  descuento o un origen de venta: borrarla dejaría turnos cerrados sin la
+  caja a la que pertenecieron.
+- **El dispositivo recuerda la caja elegida, no la persona.** La misma llave
+  de `localStorage` (`web/js/caja-elegida.js`) la comparten la pantalla de
+  Caja y el cobro desde el detalle del pedido, así que elegir "Barra" en una
+  no hace que la otra vuelva a preguntar en la misma tableta — el mismo
+  criterio que la estación del KDS y el interruptor del aviso de cocina.
 
 - **Fase 8 (impresión y estaciones)**, en curso: estaciones de preparación
   (F8.1) y perfiles de impresión (F8.2).

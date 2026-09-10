@@ -365,6 +365,9 @@ export function imprimirCorte({ sesion, totales, movimientos = [], tipo = 'X' })
         { class: 'doc-cabeza' },
         h('div', { class: 'doc-titulo' }, esCierre ? 'CIERRE DE CAJA' : 'CORTE X'),
         h('div', { class: 'doc-numero' }, `Turno ${sesion.number ?? ''}`),
+        // Solo si la sede tiene más de una caja: el nombre dice a cuál de
+        // los dos cajones corresponde este corte.
+        sesion.register_name ? h('div', {}, sesion.register_name) : null,
         h('div', {}, me()?.tenant_name ?? ''),
         sede ? h('div', {}, sede.name) : null,
         h('div', {}, `Abrió ${date(sesion.opened_at)} ${time(sesion.opened_at)} · ${sesion.opened_by_name ?? ''}`),

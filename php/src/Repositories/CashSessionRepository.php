@@ -15,27 +15,36 @@ final class CashSessionRepository
 {
     /** El nombre de quien abrio y de quien cerro, resueltos en la misma consulta. */
     private const SELECT_SESSION =
-        'SELECT s.*, ua.name AS opened_by_name, uc.name AS closed_by_name
+        'SELECT s.*, ua.name AS opened_by_name, uc.name AS closed_by_name, r.name AS register_name
          FROM cash_sessions s
          LEFT JOIN users ua ON ua.id = s.opened_by
-         LEFT JOIN users uc ON uc.id = s.closed_by';
+         LEFT JOIN users uc ON uc.id = s.closed_by
+         LEFT JOIN registers r ON r.id = s.register_id';
 
     public function __construct(private readonly PDO $pdo)
     {
     }
 
-    public function open(string $tenantId, string $branchId, ?string $openedBy, int $openingFloatCents): CashSession
-    {
+    public function open(
+        string $tenantId,
+        string $branchId,
+        ?string $openedBy,
+        int $openingFloatCents,
+        ?string $registerId = null,
+    ): CashSession {
         $stmt = $this->pdo->prepare(
             // El consecutivo lo da Postgres en la misma sentencia: dos
             // cajeros abriendo a la vez no pueden sacar el mismo numero.
-            'INSERT INTO cash_sessions (tenant_id, branch_id, opened_by, opening_float, session_number)
-             VALUES (:tenant_id, :branch_id, :opened_by, :opening_float, next_cash_number(:branch_id))
+            'INSERT INTO cash_sessions
+                (tenant_id, branch_id, register_id, opened_by, opening_float, session_number)
+             VALUES
+                (:tenant_id, :branch_id, :register_id, :opened_by, :opening_float, next_cash_number(:branch_id))
              RETURNING id'
         );
         $stmt->execute([
             'tenant_id' => $tenantId,
             'branch_id' => $branchId,
+            'register_id' => $registerId,
             'opened_by' => $openedBy,
             'opening_float' => Money::toDecimalString($openingFloatCents),
         ]);
@@ -52,18 +61,43 @@ final class CashSessionRepository
     }
 
     /**
-     * El turno abierto de la sucursal, si lo hay.
+     * Los turnos abiertos de la sucursal.
      *
-     * Que solo pueda haber uno lo garantiza el indice unico parcial de la
-     * migracion 006, no este LIMIT.
+     * Desde F7.4 pueden ser varios —uno por caja— y quien elige entre
+     * ellos es `Domain\RegisterChoice`, no esta consulta. Que no haya dos
+     * de la misma caja lo garantizan los indices unicos parciales de la
+     * migracion 021.
+     *
+     * @return CashSession[]
      */
-    public function currentForBranch(string $tenantId, string $branchId): ?CashSession
+    public function openForBranch(string $tenantId, string $branchId): array
     {
         $stmt = $this->pdo->prepare(
             self::SELECT_SESSION
             . ' WHERE s.tenant_id = :tenant_id AND s.branch_id = :branch_id AND s.closed_at IS NULL'
+            . ' ORDER BY s.opened_at'
         );
         $stmt->execute(['tenant_id' => $tenantId, 'branch_id' => $branchId]);
+        return array_map(CashSession::fromRow(...), $stmt->fetchAll());
+    }
+
+    /**
+     * El turno abierto de una caja concreta, o el de la sucursal cuando no
+     * se usan cajas (`register_id` nulo).
+     */
+    public function currentForRegister(string $tenantId, string $branchId, ?string $registerId): ?CashSession
+    {
+        $condicion = $registerId === null ? 's.register_id IS NULL' : 's.register_id = :register_id';
+        $stmt = $this->pdo->prepare(
+            self::SELECT_SESSION
+            . " WHERE s.tenant_id = :tenant_id AND s.branch_id = :branch_id AND s.closed_at IS NULL"
+            . " AND {$condicion}"
+        );
+        $params = ['tenant_id' => $tenantId, 'branch_id' => $branchId];
+        if ($registerId !== null) {
+            $params['register_id'] = $registerId;
+        }
+        $stmt->execute($params);
         $row = $stmt->fetch();
         return $row === false ? null : CashSession::fromRow($row);
     }

@@ -628,6 +628,7 @@ async function recargarSesion() {
 function seccionSucursales({ sucursales, ajustes }, refrescar) {
   const gestiona = can('branches.manage');
   const panelMesas = h('div');
+  const panelCajas = h('div');
 
   const nombre = input({ placeholder: 'Ej. Sede Norte' });
   const codigo = input({ placeholder: 'NOR', maxlength: '10' });
@@ -682,6 +683,11 @@ function seccionSucursales({ sucursales, ajustes }, refrescar) {
                   : null,
                 gestiona
                   ? button('Mesas', { variant: 'secondary', onClick: () => verMesas(b, panelMesas, ajustes) })
+                  : null,
+                // Existen solo si el restaurante tiene mas de un punto de
+                // cobro: con una sola caja no hay nada que administrar aqui.
+                gestiona
+                  ? button('Cajas', { variant: 'secondary', onClick: () => verCajas(b, panelCajas) })
                   : null
               )
             )
@@ -724,7 +730,93 @@ function seccionSucursales({ sucursales, ajustes }, refrescar) {
       : null,
 
     panelMesas,
+    panelCajas,
   ];
+}
+
+/**
+ * Las cajas de una sucursal (F7.4).
+ *
+ * Sin ninguna configurada la sede sigue teniendo un turno único de la
+ * sucursal, como siempre: crear aquí una segunda caja es lo que activa la
+ * pregunta "¿en cuál estás cobrando?" en la pantalla de caja.
+ */
+async function verCajas(sucursal, host) {
+  render(host, loading('Cargando cajas…'));
+  let cajas;
+  try {
+    cajas = await api.get(`/branches/${sucursal.id}/registers`);
+  } catch (error) {
+    return render(host, errorBox(error.message));
+  }
+
+  const nombre = input({ placeholder: 'Ej. Mostrador', maxlength: '60' });
+
+  render(
+    host,
+    titledCard(
+      `Cajas de ${sucursal.name}`,
+      h(
+        'p',
+        { class: 'text-[13px] text-stone-600 mb-3' },
+        'Un restaurante con un solo punto de cobro no necesita configurar ninguna. Con dos o más, cada una cuadra su propio arqueo.'
+      ),
+      cajas.length
+        ? h(
+            'div',
+            { class: 'divide-y divide-stone-100 mb-3' },
+            cajas.map((c) =>
+              h(
+                'div',
+                { class: 'py-2.5 flex flex-wrap items-center gap-3' },
+                h('div', { class: 'flex-1 min-w-[140px] text-sm font-medium text-stone-900' }, c.name),
+                c.is_active ? null : badge('Apagada', 'warn'),
+                button(c.is_active ? 'Apagar' : 'Encender', {
+                  variant: 'secondary',
+                  onClick: async () => {
+                    try {
+                      await api.patch(`/registers/${c.id}`, { name: c.name, is_active: !c.is_active });
+                      await verCajas(sucursal, host);
+                    } catch (error) {
+                      toast(error.message);
+                    }
+                  },
+                }),
+                button('Borrar', {
+                  variant: 'subtle',
+                  onClick: async () => {
+                    try {
+                      await api.delete(`/registers/${c.id}`);
+                      toast('Caja borrada', 'ok');
+                      await verCajas(sucursal, host);
+                    } catch (error) {
+                      toast(error.message);
+                    }
+                  },
+                })
+              )
+            )
+          )
+        : null,
+      h(
+        'div',
+        { class: 'flex flex-wrap gap-2 items-end' },
+        nombre,
+        button('Agregar caja', {
+          onClick: async () => {
+            try {
+              await api.post(`/branches/${sucursal.id}/registers`, { name: nombre.value.trim() });
+              nombre.value = '';
+              toast('Caja creada', 'ok');
+              await verCajas(sucursal, host);
+            } catch (error) {
+              toast(error.message);
+            }
+          },
+        })
+      )
+    )
+  );
 }
 
 async function verMesas(sucursal, host, ajustes) {
