@@ -194,6 +194,7 @@ final class OrderService
         ?DeliveryInput $delivery = null,
         ?string $discountReasonId = null,
         ?string $serverId = null,
+        ?string $salesSourceId = null,
     ): Order {
         $pdo = Database::app();
         $orders = new OrderRepository($pdo);
@@ -278,6 +279,15 @@ final class OrderService
         // alguien los marche, que es para lo que existen.
         $primerTiempo = Courses::primero(array_map(static fn ($l) => $l->course, $items));
 
+        // De donde viene la venta y con que comision (F9.4). El porcentaje se
+        // congela con el pedido: renegociar con la plataforma no puede
+        // reescribir cuanto se gano en marzo.
+        try {
+            [$origenVenta, $comision] = SalesSourceService::resolveForOrder($tenantId, $salesSourceId);
+        } catch (SalesSourceError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
         $resolvedLines = self::resolveLines($tenantId, $branchId, $items);
 
         try {
@@ -345,6 +355,8 @@ final class OrderService
             $totals->totalCents,
             $discountCents > 0 ? $discountReasonId : null,
             $discountCents > 0 ? $createdBy : null,
+            $origenVenta,
+            $comision,
         );
 
         foreach ($resolvedLines as $index => $resolved) {

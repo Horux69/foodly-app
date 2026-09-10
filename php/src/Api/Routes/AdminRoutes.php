@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Routes;
 
 use App\Api\Controllers\AdminController;
+use App\Api\Controllers\SalesSourceController;
 use App\Api\Controllers\OrderStatusController;
 use App\Api\Controllers\FiscalController;
 use App\Api\Controllers\PrintProfileController;
@@ -63,6 +64,12 @@ final class AdminRoutes
         $router->get('/roles', fn () => AdminController::listRoles());
         $router->post('/roles', fn () => AdminController::createRole());
         $router->put('/roles/{role_id:uuid}/permissions', fn ($p) => AdminController::setRolePermissions($p));
+
+        // Canales de venta y su comision (F9.4).
+        $router->get('/sales-sources', fn () => SalesSourceController::index());
+        $router->post('/sales-sources', fn () => SalesSourceController::create());
+        $router->patch('/sales-sources/{source_id:uuid}', fn ($p) => SalesSourceController::update($p));
+        $router->delete('/sales-sources/{source_id:uuid}', fn ($p) => SalesSourceController::delete($p));
 
         $router->get('/users', fn () => AdminController::listUsers());
         $router->post('/users', fn () => AdminController::createUser());

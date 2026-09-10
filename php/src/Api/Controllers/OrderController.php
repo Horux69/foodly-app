@@ -207,6 +207,8 @@ final class OrderController
                 self::deliveryFrom($body),
                 Request::optionalUuid($body, 'discount_reason_id'),
                 $serverId,
+                // De donde vino la venta (F9.4): nulo es propia.
+                Request::optionalUuid($body, 'sales_source_id'),
             );
         } catch (OrderError $e) {
             throw new ApiException(422, $e->getMessage());

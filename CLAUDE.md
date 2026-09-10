@@ -549,6 +549,14 @@ Sobre los reportes y la baja de un restaurante, tres cosas:
   el orden lo pone `php/bin/delete_tenant.php`, que borra en una transacción
   y exige repetir el nombre exacto.
 
+`php/tests/Core/RutasTest.php` compara cada ruta con el controlador que la
+atiende: lo que la ruta declara entre llaves es lo que el controlador lee de
+`$params`, y al revés. Atrapa la forma en que se rompió el borrado de un
+origen de venta —la ruta decía `{channel_id}` y el controlador leía
+`source_id`—: no hay error de sintaxis ni de tipos, la petición llega, el
+parámetro sale nulo y revienta con un 500 que lleva adentro el nombre de un
+método de PHP.
+
 `php/tests/Core/LlamadasTest.php` recorre `php/src` y comprueba por reflexión
 que los métodos que el código llama existan. Atrapa la forma concreta en que
 esta sesión rompió dos veces: `OrderStatusService::buildMachine()` dejó de
@@ -909,8 +917,8 @@ tablero vacío para siempre. Una estación con categorías encima no se borra,
 y el mensaje dice cuántas hay que mover.
 
 - **Fase 9 (domicilios que compiten)**, en curso: el cuadre del repartidor
-  (F9.1), el seguimiento para el cliente (F9.2) y la promesa de entrega
-  (F9.5).
+  (F9.1), el seguimiento para el cliente (F9.2), la promesa de entrega
+  (F9.5) y los orígenes de venta con comisión (F9.4).
 
 Sobre el cuadre del repartidor, cuatro decisiones:
 
@@ -986,6 +994,30 @@ Sobre la promesa de entrega (F9.5), tres decisiones:
   una estrella. El tablero lo pinta (ámbar y rojo) y el reporte de venta
   cierra el ciclo: qué porcentaje llegó a tiempo y cuánto se demoran los
   que no.
+
+Sobre los orígenes de venta (F9.4), tres decisiones:
+
+- **Origen no es canal, y por eso son dos columnas.** `orders.channel` dice
+  por dónde se vendió —mostrador, mesa, domicilio— y con eso se deciden
+  horarios, cocina y pantallas. `orders.sales_source_id` dice **de quién
+  vino** la venta: Rappi, DiDi, el Instagram del dueño. Mezclarlos obligaría
+  a que cada agregador declarara si es domicilio o mostrador, y a repetir
+  los horarios por cada uno. Sin ninguno configurado —el caso de casi
+  todos— nada cambia y ninguna pantalla los menciona.
+- **El porcentaje se congela con la venta**, como el precio (principio 8):
+  renegociar la comisión con la plataforma no puede reescribir cuánto se
+  ganó en marzo. La cifra de plata, en cambio, se calcula
+  (`Domain\SourceCommission`), porque el total puede cambiar mientras la
+  cuenta esté abierta. Se cobra sobre el total, que es como cobran las
+  plataformas, y se redondea al centavo: truncar dejaría al restaurante
+  reportando de menos en cada pedido.
+- **Un origen con ventas no se borra, se apaga.** Igual que un motivo de
+  descuento usado: borrarlo convertiría las ventas de Rappi del mes pasado
+  en ventas propias y el reporte de comisiones mentiría hacia arriba.
+
+El reporte de venta muestra el bruto, la comisión y el neto por origen, que
+es la pregunta que viene a responder: el dueño ve 50.000 de venta y le
+entran 35.000.
 
 - **Fase 12 (cumplimiento y confianza)**, en curso: el documento electrónico
   (F12.1).

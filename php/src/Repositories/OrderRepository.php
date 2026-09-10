@@ -356,16 +356,18 @@ final class OrderRepository
         int $totalCents,
         ?string $discountReasonId = null,
         ?string $discountBy = null,
+        ?string $salesChannelId = null,
+        ?float $commissionPercent = null,
     ): string {
         $stmt = $this->pdo->prepare(
             'INSERT INTO orders (
                 tenant_id, branch_id, status_id, order_number, channel, customer_id, table_id,
                 created_by, server_id, tracking_token, idempotency_key, notes, subtotal, tax_total, delivery_fee, discount, tip, total,
-                discount_reason_id, discount_by
+                discount_reason_id, discount_by, sales_source_id, commission_percent
              ) VALUES (
                 :tenant_id, :branch_id, :status_id, :order_number, :channel, :customer_id, :table_id,
                 :created_by, :server_id, :tracking_token, :idempotency_key, :notes, :subtotal, :tax_total, :delivery_fee, :discount, :tip, :total,
-                :discount_reason_id, :discount_by
+                :discount_reason_id, :discount_by, :sales_source_id, :commission_percent
              ) RETURNING id'
         );
         $stmt->execute([
@@ -389,6 +391,10 @@ final class OrderRepository
             'total' => Money::toDecimalString($totalCents),
             'discount_reason_id' => $discountReasonId,
             'discount_by' => $discountBy,
+            'sales_source_id' => $salesChannelId,
+            'commission_percent' => $commissionPercent === null
+                ? null
+                : number_format($commissionPercent, 2, '.', ''),
         ]);
         return (string) $stmt->fetchColumn();
     }

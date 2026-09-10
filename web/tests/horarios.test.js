@@ -52,6 +52,7 @@ async function montarHorarios(horarios, extra = {}) {
       '/print-profiles': [],
       '/fiscal/resolutions': [],
       '/tax-rates': [],
+        '/sales-sources': [],
       '/fiscal/resolutions': [],
       ...extra,
     },
@@ -187,6 +188,7 @@ describe('horarios de sucursal', () => {
         '/branches/*': (url) => (url.includes('/schedules') ? { schedules: [franja()], channels_without_windows: [] } : []),
         '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
         '/tax-rates': [],
+        '/sales-sources': [],
         '/fiscal/resolutions': [],
       },
     });

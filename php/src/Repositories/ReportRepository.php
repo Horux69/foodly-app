@@ -270,6 +270,34 @@ final class ReportRepository
     }
 
     /**
+     * Ventas por canal, con lo que se queda cada plataforma (F9.4).
+     *
+     * La comision se suma pedido a pedido con el porcentaje congelado en
+     * cada uno, redondeando igual que `Domain\SourceCommission`: sumar
+     * primero y aplicar el porcentaje al final daria una cifra distinta en
+     * cuanto haya dos canales con tarifas distintas.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function salesBySource(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT o.sales_source_id AS source_id,
+                    c.name AS source_name,
+                    count(*) AS orders,
+                    sum(o.total) AS revenue,
+                    coalesce(sum(round(o.total * coalesce(o.commission_percent, 0) / 100, 2)), 0) AS commission
+             FROM orders o
+             LEFT JOIN sales_sources c ON c.id = o.sales_source_id
+             ' . self::soldFilter($branchId) . '
+             GROUP BY o.sales_source_id, c.name
+             ORDER BY revenue DESC'
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Cumplimiento de la promesa de entrega (F9.5).
      *
      * Se fecha por la entrega y no por la creacion del pedido: al mirar el

@@ -211,6 +211,35 @@ final class ReportController
         ], $rows);
     }
 
+    /** Ventas por canal, con la comision de cada plataforma (F9.4). */
+    public static function salesBySource(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'reports.view');
+        [$branchId, $from, $to] = self::filters($ctx);
+
+        try {
+            $filas = ReportService::salesBySource($ctx->tenantId, $branchId, $from, $to);
+        } catch (ReportError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return array_map(static function (array $f) {
+            $bruto = Money::fromDecimalString((string) $f['revenue']);
+            $comision = Money::fromDecimalString((string) $f['commission']);
+            return [
+                'source_id' => $f['source_id'],
+                // Null es venta propia: la pantalla decide como llamarla.
+                'source_name' => $f['source_name'],
+                'orders' => (int) $f['orders'],
+                'revenue' => Money::toDecimalString($bruto),
+                'commission' => Money::toDecimalString($comision),
+                // Lo que de verdad le queda al restaurante, que es la
+                // pregunta que el reporte viene a responder.
+                'net' => Money::toDecimalString($bruto - $comision),
+            ];
+        }, $filas);
+    }
+
     /** Cumplimiento de la promesa de entrega (F9.5). */
     public static function deliveryPromise(): array
     {

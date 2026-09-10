@@ -38,6 +38,7 @@ async function montarAdmin(respuestaDeSettings = AJUSTES) {
       '/print-profiles': [],
       '/fiscal/resolutions': [],
       '/tax-rates': [],
+        '/sales-sources': [],
       '/fiscal/resolutions': [],
     },
   });
@@ -124,6 +125,7 @@ describe('datos del restaurante', () => {
         '/branches/*': { schedules: [], channels_without_windows: [] },
         '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
         '/tax-rates': [],
+        '/sales-sources': [],
         '/fiscal/resolutions': [],
       },
     });

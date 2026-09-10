@@ -83,14 +83,18 @@ async function vistaNuevo(host) {
   let menu;
   let motivos = [];
   let meseros = [];
+  let origenes = [];
   try {
     // Los motivos solo si se van a poder usar: sin el permiso, el campo no
     // existe y la petición sería por nada. Con los meseros igual, y además
     // solo donde hay mesas que atender.
-    [menu, motivos, meseros] = await Promise.all([
+    [menu, motivos, meseros, origenes] = await Promise.all([
       api.get(`/menu${branchQuery()}`),
       can('orders.discount') ? api.get('/discount-reasons') : [],
       me().uses_tables && can('orders.assign_server') ? api.get('/servers') : [],
+      // De dónde viene la venta (F9.4). Sin ninguno configurado —el caso de
+      // casi todos— la pantalla ni lo menciona.
+      api.get('/sales-sources').catch(() => []),
     ]);
   } catch (error) {
     return render(host, errorBox(error.message, () => vistaNuevo(host)));
@@ -159,6 +163,17 @@ async function vistaNuevo(host) {
   // Quién atiende la mesa, que en una tableta compartida del pasillo no es
   // quien tiene la sesión abierta. Arranca en uno mismo: es el caso común y
   // así el pedido nunca sale sin dueño.
+  const origen = select(
+    [
+      { value: '', label: 'Venta propia' },
+      ...origenes.map((o) => ({
+        value: o.id,
+        label: o.commission_percent > 0 ? `${o.name} (${o.commission_percent}%)` : o.name,
+      })),
+    ],
+    { 'aria-label': 'Origen de la venta' }
+  );
+
   const mesero = select(
     [
       { value: '', label: 'Sin mesero' },
@@ -539,6 +554,8 @@ async function vistaNuevo(host) {
       // Sin el permiso el campo no existe y el backend deja la cuenta a
       // nombre de quien la toma.
       server_id: meseros.length ? mesero.value || null : undefined,
+      // Nulo es venta propia, que es el caso de casi todos.
+      sales_source_id: origenes.length ? origen.value || null : undefined,
       customer_phone: telefono.value.trim() || null,
       customer_name: nombre.value.trim() || null,
       notes: notas.value.trim() || null,
@@ -668,6 +685,14 @@ async function vistaNuevo(host) {
                 { class: 'mt-3' },
                 h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Agregando a'),
                 selectorTiempo
+              )
+            : null,
+          origenes.length
+            ? h(
+                'div',
+                { class: 'mt-3' },
+                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Origen'),
+                origen
               )
             : null,
           h('div', { class: 'mt-3' }, lineas),

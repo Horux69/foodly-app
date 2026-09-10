@@ -235,6 +235,22 @@ final class ReportService
     }
 
     /**
+     * Ventas por canal con su comision (F9.4).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function salesBySource(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+    ): array {
+        [$start, $end] = self::resolveRange($fromDate, $toDate);
+        self::checkBranch($tenantId, $branchId);
+        return (new ReportRepository(Database::app()))->salesBySource($tenantId, $branchId, $start, $end);
+    }
+
+    /**
      * Cumplimiento de la promesa de entrega (F9.5).
      *
      * @return array<string, mixed>

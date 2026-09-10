@@ -142,14 +142,15 @@ export async function reportes(outlet) {
 
     try {
       if (vista === 'venta') {
-        const [ventas, productos, tiempos, horas, promesa] = await Promise.all([
+        const [ventas, productos, tiempos, horas, promesa, porOrigen] = await Promise.all([
           api.get(`/reports/sales${query({ from_date: desde.value, to_date: hasta.value, branch_id: sucursal.value, compare: comparar.checked ? 'true' : '' })}`),
           api.get(`/reports/top-products${qs}`),
           api.get(`/reports/prep-times${qs}`),
           api.get(`/reports/peak-hours${qs}`),
           api.get(`/reports/delivery-promise${qs}`),
+          api.get(`/reports/sales-by-source${qs}`),
         ]);
-        render(contenido, panel(ventas, productos, tiempos, horas, promesa, descargar));
+        render(contenido, panel(ventas, productos, tiempos, horas, promesa, porOrigen, descargar));
       } else {
         // Por mesero solo donde hay mesas: en un mostrador diría lo mismo
         // que "por usuario" con otro título, que es ruido y no información.
@@ -174,7 +175,7 @@ export async function reportes(outlet) {
 const etiqueta = (texto, control) =>
   h('label', { class: 'block' }, h('span', { class: 'block text-xs text-stone-600 mb-1' }, texto), control);
 
-function panel(ventas, productos, tiempos, horas, promesa, descargar) {
+function panel(ventas, productos, tiempos, horas, promesa, porOrigen, descargar) {
   const t = ventas.totals;
   const minutos = (v) => (v === null || v === undefined ? 'sin datos' : `${Number(v).toFixed(0)} min`);
 
@@ -220,6 +221,21 @@ function panel(ventas, productos, tiempos, horas, promesa, descargar) {
           : 'todavía sin pedidos medidos'
       )
     ),
+
+    // Solo cuando hay más de un origen: con uno solo —o ninguno— sería
+    // repetir el total de arriba con otro título. La comisión al lado, que
+    // es lo que el reporte viene a responder.
+    porOrigen.length > 1
+      ? barras('Ventas por origen', porOrigen, {
+          etiquetaDe: (r) => r.source_name ?? 'Venta propia',
+          valorDe: (r) => Number(r.revenue),
+          formato: money,
+          detalleDe: (r) =>
+            Number(r.commission)
+              ? `comisión ${money(r.commission)} · neto ${money(r.net)}`
+              : `${r.orders} pedido${r.orders === 1 ? '' : 's'}`,
+        })
+      : null,
 
     // Solo si hubo domicilios entregados: en un restaurante que no reparte
     // sería una tarjeta vacía en cada reporte.

@@ -46,6 +46,7 @@ describe('configurar los tiempos', () => {
         '/print-profiles': [],
         '/fiscal/resolutions': [],
         '/tax-rates': [],
+        '/sales-sources': [],
       },
     });
 

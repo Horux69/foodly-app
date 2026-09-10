@@ -46,6 +46,8 @@ const SECCIONES = [
     permiso: 'settings.view',
     visible: ({ ajustes }) => ajustes.channels.includes('delivery'),
   },
+  // De dónde vienen las ventas y cuánto se queda cada plataforma (F9.4).
+  { clave: 'origenes', etiqueta: 'Orígenes', icono: 'etiqueta', permiso: 'settings.view' },
   { clave: 'impresion', etiqueta: 'Impresión', icono: 'archivar', permiso: 'branches.manage' },
   { clave: 'facturacion', etiqueta: 'Facturación', icono: 'impuesto', permiso: 'settings.view' },
   { clave: 'equipo', etiqueta: 'Equipo', icono: 'clientes', permiso: 'users.manage' },
@@ -106,6 +108,7 @@ export async function admin(outlet) {
       : { schedules: [], channels_without_windows: [] };
     // Los estados son del restaurante entero, no de una sede.
     estado.flujo = await api.get('/order-statuses');
+    estado.origenes = await api.get('/sales-sources');
   }
 
   const disponibles = SECCIONES.filter((s) => can(s.permiso) && (s.visible?.(estado) ?? true));
@@ -133,12 +136,143 @@ export async function admin(outlet) {
     else if (clave === 'estados') render(panel, seccionEstados(estado, refrescar));
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
     else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
+    else if (clave === 'origenes') render(panel, seccionOrigenes(estado, refrescar));
     else if (clave === 'impresion') render(panel, seccionImpresion(estado, refrescar));
     else if (clave === 'facturacion') render(panel, seccionFacturacion(estado, refrescar));
     else render(panel, seccionEquipo(estado, refrescar));
   }
 
   mostrar(activa);
+}
+
+// =========================================================
+// Orígenes de venta (F9.4)
+// =========================================================
+
+/**
+ * De dónde viene cada pedido y cuánto se queda la plataforma.
+ *
+ * Va aparte del canal (mostrador, mesa, domicilio), que responde por dónde
+ * se vendió y decide horarios y pantallas. Este responde de quién vino la
+ * venta: sin él, un pedido de Rappi se reporta como uno propio y el dueño
+ * cree que vendió 50.000 cuando le entraron 35.000.
+ */
+function seccionOrigenes({ origenes }, refrescar) {
+  const edita = can('settings.edit');
+  const nombre = input({ placeholder: 'Ej. Rappi', maxlength: '60' });
+  const comision = input({ type: 'number', step: '0.01', min: '0', max: '100', placeholder: '0' });
+
+  const guardar = async (accion) => {
+    try {
+      await accion();
+      await refrescar();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+
+  return [
+    titledCard(
+      'Orígenes de venta',
+      origenes.length
+        ? h(
+            'div',
+            { class: 'divide-y divide-stone-100' },
+            origenes.map((o) => {
+              const nombreFila = input({ value: o.name, maxlength: '60', disabled: !edita });
+              const comisionFila = input({
+                type: 'number',
+                step: '0.01',
+                min: '0',
+                max: '100',
+                value: String(o.commission_percent),
+                disabled: !edita,
+                'aria-label': `Comisión de ${o.name}`,
+              });
+
+              return h(
+                'div',
+                { class: 'py-3 flex flex-wrap items-center gap-3' },
+                h('div', { class: 'flex-1 min-w-[160px]' }, nombreFila),
+                h('div', { class: 'w-28' }, comisionFila),
+                h('span', { class: 'text-xs text-stone-500' }, '% de comisión'),
+                o.is_active ? badge('Activo', 'ok') : badge('Apagado', 'neutral'),
+                edita
+                  ? button('Guardar', {
+                      variant: 'secondary',
+                      onClick: () =>
+                        guardar(() =>
+                          api.patch(`/sales-sources/${o.id}`, {
+                            name: nombreFila.value.trim(),
+                            commission_percent: Number(comisionFila.value || 0),
+                            is_active: o.is_active,
+                          })
+                        ),
+                    })
+                  : null,
+                edita
+                  ? button(o.is_active ? 'Apagar' : 'Encender', {
+                      variant: 'secondary',
+                      onClick: () =>
+                        guardar(() =>
+                          api.patch(`/sales-sources/${o.id}`, {
+                            name: o.name,
+                            commission_percent: o.commission_percent,
+                            is_active: !o.is_active,
+                          })
+                        ),
+                    })
+                  : null,
+                // Borrar solo mientras no tenga ventas: el backend lo
+                // rechaza y dice cuántas hay.
+                edita
+                  ? button('Borrar', {
+                      variant: 'subtle',
+                      onClick: () => guardar(() => api.delete(`/sales-sources/${o.id}`)),
+                    })
+                  : null
+              );
+            })
+          )
+        : empty(
+            'Todavía no hay orígenes',
+            'Crea uno por cada plataforma que te traiga pedidos. Sin ninguno, todo se registra como venta propia.'
+          )
+    ),
+
+    edita
+      ? titledCard(
+          'Nuevo origen',
+          h(
+            'div',
+            { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3' },
+            field('Nombre', nombre),
+            field('Comisión', comision, 'El porcentaje que se queda la plataforma sobre el total.')
+          ),
+          h(
+            'div',
+            { class: 'mt-3' },
+            button('Agregar origen', {
+              onClick: () =>
+                guardar(async () => {
+                  await api.post('/sales-sources', {
+                    name: nombre.value.trim(),
+                    commission_percent: Number(comision.value || 0),
+                  });
+                  nombre.value = '';
+                  comision.value = '';
+                }),
+            })
+          )
+        )
+      : null,
+
+    h(
+      'p',
+      { class: 'text-xs text-stone-500 px-1' },
+      'La comisión se congela con cada venta: renegociarla cambia lo que viene, no lo que ya se vendió.'
+    ),
+  ];
 }
 
 // =========================================================
