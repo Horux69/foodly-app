@@ -82,12 +82,15 @@ async function vistaNuevo(host) {
 
   let menu;
   let motivos = [];
+  let meseros = [];
   try {
     // Los motivos solo si se van a poder usar: sin el permiso, el campo no
-    // existe y la petición sería por nada.
-    [menu, motivos] = await Promise.all([
+    // existe y la petición sería por nada. Con los meseros igual, y además
+    // solo donde hay mesas que atender.
+    [menu, motivos, meseros] = await Promise.all([
       api.get(`/menu${branchQuery()}`),
       can('orders.discount') ? api.get('/discount-reasons') : [],
+      me().uses_tables && can('orders.assign_server') ? api.get('/servers') : [],
     ]);
   } catch (error) {
     return render(host, errorBox(error.message, () => vistaNuevo(host)));
@@ -146,6 +149,17 @@ async function vistaNuevo(host) {
   // Si se llegó tocando una mesa libre en el salón, ya viene puesta.
   const mesa = input({ placeholder: 'Ej. M1', value: mesaDelHash() });
   const nombre = input({ placeholder: 'Nombre del cliente' });
+  // Quién atiende la mesa, que en una tableta compartida del pasillo no es
+  // quien tiene la sesión abierta. Arranca en uno mismo: es el caso común y
+  // así el pedido nunca sale sin dueño.
+  const mesero = select(
+    [
+      { value: '', label: 'Sin mesero' },
+      ...meseros.map((m) => ({ value: m.id, label: m.name })),
+    ],
+    { 'aria-label': 'Mesero a cargo' }
+  );
+  if (meseros.some((m) => m.id === me()?.user_id)) mesero.value = me().user_id;
   const domicilio = input({ type: 'number', min: '0', value: '0' });
   // El descuento es el único ajuste que saca plata de la venta sin dejar
   // cobro ni reembolso detrás: pide su propio permiso y un motivo. Quien no
@@ -476,6 +490,9 @@ async function vistaNuevo(host) {
     return {
       channel: canalActivo,
       table_code: contexto.uses_tables ? mesa.value.trim() || null : null,
+      // Sin el permiso el campo no existe y el backend deja la cuenta a
+      // nombre de quien la toma.
+      server_id: meseros.length ? mesero.value || null : undefined,
       customer_phone: telefono.value.trim() || null,
       customer_name: nombre.value.trim() || null,
       notes: notas.value.trim() || null,
@@ -586,6 +603,14 @@ async function vistaNuevo(host) {
                 { class: 'mt-3' },
                 h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Mesa'),
                 mesa
+              )
+            : null,
+          meseros.length
+            ? h(
+                'div',
+                { class: 'mt-3' },
+                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Mesero'),
+                mesero
               )
             : null,
           h('div', { class: 'mt-3' }, lineas),

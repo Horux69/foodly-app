@@ -25,13 +25,14 @@ final class OrderRepository
      * reciba un pedido sin estado.
      */
     private const SELECT_ORDER =
-        'SELECT o.*, t.code AS table_code,
+        'SELECT o.*, t.code AS table_code, sv.name AS server_name,
                 s.id AS s_id, s.code AS s_code, s.name AS s_name, s.category AS s_category,
                 s.color AS s_color, s.sort_order AS s_sort_order,
                 s.is_initial AS s_is_initial, s.is_final AS s_is_final
          FROM orders o
          JOIN order_statuses s ON s.id = o.status_id
-         LEFT JOIN tables t ON t.id = o.table_id';
+         LEFT JOIN tables t ON t.id = o.table_id
+         LEFT JOIN users sv ON sv.id = o.server_id';
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -317,6 +318,7 @@ final class OrderRepository
         ?string $customerId,
         ?string $tableId,
         ?string $createdBy,
+        ?string $serverId,
         ?string $idempotencyKey,
         ?string $notes,
         int $subtotalCents,
@@ -331,11 +333,11 @@ final class OrderRepository
         $stmt = $this->pdo->prepare(
             'INSERT INTO orders (
                 tenant_id, branch_id, status_id, order_number, channel, customer_id, table_id,
-                created_by, idempotency_key, notes, subtotal, tax_total, delivery_fee, discount, tip, total,
+                created_by, server_id, idempotency_key, notes, subtotal, tax_total, delivery_fee, discount, tip, total,
                 discount_reason_id, discount_by
              ) VALUES (
                 :tenant_id, :branch_id, :status_id, :order_number, :channel, :customer_id, :table_id,
-                :created_by, :idempotency_key, :notes, :subtotal, :tax_total, :delivery_fee, :discount, :tip, :total,
+                :created_by, :server_id, :idempotency_key, :notes, :subtotal, :tax_total, :delivery_fee, :discount, :tip, :total,
                 :discount_reason_id, :discount_by
              ) RETURNING id'
         );
@@ -348,6 +350,7 @@ final class OrderRepository
             'customer_id' => $customerId,
             'table_id' => $tableId,
             'created_by' => $createdBy,
+            'server_id' => $serverId,
             'idempotency_key' => $idempotencyKey,
             'notes' => $notes,
             'subtotal' => Money::toDecimalString($subtotalCents),
@@ -494,6 +497,13 @@ final class OrderRepository
             'by' => $by,
             'id' => $orderId,
         ]);
+    }
+
+    /** Quien atiende la cuenta. Nulo la deja sin mesero a cargo. */
+    public function setServer(string $orderId, ?string $serverId): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE orders SET server_id = :server_id, updated_at = now() WHERE id = :id');
+        $stmt->execute(['server_id' => $serverId, 'id' => $orderId]);
     }
 
     /** Cambia de mesa un pedido. */

@@ -67,6 +67,10 @@ final class FloorService
                     Money::fromDecimalString((string) $row['total'])
                 ),
                 'status_name' => $row['status_name'],
+                // Quien atiende la mesa: es lo que hace posible el "mis
+                // mesas" de una tableta que usan todos.
+                'server_id' => $row['server_id'],
+                'server_name' => $row['server_name'],
                 'status_category' => $row['status_category'],
                 'occupied_since' => $row['occupied_since'],
                 // Los minutos los calcula el servidor: el reloj del navegador

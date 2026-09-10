@@ -31,6 +31,23 @@ export async function salon(outlet) {
   let editando = false;
   let mesas = [];
   let vivo = true;
+  // El filtro de "mis mesas" no se recuerda entre visitas: a diferencia de
+  // la estación del KDS —que es de la tableta— esto es de quien mira ahora,
+  // y encontrarse el salón filtrado por lo que eligió el turno anterior es
+  // ver mesas libres que no lo están.
+  let soloMias = false;
+
+  const mias = button('Mis mesas', {
+    variant: 'secondary',
+    iconName: 'usuario',
+    onClick: () => {
+      soloMias = !soloMias;
+      mias.setAttribute('aria-pressed', String(soloMias));
+      render(mias, icon(soloMias ? 'check' : 'usuario', { size: 16 }), h('span', {}, 'Mis mesas'));
+      pintar();
+    },
+  });
+  mias.setAttribute('aria-pressed', 'false');
 
   const puedeColocar = can('branches.manage');
   const editar = button('Acomodar mesas', {
@@ -50,7 +67,7 @@ export async function salon(outlet) {
     outlet,
     pageHeader(`Salón de ${activeBranch()?.name ?? 'la sucursal'}`, {
       hint: 'Toca una mesa para abrir su cuenta o empezar una nueva.',
-      actions: [marca, puedeColocar ? editar : null],
+      actions: [marca, mias, puedeColocar ? editar : null],
     }),
     plano
   );
@@ -121,6 +138,9 @@ export async function salon(outlet) {
 
   function mesaEnPlano(mesa) {
     const ocupada = mesa.order_id !== null;
+    // Con el filtro puesto las demás se atenúan en vez de desaparecer: el
+    // salón es un plano, y un plano con huecos deja de parecerse al salón.
+    const ajena = soloMias && ocupada && mesa.server_id !== me()?.user_id;
     const tono = ocupada
       ? 'bg-amber-50 border-amber-300 text-amber-900'
       : 'bg-white border-[--linea] text-stone-500';
@@ -130,10 +150,11 @@ export async function salon(outlet) {
       {
         class: `absolute flex flex-col items-center justify-center gap-0.5 border text-center transition-colors
                 ${mesa.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${tono}
-                ${editando ? 'cursor-move' : 'hover:border-amber-400'}`,
+                ${editando ? 'cursor-move' : 'hover:border-amber-400'} ${ajena ? 'opacity-40' : ''}`,
         style: `left:${mesa.pos_x * CASILLA}px;top:${mesa.pos_y * CASILLA}px;width:${CASILLA - 12}px;height:${CASILLA - 12}px`,
         'aria-label': ocupada
-          ? `Mesa ${mesa.code}, ocupada hace ${mesa.occupied_minutes} minutos, ${money(mesa.total)}`
+          ? `Mesa ${mesa.code}, ocupada hace ${mesa.occupied_minutes} minutos, ${money(mesa.total)}` +
+            (mesa.server_name ? `, atiende ${mesa.server_name}` : '')
           : `Mesa ${mesa.code}, libre`,
         onClick: () => (editando ? null : tocar(mesa)),
       },
@@ -142,6 +163,10 @@ export async function salon(outlet) {
         ? h('span', { class: 'text-[12px] tabular-nums' }, money(mesa.total))
         : h('span', { class: 'text-[12px]' }, `${mesa.capacity} puestos`),
       ocupada ? h('span', { class: 'text-[11px]' }, `${mesa.occupied_minutes} min`) : null,
+      // Quién atiende: es lo primero que se busca al mirar el salón de lejos.
+      ocupada && mesa.server_name
+        ? h('span', { class: 'text-[11px] truncate max-w-full px-1' }, mesa.server_name)
+        : null,
       // Dos cuentas en la misma mesa se dicen: esconder una sería perderla.
       mesa.open_orders > 1
         ? h('span', { class: 'text-[11px] font-medium' }, `${mesa.open_orders} cuentas`)

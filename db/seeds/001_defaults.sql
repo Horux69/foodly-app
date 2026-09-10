@@ -18,6 +18,7 @@ INSERT INTO permissions (code, description) VALUES
   ('orders.cancel',           'Cancelar pedidos'),
   ('orders.advance_kitchen',  'Avanzar estados de cocina'),
   ('orders.discount',         'Aplicar descuentos'),
+  ('orders.assign_server',    'Asignar el mesero a cargo de una cuenta'),
   ('payments.register',       'Registrar pagos'),
   ('payments.refund',         'Anular o reembolsar pagos'),
   ('cash.close',              'Cerrar turno y arqueo'),

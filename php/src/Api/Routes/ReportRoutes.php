@@ -20,6 +20,8 @@ final class ReportRoutes
         // Los de cierre: siguen la plata, no el pedido.
         $router->get('/reports/payment-methods', fn () => ReportController::paymentMethods());
         $router->get('/reports/sales-by-user', fn () => ReportController::salesByUser());
+        // Por quien atendio la mesa, no por quien digito (F4.4).
+        $router->get('/reports/sales-by-server', fn () => ReportController::salesByServer());
         $router->get('/reports/adjustments', fn () => ReportController::adjustments());
 
         // Cualquiera de ellos como CSV: ?report=sales|top-products|...

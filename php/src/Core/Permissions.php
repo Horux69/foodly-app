@@ -43,6 +43,10 @@ final class Permissions
         'orders.cancel' => 'Anular pedidos',
         'orders.advance_kitchen' => 'Avanzar estados de cocina',
         'orders.discount' => 'Aplicar descuentos',
+        // Aparte de orders.create: tomar el pedido es una cosa y decir de
+        // quien es la mesa es otra. Donde la propina se reparte, poner el
+        // nombre de otro en una cuenta es mover plata.
+        'orders.assign_server' => 'Asignar el mesero a cargo de una cuenta',
         // Caja
         'payments.register' => 'Registrar cobros',
         'payments.refund' => 'Reembolsar cobros',

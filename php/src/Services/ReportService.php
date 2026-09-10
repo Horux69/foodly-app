@@ -235,6 +235,22 @@ final class ReportService
     }
 
     /**
+     * Ventas y propina por mesero (F4.4).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function salesByServer(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+    ): array {
+        [$start, $end] = self::resolveRange($fromDate, $toDate);
+        self::checkBranch($tenantId, $branchId);
+        return (new ReportRepository(Database::app()))->salesByServer($tenantId, $branchId, $start, $end);
+    }
+
+    /**
      * Lo que hubo que autorizar: anulaciones, reembolsos y descuentos.
      *
      * Los tres se fechan por cuando ocurrio el ajuste y no por cuando se creo

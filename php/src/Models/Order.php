@@ -27,6 +27,9 @@ final class Order
         public readonly array $items = [],
         public readonly ?OrderStatusRow $status = null,
         public readonly ?string $tableCode = null,
+        // Quien atiende la cuenta, que no siempre es quien la digito.
+        public readonly ?string $serverId = null,
+        public readonly ?string $serverName = null,
     ) {
     }
 
@@ -58,6 +61,8 @@ final class Order
             items: $items,
             status: $status,
             tableCode: $tableCode,
+            serverId: $row['server_id'] ?? null,
+            serverName: $row['server_name'] ?? null,
         );
     }
 }

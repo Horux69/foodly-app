@@ -7,7 +7,7 @@
 
 import { api, query } from '../api.js';
 import { date as fecha, isoDate, money, number, time } from '../format.js';
-import { branches } from '../session.js';
+import { branches, me } from '../session.js';
 import { badge, button, card, errorBox, h, pageHeader, render, skeleton, tabs, toast } from '../ui.js';
 import { canal } from './cocina.js';
 import { metodoPago } from './pedido-detalle.js';
@@ -150,12 +150,15 @@ export async function reportes(outlet) {
         ]);
         render(contenido, panel(ventas, productos, tiempos, horas, descargar));
       } else {
-        const [ingresos, porUsuario, ajustes] = await Promise.all([
+        // Por mesero solo donde hay mesas: en un mostrador diría lo mismo
+        // que "por usuario" con otro título, que es ruido y no información.
+        const [ingresos, porUsuario, porMesero, ajustes] = await Promise.all([
           api.get(`/reports/payment-methods${qs}`),
           api.get(`/reports/sales-by-user${qs}`),
+          me()?.uses_tables ? api.get(`/reports/sales-by-server${qs}`) : [],
           api.get(`/reports/adjustments${qs}`),
         ]);
-        render(contenido, panelCierre(ingresos, porUsuario, ajustes, descargar));
+        render(contenido, panelCierre(ingresos, porUsuario, porMesero, ajustes, descargar));
       }
     } catch (error) {
       render(contenido, errorBox(error.message, cargar));
@@ -273,7 +276,7 @@ function panel(ventas, productos, tiempos, horas, descargar) {
  * miden cosas distintas y la pantalla lo dice, para que la diferencia no
  * parezca un error.
  */
-function panelCierre(ingresos, porUsuario, ajustes, descargar) {
+function panelCierre(ingresos, porUsuario, porMesero, ajustes, descargar) {
   const metodos = ingresos.by_method;
   const neto = metodos.reduce((suma, m) => suma + Number(m.net), 0);
   const devuelto = metodos.reduce((suma, m) => suma + Number(m.refunded), 0);
@@ -360,6 +363,18 @@ function panelCierre(ingresos, porUsuario, ajustes, descargar) {
       formato: money,
       detalleDe: (r) => `${r.orders} pedido${r.orders === 1 ? '' : 's'}`,
     }),
+
+    // La venta va sin la propina y la propina al lado: sumadas, quien
+    // recibió más propina parecería haber vendido más.
+    porMesero.length
+      ? barras('Ventas por mesero', porMesero, {
+          etiquetaDe: (r) => r.user_name ?? 'Sin mesero',
+          valorDe: (r) => Number(r.revenue),
+          formato: money,
+          detalleDe: (r) =>
+            `${r.orders} cuenta${r.orders === 1 ? '' : 's'} · propina ${money(r.tips)}`,
+        })
+      : null,
 
     h(
       'div',

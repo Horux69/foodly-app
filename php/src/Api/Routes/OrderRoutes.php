@@ -41,6 +41,10 @@ final class OrderRoutes
         $router->put('/orders/{order_id:uuid}/table', fn ($p) => OrderController::moveToTable($p));
         $router->post('/orders/{order_id:uuid}/merge', fn ($p) => OrderController::merge($p));
 
+        // El mesero a cargo de la cuenta (F4.4).
+        $router->get('/servers', fn () => OrderController::listServers());
+        $router->put('/orders/{order_id:uuid}/server', fn ($p) => OrderController::assignServer($p));
+
         // Documento fiscal de la venta (F12.1).
         $router->get('/orders/{order_id:uuid}/fiscal-document', fn ($p) => FiscalController::show($p));
         $router->post('/orders/{order_id:uuid}/fiscal-document', fn ($p) => FiscalController::emit($p));

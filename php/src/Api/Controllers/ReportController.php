@@ -211,6 +211,29 @@ final class ReportController
         ], $rows);
     }
 
+    /** Ventas y propina por mesero (F4.4). */
+    public static function salesByServer(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'reports.view');
+        [$branchId, $from, $to] = self::filters($ctx);
+
+        try {
+            $rows = ReportService::salesByServer($ctx->tenantId, $branchId, $from, $to);
+        } catch (ReportError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return array_map(static fn ($r) => [
+            'user_id' => $r['user_id'],
+            'user_name' => $r['user_name'],
+            'orders' => (int) $r['orders'],
+            // La venta sin la propina, y la propina aparte: juntas dirian
+            // que quien recibio mas propina vendio mas.
+            'revenue' => self::money($r['revenue']),
+            'tips' => self::money($r['tips']),
+        ], $rows);
+    }
+
     /**
      * Lo que hubo que autorizar en el periodo.
      *

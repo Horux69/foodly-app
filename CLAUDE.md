@@ -631,7 +631,8 @@ componentes no llevan cifra propia porque no la tienen.
 
 - **Fase 4 (servicio en mesa)**, en curso: modificar un pedido abierto
   (F4.0) —la pieza pesada que le faltaba al backend—, el estado de cada mesa
-  (F4.1), el mapa del salón (F4.2) y mover o unir cuentas (F4.3).
+  (F4.1), el mapa del salón (F4.2), mover o unir cuentas (F4.3) y el mesero
+  a cargo (F4.4).
 
 Sobre editar un pedido, cuatro decisiones que conviene no deshacer:
 
@@ -704,6 +705,48 @@ Tocar una mesa libre abre la venta con la mesa ya escrita (viaja en el hash);
 tocar una ocupada abre su cuenta. Los minutos los calcula el servidor: el
 reloj de una tableta que nadie sincroniza puede ir muy lejos.
 
+Sobre el mesero a cargo (F4.4), cuatro decisiones que conviene no deshacer:
+
+- **`orders.server_id` no es `created_by`.** Uno dice quién atiende y el otro
+  quién tecleó, y en un restaurante de mesa no son la misma persona: la
+  tableta del pasillo la usan todos, y en muchos sitios el cajero digita lo
+  que el mesero le dicta. Sin la diferencia no se puede repartir la propina
+  ni decir cuánto vendió cada quien, que es para lo que se lleva la cuenta
+  por mesero. Por defecto atiende quien tomó el pedido: es lo cierto casi
+  siempre, y sin el defecto el reporte arrancaría con una montonera de
+  ventas sin dueño.
+- **La ventana para cambiarlo es más ancha que la de editar los productos, y
+  se cierra al cerrar la cuenta.** Que un mesero tome la mesa de otro a mitad
+  de servicio es normal —un cambio de turno, un descanso— y ahí el pedido
+  puede estar ya listo o en camino. Entregado o anulado, no: la propina de
+  ese turno ya se repartió con un nombre, y cambiarlo reescribiría un reporte
+  que quizás ya se pagó. Lo decide `Domain\ServerAssignment` por categoría
+  del estado, y el detalle lo lee de `is_server_assignable` en vez de
+  deducirlo.
+- **Quien puede ser mesero se pregunta por permiso, no por nombre de rol.**
+  Son los usuarios activos cuyo rol tiene `orders.create`, igual que los
+  repartidores son los que tienen `delivery.complete`: el catálogo de
+  permisos es fijo y el nombre del rol lo pone cada restaurante, así que
+  preguntar por "mesero" solo funcionaría en los que lo hayan llamado así.
+  Y sirve de algo: sin la comprobación se le podría asignar una cuenta —y
+  con ella su parte de la propina— al contador.
+- **Ponerle otro nombre a una cuenta pide `orders.assign_server`.** Tomar el
+  pedido es una cosa y decir de quién es la mesa es otra: donde la propina se
+  reparte, eso es mover plata y hay restaurantes donde lo autoriza el
+  supervisor. Sin el permiso el campo no aparece y la cuenta queda a nombre
+  de quien la tomó.
+
+El reporte por mesero (`GET /reports/sales-by-server`) va aparte del que ya
+existía por usuario, y **separa la venta de la propina**: sumadas, quien
+recibió más propina aparecería vendiendo más. Cuando nadie asignó mesero cae
+a `created_by` —que es también el valor por defecto al crear—, así que las
+ventas anteriores a la columna no se amontonan en un "sin mesero" que no
+significa nada. En el salón el nombre se lee en la mesa y "Mis mesas" atenúa
+las ajenas en vez de esconderlas: un plano con huecos deja de parecerse al
+salón. Ese filtro no se recuerda entre visitas —a diferencia de la estación
+del KDS, que es de la tableta—: encontrarse el salón filtrado por lo que
+eligió el turno anterior es ver libres mesas que no lo están.
+
 - **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
   (F7.1), descuentos con motivo, autor y tope (F7.2) y la propina al cobrar
   (F7.3).
@@ -769,7 +812,8 @@ Sobre la propina (F7.3), dos cosas:
   el arqueo. Quitar una propina ya cobrada choca con la misma regla que
   cualquier edición: primero se reembolsa.
 
-Falta repartirla por mesero, que depende de F4.4 (`orders.server_id`).
+Con F4.4 ya se reparte por mesero: el reporte de ventas por mesero lleva su
+propina en una columna aparte.
 
 - **Fase 8 (impresión y estaciones)**, en curso: estaciones de preparación
   (F8.1) y perfiles de impresión (F8.2).
@@ -847,8 +891,7 @@ Un pedido tiene un documento y solo uno, y lo impone la clave única: volver a
 emitirlo devuelve el que ya existe, como una llave de idempotencia. Se emite
 sobre una venta saldada, porque el documento dice cuánto se cobró.
 
-**Siguiente**: el resto de la fase 4 (estado de las mesas, mapa del salón,
-mover y juntar, mesero a cargo, tiempos y pre-cuenta) y las fases 7 a 12 del
+**Siguiente**: el resto de la fase 4 (tiempos y pre-cuenta) y las fases 7 a 12 del
 segundo plan de obra: caja completa, impresión por estaciones, domicilios,
 costos, promociones y cumplimiento.
 

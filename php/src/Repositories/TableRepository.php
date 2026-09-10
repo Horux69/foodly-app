@@ -61,6 +61,8 @@ final class TableRepository
                     o.created_at AS occupied_since,
                     s.name AS status_name,
                     s.category AS status_category,
+                    o.server_id,
+                    sv.name AS server_name,
                     abiertos.cuantos AS open_orders
                FROM tables t
                LEFT JOIN LATERAL (
@@ -76,6 +78,7 @@ final class TableRepository
                      LIMIT 1
                ) o ON true
                LEFT JOIN order_statuses s ON s.id = o.status_id
+               LEFT JOIN users sv ON sv.id = o.server_id
                LEFT JOIN LATERAL (
                     SELECT count(*) AS cuantos
                       FROM orders o2

@@ -25,6 +25,8 @@ use App\Domain\OrderTotalsCalculator;
 use App\Domain\OrderTotalsError;
 use App\Domain\PaymentBalance;
 use App\Domain\ScheduleWindow;
+use App\Domain\ServerAssignment;
+use App\Domain\ServerAssignmentError;
 use App\Domain\TenantSettings;
 use App\Domain\TipError;
 use App\Domain\TipRules;
@@ -34,6 +36,7 @@ use App\Models\Modifier;
 use App\Models\DeliveryZone;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\User;
 use App\Repositories\BranchRepository;
 use App\Repositories\CustomerRepository;
 use App\Repositories\DiscountReasonRepository;
@@ -44,6 +47,8 @@ use App\Repositories\OrderStatusRepository;
 use App\Repositories\PaymentRepository;
 use App\Repositories\TableRepository;
 use App\Repositories\TenantRepository;
+use App\Repositories\RoleRepository;
+use App\Repositories\UserRepository;
 
 /**
  * Toma de pedidos: valida disponibilidad y modificadores, congela precios y
@@ -186,6 +191,7 @@ final class OrderService
         int $tipCents = 0,
         ?DeliveryInput $delivery = null,
         ?string $discountReasonId = null,
+        ?string $serverId = null,
     ): Order {
         $pdo = Database::app();
         $orders = new OrderRepository($pdo);
@@ -289,6 +295,15 @@ final class OrderService
             }
         }
 
+        // Por defecto atiende quien tomo el pedido: es lo cierto en la
+        // mayoria de los casos, y sin el defecto el reporte por mesero
+        // arrancaria con una montonera de ventas sin dueño. Quien pone otro
+        // nombre necesita 'orders.assign_server', que exige el controlador.
+        $serverId = $serverId ?? $createdBy;
+        if ($serverId !== null && $serverId !== $createdBy) {
+            self::comprobarMesero($tenantId, $serverId);
+        }
+
         $orderId = $orders->create(
             $tenantId,
             $branchId,
@@ -298,6 +313,7 @@ final class OrderService
             $customerId,
             $tableId,
             $createdBy,
+            $serverId,
             $idempotencyKey,
             $notes,
             $totals->subtotalCents,
@@ -561,6 +577,87 @@ final class OrderService
             $userId,
             propinaCents: $tipCents,
         );
+    }
+
+    /**
+     * Pone —o quita— el mesero a cargo de una cuenta.
+     *
+     * La ventana es mas ancha que la de editar los productos: un cambio de
+     * turno a mitad de servicio es normal y el pedido puede estar ya listo o
+     * en camino. Lo que la cierra es que la cuenta se entregue o se anule
+     * (`Domain\ServerAssignment`), porque a partir de ahi el reparto de la
+     * propina de ese turno ya se hizo con un nombre.
+     */
+    public static function assignServer(
+        string $tenantId,
+        string $orderId,
+        ?string $serverId,
+        ?string $userId = null,
+    ): Order {
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+
+        $order = $orders->getByIdForUpdate($tenantId, $orderId);
+        if ($order === null) {
+            throw new OrderError('Pedido no encontrado');
+        }
+        if ($order->status === null) {
+            throw new OrderError('El pedido no tiene estado');
+        }
+        try {
+            ServerAssignment::ensureAsignable($order->status->category);
+        } catch (ServerAssignmentError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $nombre = $serverId === null ? null : self::comprobarMesero($tenantId, $serverId)->name;
+        if ($order->serverId === $serverId) {
+            return $order;
+        }
+
+        $orders->setServer($order->id, $serverId);
+        // En la misma bitacora que los estados y las ediciones: quien revise
+        // el reparto de la propina lo lee en una sola linea de tiempo.
+        $orders->addStatusHistory(
+            $order->id,
+            $order->statusId,
+            $userId,
+            mb_substr(ServerAssignment::nota($order->serverName, $nombre), 0, 255),
+        );
+
+        return $orders->getById($tenantId, $order->id);
+    }
+
+    /**
+     * El usuario existe, esta activo y su rol toma pedidos.
+     *
+     * Por permiso y no por codigo de rol, igual que los repartidores: el
+     * catalogo de permisos es fijo y el nombre del rol lo pone cada
+     * restaurante, asi que preguntar por 'mesero' solo funcionaria en los que
+     * lo hayan llamado asi. Y sirve de algo: sin la comprobacion se le puede
+     * asignar una mesa —y con ella su parte de la propina— a quien no
+     * atiende ninguna.
+     */
+    private static function comprobarMesero(string $tenantId, string $serverId): User
+    {
+        foreach (self::listServers($tenantId) as $candidato) {
+            if ($candidato->id === $serverId) {
+                return $candidato;
+            }
+        }
+        throw new OrderError('Ese usuario no puede atender una cuenta: su rol no toma pedidos, o esta inactivo');
+    }
+
+    /**
+     * Entre quienes se puede elegir mesero: los que pueden tomar pedidos.
+     *
+     * @return User[]
+     */
+    public static function listServers(string $tenantId): array
+    {
+        $pdo = Database::app();
+        return (new UserRepository($pdo, new RoleRepository($pdo)))
+            ->listWithPermission($tenantId, 'orders.create');
     }
 
     /**

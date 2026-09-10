@@ -270,6 +270,40 @@ final class ReportRepository
     }
 
     /**
+     * Ventas y propina por mesero.
+     *
+     * No es lo mismo que salesByUser: aquel agrupa por quien digito el
+     * pedido y este por quien atendio la mesa, que en un restaurante de
+     * servicio es otra persona (F4.4). Cuando nadie asigno mesero se cae a
+     * `created_by`, que es tambien el valor por defecto al crear: asi las
+     * ventas viejas —las de antes de que la columna existiera— no aparecen
+     * todas juntas en un cajon "sin mesero" que no significa nada.
+     *
+     * La venta va sin la propina y la propina aparte. Sumarlas en una sola
+     * cifra diria que un mesero vendio mas por haber recibido mas propina,
+     * que es justo lo contrario de lo que el reporte quiere mostrar.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function salesByServer(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT coalesce(o.server_id, o.created_by) AS user_id,
+                    u.name AS user_name,
+                    count(*) AS orders,
+                    sum(o.total - o.tip) AS revenue,
+                    sum(o.tip) AS tips
+             FROM orders o
+             LEFT JOIN users u ON u.id = coalesce(o.server_id, o.created_by)
+             ' . self::soldFilter($branchId) . '
+             GROUP BY coalesce(o.server_id, o.created_by), u.name
+             ORDER BY revenue DESC'
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Pedidos anulados, con quien los anulo y por que.
      *
      * Se fecha por cuando se cancelo y no por cuando se creo el pedido: al

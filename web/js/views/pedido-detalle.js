@@ -112,6 +112,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
       pedido.delivery ? bloqueEntrega(pedido.delivery) : null,
       bloqueLineas(pedido, recargarTrasCambio),
       bloqueMesa(pedido, recargarTrasCambio),
+      bloqueMesero(pedido, recargarTrasCambio),
       bloqueTotales(pedido, recargarTrasCambio),
       bloquePagos(pedido, pagos, recargarTrasCambio),
       bloqueFiscal(pedido, recargarTrasCambio),
@@ -411,6 +412,112 @@ function bloqueMesa(pedido, recargar) {
       button('Unir otra cuenta', { variant: 'secondary', onClick: () => abrirUnir(pedido, recargar) })
     ),
   });
+}
+
+/**
+ * Quién atiende la cuenta.
+ *
+ * Se ve aunque no se pueda cambiar: saber de quién es la mesa es la mitad
+ * del valor, y esconderlo a quien no tiene el permiso dejaría al mesero sin
+ * poder comprobar que su venta quedó a su nombre. Quien decide si todavía se
+ * puede cambiar es el backend (`is_server_assignable`), no esta pantalla.
+ */
+function bloqueMesero(pedido, recargar) {
+  if (!me().uses_tables) return null;
+
+  const puede = can('orders.assign_server') && pedido.is_server_assignable;
+  if (!puede && !pedido.server_name) return null;
+
+  return section('Mesero', {
+    body: h(
+      'div',
+      { class: 'flex flex-wrap items-center gap-2 text-[13.5px]' },
+      h(
+        'span',
+        { class: pedido.server_name ? 'font-medium' : 'text-stone-500' },
+        pedido.server_name ?? 'Sin mesero a cargo'
+      ),
+      puede
+        ? button(pedido.server_name ? 'Cambiar' : 'Asignar', {
+            variant: 'secondary',
+            onClick: () => abrirMeseros(pedido, recargar),
+          })
+        : null
+    ),
+  });
+}
+
+/** Elegir entre quienes pueden tomar pedidos: la lista la arma el backend. */
+function abrirMeseros(pedido, recargar) {
+  const cuerpo = h('div', { class: 'p-5 space-y-4' });
+  let desmontar;
+  const cerrar = () => desmontar();
+
+  const overlay = h(
+    'div',
+    {
+      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      onClick: (e) => e.target === overlay && cerrar(),
+    },
+    h(
+      'div',
+      {
+        class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': 'Mesero a cargo',
+      },
+      cuerpo
+    )
+  );
+
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  render(cuerpo, loading('Cargando el equipo…'));
+
+  const asignar = async (serverId) => {
+    try {
+      await api.put(`/orders/${pedido.id}/server`, { server_id: serverId });
+      cerrar();
+      toast('Mesero actualizado', 'ok');
+      await recargar();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+
+  api
+    .get('/servers')
+    .then((gente) => {
+      render(
+        cuerpo,
+        h('h3', { class: 'text-[15px] font-semibold' }, `Mesero de ${pedido.order_number}`),
+        h('p', { class: 'text-[13px] text-stone-500' }, 'Queda en la bitácora y en el reporte por mesero.'),
+        gente.length
+          ? h(
+              'div',
+              { class: 'grid gap-2' },
+              gente.map((persona) =>
+                button(persona.name, {
+                  variant: persona.id === pedido.server_id ? 'primary' : 'secondary',
+                  onClick: () => asignar(persona.id),
+                })
+              )
+            )
+          : empty(
+              'Nadie puede atender mesas',
+              'Ningún rol tiene el permiso de crear pedidos.',
+              null,
+              'clientes'
+            ),
+        // Dejarla sin mesero es una elección válida —una mesa que atiende
+        // quien pase— y no un campo que se olvidó.
+        pedido.server_id
+          ? button('Dejar sin mesero', { variant: 'secondary', onClick: () => asignar(null) })
+          : null,
+        h('div', { class: 'flex justify-end' }, button('Cancelar', { variant: 'secondary', onClick: cerrar }))
+      );
+    })
+    .catch((error) => render(cuerpo, errorBox(error.message)));
 }
 
 /** Elegir mesa entre las del salón, no escribir un código de memoria. */

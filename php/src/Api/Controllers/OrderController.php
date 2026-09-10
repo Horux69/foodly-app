@@ -11,6 +11,7 @@ use App\Api\Request;
 use App\Core\Database;
 use App\Core\Money;
 use App\Domain\OrderEditRules;
+use App\Domain\ServerAssignment;
 use App\Domain\StationRouting;
 use App\Domain\PaymentBalance;
 use App\Models\Order;
@@ -38,6 +39,8 @@ final class OrderController
             'channel' => $order->channel,
             'created_at' => $order->createdAt,
             'table_code' => $order->tableCode,
+            'server_id' => $order->serverId,
+            'server_name' => $order->serverName,
             'status' => $order->status !== null ? self::statusOut($order->status) : null,
             'subtotal' => Money::toDecimalString($order->subtotalCents),
             'tax_total' => Money::toDecimalString($order->taxTotalCents),
@@ -51,6 +54,10 @@ final class OrderController
             // misma respuesta.
             'is_editable' => $order->status !== null && OrderEditRules::esEditable($order->status->category),
             'kitchen_has_it' => $order->status !== null && OrderEditRules::laCocinaYaLoTiene($order->status->category),
+            // La ventana del mesero es mas ancha que la de editar: se cambia
+            // hasta que la cuenta se cierra (Domain\ServerAssignment).
+            'is_server_assignable' => $order->status !== null
+                && ServerAssignment::esAsignable($order->status->category),
             'items' => array_map(static fn ($i) => [
                 'id' => $i->id,
                 'menu_item_id' => $i->menuItemId,
@@ -167,6 +174,12 @@ final class OrderController
         if ($discount > 0) {
             Deps::require($ctx, 'orders.discount');
         }
+        // Sin permiso la cuenta queda a nombre de quien la toma, que es el
+        // caso normal; poner a otro es lo que hay que autorizar.
+        $serverId = Request::optionalUuid($body, 'server_id');
+        if ($serverId !== null && $serverId !== $ctx->userId) {
+            Deps::require($ctx, 'orders.assign_server');
+        }
 
         try {
             $order = OrderService::createOrder(
@@ -185,6 +198,7 @@ final class OrderController
                 $tip,
                 self::deliveryFrom($body),
                 Request::optionalUuid($body, 'discount_reason_id'),
+                $serverId,
             );
         } catch (OrderError $e) {
             throw new ApiException(422, $e->getMessage());
@@ -578,6 +592,48 @@ final class OrderController
         return self::orderOut($order) + [
             'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
         ];
+    }
+
+    /**
+     * Pone o quita el mesero a cargo de la cuenta (F4.4).
+     *
+     * `server_id` nulo la deja sin mesero: es una eleccion valida —una mesa
+     * que atiende quien pasa— y no un campo que se olvido.
+     */
+    public static function assignServer(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.assign_server');
+        $body = Request::json();
+
+        try {
+            $order = OrderService::assignServer(
+                $ctx->tenantId,
+                $params['order_id'],
+                Request::optionalUuid($body, 'server_id'),
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return self::orderOut($order);
+    }
+
+    /**
+     * Entre quienes se puede elegir mesero.
+     *
+     * Bajo 'orders.view' y no bajo 'users.manage', igual que la lista de
+     * repartidores: quien atiende mesas necesita esta lista para trabajar y
+     * no deberia hacer falta darle un permiso de administracion. Devuelve
+     * solo id y nombre, no la ficha del empleado.
+     */
+    public static function listServers(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.view');
+        return array_map(
+            static fn ($u) => ['id' => $u->id, 'name' => $u->name],
+            OrderService::listServers($ctx->tenantId),
+        );
     }
 
     /** Los motivos que el restaurante configuro, para el desplegable de la caja. */
