@@ -10,8 +10,8 @@ import { icon } from '../icons.js';
 import * as router from '../router.js';
 import { activeBranch, branchQuery, can, load as cargarSesion } from '../session.js';
 import {
-  badge, button, card, confirm, empty, errorBox, field, h, input, loading, pageHeader, render,
-  section, select, skeleton, tabs, titledCard, toast,
+  badge, button, card, confirm, empty, errorBox, field, h, input, loading, montarDialogo, pageHeader,
+  render, section, select, skeleton, tabs, titledCard, toast,
 } from '../ui.js';
 
 const CANALES = [
@@ -1480,7 +1480,8 @@ function seccionDomicilios({ zonas, sede }, refrescar) {
                     'div',
                     { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
                     z.name,
-                    z.is_active ? null : badge('Inactiva', 'warn')
+                    z.is_active ? null : badge('Inactiva', 'warn'),
+                    z.polygon ? badge('Con forma', 'info') : null
                   ),
                   h(
                     'div',
@@ -1494,6 +1495,12 @@ function seccionDomicilios({ zonas, sede }, refrescar) {
                       .join(' · ')
                   )
                 ),
+                gestiona
+                  ? button('Dibujar', {
+                      variant: 'secondary',
+                      onClick: () => abrirMapaZona(z, zonas, refrescar),
+                    })
+                  : null,
                 gestiona
                   ? button(z.is_active ? 'Desactivar' : 'Activar', {
                       variant: 'secondary',
@@ -1558,6 +1565,206 @@ function seccionDomicilios({ zonas, sede }, refrescar) {
         )
       : null,
   ];
+}
+
+// =========================================================
+// Zonas de reparto: forma en el mapa (F9.3)
+// =========================================================
+
+// Bogotá, en cifras redondas: un punto de partida del que alejarse la
+// primera vez, no una regla de negocio — no decide nada, solo dónde arranca
+// el mapa cuando todavía no hay ninguna zona dibujada en esta sede.
+const CENTRO_MAPA_POR_DEFECTO = [4.6097, -74.0817];
+
+const LEAFLET_CSS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+const LEAFLET_JS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+
+let leafletPromesa = null;
+
+/**
+ * Carga Leaflet la primera vez que alguien dibuja una zona, y solo esa vez.
+ *
+ * No va en el esqueleto del service worker ni se precarga con el resto de la
+ * aplicación: dibujar una zona es una tarea de trastienda ocasional, a
+ * diferencia de Tailwind, que hace falta para pintar cualquier pantalla y
+ * por eso sí se guarda sobre la marcha. Sin red, este botón falla con un
+ * mensaje y el resto de Administración sigue funcionando igual.
+ */
+function cargarLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (leafletPromesa) return leafletPromesa;
+
+  leafletPromesa = new Promise((resolve, reject) => {
+    if (!document.querySelector(`link[href="${LEAFLET_CSS}"]`)) {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = LEAFLET_CSS;
+      document.head.append(css);
+    }
+
+    const script = document.createElement('script');
+    script.src = LEAFLET_JS;
+    script.onload = () => resolve(window.L);
+    script.onerror = () => reject(new Error('No se pudo cargar el mapa'));
+    document.head.append(script);
+  });
+
+  return leafletPromesa;
+}
+
+function centroDe(puntos) {
+  return [
+    puntos.reduce((s, p) => s + p[0], 0) / puntos.length,
+    puntos.reduce((s, p) => s + p[1], 0) / puntos.length,
+  ];
+}
+
+/**
+ * Dónde arranca el mapa: la forma de esta zona si ya tiene una, si no la de
+ * otra zona de la misma sede —para no volver siempre a Bogotá cuando el
+ * restaurante ya dibujó alguna—, y si tampoco hay ninguna, el punto de
+ * partida fijo.
+ */
+function centroInicial(zona, otras) {
+  if (zona.polygon) return centroDe(zona.polygon);
+  const conForma = otras.find((z) => z.id !== zona.id && z.polygon);
+  return conForma ? centroDe(conForma.polygon) : CENTRO_MAPA_POR_DEFECTO;
+}
+
+/**
+ * Dibuja, redibuja o borra la forma de una zona (F9.3).
+ *
+ * No decide la zona de un pedido por ubicación: esa selección sigue siendo
+ * el `<select>` manual de siempre. Esto es solo la referencia visual para
+ * configurarla bien —dónde empieza y dónde termina cada una— y por eso no
+ * hay ningún punto en polígono en la toma del pedido.
+ *
+ * Sin plugin de dibujo: agregar un punto por clic y quitar el último con un
+ * botón es poco código y ya alcanza, así que no vale la pena la dependencia
+ * extra.
+ */
+function abrirMapaZona(zona, otras, refrescar) {
+  const cuerpo = h('div', { class: 'p-5 space-y-3' });
+  let desmontar;
+  const cerrar = () => desmontar();
+
+  const overlay = h(
+    'div',
+    {
+      class: 'fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4',
+      onClick: (e) => e.target === overlay && cerrar(),
+    },
+    h(
+      'div',
+      {
+        class: 'aparece bg-white rounded-[--r-g] max-w-xl w-full shadow-xl border border-[--linea]',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': `Forma de ${zona.name}`,
+      },
+      cuerpo
+    )
+  );
+
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  render(cuerpo, loading('Cargando el mapa…'));
+
+  cargarLeaflet()
+    .then((L) => pintar(L))
+    .catch((error) => render(cuerpo, errorBox(error.message)));
+
+  function pintar(L) {
+    const puntos = (zona.polygon ?? []).map((p) => [p[0], p[1]]);
+    let capa = null;
+
+    const mapaEl = h('div', { class: 'h-72 rounded-lg border border-stone-200' });
+    const contador = h('p', { class: 'text-xs text-stone-500' }, '');
+
+    render(
+      cuerpo,
+      h('h3', { class: 'text-[15px] font-semibold' }, `Forma de ${zona.name}`),
+      h(
+        'p',
+        { class: 'text-[13px] text-stone-600' },
+        'Toca el mapa para agregar cada punto del borde. Las demás zonas de esta sede aparecen en gris, de referencia.'
+      ),
+      mapaEl,
+      contador,
+      h(
+        'div',
+        { class: 'flex flex-wrap justify-end gap-2 pt-1' },
+        button('Deshacer último punto', {
+          variant: 'secondary',
+          onClick: () => {
+            puntos.pop();
+            actualizar();
+          },
+        }),
+        button('Borrar forma', {
+          variant: 'secondary',
+          onClick: async () => {
+            try {
+              await api.patch(`/delivery-zones/${zona.id}/polygon`, { polygon: null });
+              toast('Forma borrada', 'ok');
+              await refrescar();
+              cerrar();
+            } catch (error) {
+              toast(error.message);
+            }
+          },
+        }),
+        button('Cancelar', { variant: 'secondary', onClick: cerrar }),
+        button('Guardar forma', {
+          onClick: async (e) => {
+            if (puntos.length < 3) {
+              toast('Una zona dibujada necesita al menos 3 puntos');
+              return;
+            }
+            const boton = e.currentTarget;
+            boton.disabled = true;
+            try {
+              await api.patch(`/delivery-zones/${zona.id}/polygon`, { polygon: puntos });
+              toast('Forma guardada', 'ok');
+              await refrescar();
+              cerrar();
+            } catch (error) {
+              toast(error.message);
+              boton.disabled = false;
+            }
+          },
+        })
+      )
+    );
+
+    const mapa = L.map(mapaEl).setView(centroInicial(zona, otras), zona.polygon ? 14 : 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(mapa);
+
+    // Las demás zonas, de referencia: ayuda a no dibujar una encima de otra
+    // sin querer.
+    otras
+      .filter((z) => z.id !== zona.id && z.polygon)
+      .forEach((z) => {
+        L.polygon(z.polygon, { color: '#78716c', weight: 1, fillOpacity: 0.08 }).bindTooltip(z.name).addTo(mapa);
+      });
+
+    mapa.on('click', (e) => {
+      puntos.push([e.latlng.lat, e.latlng.lng]);
+      actualizar();
+    });
+
+    function actualizar() {
+      if (capa) capa.remove();
+      capa = puntos.length ? L.polygon(puntos, { color: '#0ea5e9' }).addTo(mapa) : null;
+      contador.textContent = puntos.length
+        ? `${puntos.length} punto${puntos.length === 1 ? '' : 's'}`
+        : 'Sin puntos todavía';
+    }
+
+    actualizar();
+  }
 }
 
 // =========================================================

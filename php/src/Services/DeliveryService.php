@@ -8,6 +8,8 @@ use App\Core\Database;
 use App\Core\Money;
 use App\Domain\CourierSettlement;
 use App\Domain\CourierSettlementError;
+use App\Domain\DeliveryZonePolygon;
+use App\Domain\DeliveryZonePolygonError;
 use App\Models\DeliveryInfo;
 use App\Models\DeliveryZone;
 use App\Repositories\BranchRepository;
@@ -46,6 +48,7 @@ final class DeliveryService
         return (new DeliveryRepository(self::pdo()))->listZones($branchId);
     }
 
+    /** @param array<mixed>|null $polygon puntos [lat, lng] sin validar, tal como llegan del cliente */
     public static function createZone(
         string $tenantId,
         string $branchId,
@@ -53,6 +56,7 @@ final class DeliveryService
         int $feeCents,
         int $minOrderCents,
         ?int $estMinutes,
+        ?array $polygon = null,
     ): DeliveryZone {
         self::ownBranch($tenantId, $branchId);
 
@@ -61,7 +65,7 @@ final class DeliveryService
             throw new DeliveryServiceError("Ya existe una zona llamada '{$name}' en esta sucursal");
         }
 
-        return $repo->createZone($branchId, $name, $feeCents, $minOrderCents, $estMinutes);
+        return $repo->createZone($branchId, $name, $feeCents, $minOrderCents, $estMinutes, self::validPolygon($polygon));
     }
 
     public static function setZoneActive(string $tenantId, string $zoneId, bool $isActive): DeliveryZone
@@ -71,6 +75,36 @@ final class DeliveryService
             throw new DeliveryServiceError('La zona no existe para este tenant');
         }
         return $repo->setZoneActive($zoneId, $isActive);
+    }
+
+    /**
+     * Dibuja, redibuja o borra la forma de una zona (F9.3).
+     *
+     * `null` borra el polígono sin apagar la zona: sigue funcionando igual
+     * que antes de dibujarla, solo que ya sin la referencia en el mapa.
+     *
+     * @param array<mixed>|null $polygon
+     */
+    public static function updateZonePolygon(string $tenantId, string $zoneId, ?array $polygon): DeliveryZone
+    {
+        $repo = new DeliveryRepository(self::pdo());
+        if ($repo->getZone($tenantId, $zoneId) === null) {
+            throw new DeliveryServiceError('La zona no existe para este tenant');
+        }
+        return $repo->updatePolygon($zoneId, self::validPolygon($polygon));
+    }
+
+    /** @param array<mixed>|null $polygon */
+    private static function validPolygon(?array $polygon): ?array
+    {
+        if ($polygon === null) {
+            return null;
+        }
+        try {
+            return DeliveryZonePolygon::validate($polygon);
+        } catch (DeliveryZonePolygonError $e) {
+            throw new DeliveryServiceError($e->getMessage());
+        }
     }
 
     // ---------- Entrega de un pedido ----------

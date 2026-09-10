@@ -25,6 +25,10 @@ final class DeliveryRoutes
             '/delivery-zones/{zone_id:uuid}/active',
             fn ($p) => DeliveryController::setZoneActive($p),
         );
+        $router->patch(
+            '/delivery-zones/{zone_id:uuid}/polygon',
+            fn ($p) => DeliveryController::updateZonePolygon($p),
+        );
 
         // Seguimiento del cliente (F9.2): publico, sin sesion. Lo protege
         // el token, no un permiso.

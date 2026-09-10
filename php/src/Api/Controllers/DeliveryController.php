@@ -29,6 +29,11 @@ final class DeliveryController
             'min_order' => Money::toDecimalString($z->minOrderCents),
             'est_minutes' => $z->estMinutes,
             'is_active' => $z->isActive,
+            // null: nadie la dibujó todavía. La zona funciona igual sin esto.
+            'polygon' => $z->polygon === null ? null : array_map(
+                static fn (array $p) => [$p['lat'], $p['lng']],
+                $z->polygon,
+            ),
         ];
     }
 
@@ -94,6 +99,7 @@ final class DeliveryController
                 $fee,
                 $minOrder,
                 $estMinutes,
+                array_key_exists('polygon', $body) ? $body['polygon'] : null,
             );
         } catch (DeliveryServiceError $e) {
             throw new ApiException(422, $e->getMessage());
@@ -114,6 +120,27 @@ final class DeliveryController
             );
         } catch (DeliveryServiceError $e) {
             throw new ApiException(404, $e->getMessage());
+        }
+        return self::zoneOut($zone);
+    }
+
+    /**
+     * Dibuja, redibuja o borra la forma de una zona (F9.3).
+     *
+     * `polygon: null` la borra sin tocar nada más de la zona — sigue
+     * funcionando igual que antes de dibujarla.
+     */
+    public static function updateZonePolygon(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'branches.manage');
+        $body = Request::json();
+        if (!array_key_exists('polygon', $body)) {
+            throw new ApiException(422, "Falta 'polygon'");
+        }
+        try {
+            $zone = DeliveryService::updateZonePolygon($ctx->tenantId, $params['zone_id'], $body['polygon']);
+        } catch (DeliveryServiceError $e) {
+            throw new ApiException(422, $e->getMessage());
         }
         return self::zoneOut($zone);
     }

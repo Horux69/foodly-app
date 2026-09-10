@@ -21,6 +21,8 @@ final class DeliveryZone
         public readonly int $minOrderCents,
         public readonly ?int $estMinutes,
         public readonly bool $isActive,
+        /** @var array<int, array{lat: float, lng: float}>|null */
+        public readonly ?array $polygon = null,
     ) {
     }
 
@@ -35,6 +37,9 @@ final class DeliveryZone
             minOrderCents: Money::fromDecimalString((string) $row['min_order']),
             estMinutes: $row['est_minutes'] === null ? null : (int) $row['est_minutes'],
             isActive: Row::bool($row['is_active']),
+            // A diferencia de settings (JSONB con default '{}'), aquí null
+            // significa algo distinto de []: "nadie la dibujó todavía".
+            polygon: ($row['polygon'] ?? null) === null ? null : Row::json($row['polygon']),
         );
     }
 }

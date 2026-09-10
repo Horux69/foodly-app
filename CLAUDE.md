@@ -977,9 +977,10 @@ barra. Si esa estación se borra, el filtro se suelta solo en vez de dejar el
 tablero vacío para siempre. Una estación con categorías encima no se borra,
 y el mensaje dice cuántas hay que mover.
 
-- **Fase 9 (domicilios que compiten)**, en curso: el cuadre del repartidor
-  (F9.1), el seguimiento para el cliente (F9.2), la promesa de entrega
-  (F9.5) y los orígenes de venta con comisión (F9.4).
+- **Fase 9 (domicilios que compiten)**, completa: el cuadre del repartidor
+  (F9.1), el seguimiento para el cliente (F9.2), las zonas dibujadas en mapa
+  (F9.3), la promesa de entrega (F9.5) y los orígenes de venta con comisión
+  (F9.4).
 
 Sobre el cuadre del repartidor, cuatro decisiones:
 
@@ -1080,6 +1081,36 @@ El reporte de venta muestra el bruto, la comisión y el neto por origen, que
 es la pregunta que viene a responder: el dueño ve 50.000 de venta y le
 entran 35.000.
 
+Sobre las zonas dibujadas en el mapa (F9.3), cuatro decisiones:
+
+- **`delivery_zones.polygon` existía desde el esquema inicial y nadie lo
+  llenaba.** La zona se identificaba solo por nombre en un `<select>`, sin
+  que nadie viera dónde empieza y dónde termina cada una. Dibujarla no
+  cambia esa selección —sigue siendo manual, como siempre—: es la
+  referencia visual para configurarla bien, no una nueva forma de asignar
+  el pedido. No hay punto-en-polígono en la toma del pedido, y es a
+  propósito: haría falta geocodificar la dirección del cliente, y eso pide
+  un servicio de terceros que nadie ha contratado. `delivery_info.lat/lng`
+  siguen existiendo en el backend sin pantalla que los llene, tal como
+  estaban.
+- **Sin forma dibujada (`polygon: null`), la zona funciona exactamente
+  igual que antes de F9.3.** Es configuración opcional encima de una que ya
+  operaba sola: la tarifa, el mínimo y los minutos estimados no dependen de
+  que alguien la haya dibujado.
+- **La forma se valida en el dominio** (`Domain\DeliveryZonePolygon`): al
+  menos tres puntos —menos no encierra ningún área—, cada uno con latitud y
+  longitud dentro de rango, y un tope de sanidad de puntos. `PATCH
+  /delivery-zones/{id}/polygon` es su propio endpoint, aparte de crear la
+  zona, siguiendo el mismo criterio que `.../active`: cada PATCH toca una
+  sola cosa.
+- **Sin plugin de dibujo.** Leaflet llega por CDN, cargado una sola vez y
+  solo cuando alguien abre el diálogo de una zona —no en el esqueleto del
+  service worker ni junto con el resto de la aplicación, a diferencia de
+  Tailwind, que hace falta para pintar cualquier pantalla—; agregar un
+  punto por clic y quitar el último con un botón es poco código y no
+  amerita una dependencia de dibujo aparte. Si la red falla, el diálogo lo
+  dice y el resto de Administración sigue funcionando igual.
+
 - **Fase 12 (cumplimiento y confianza)**, en curso: el documento electrónico
   (F12.1).
 
@@ -1116,13 +1147,10 @@ emitirlo devuelve el que ya existe, como una llave de idempotencia. Se emite
 sobre una venta saldada, porque el documento dice cuánto se cobró.
 
 **Siguiente**: lo que queda de las fases 7 a 12 del segundo plan de obra
-—el resto de la caja (varias cajas, corte X, vueltas y redondeo), el agente
-ESC/POS opcional y la identidad del ticket, los domicilios (liquidación del
-repartidor, seguimiento público, zonas en mapa, canales de agregador,
-promesa de entrega), inventario y costos, precios por canal y promociones, y
-lo que falta de cumplimiento (bitácora de auditoría, límite de intentos de
-ingreso, alcance por sucursal, exportación contable)—. La fase 4 quedó
-completa.
+—el agente ESC/POS opcional y la identidad del ticket, inventario y costos,
+precios por canal y promociones, y lo que falta de cumplimiento (bitácora de
+auditoría, límite de intentos de ingreso, alcance por sucursal, exportación
+contable)—. Las fases 4 y 9 quedaron completas.
 
 Pendientes conocidos:
 

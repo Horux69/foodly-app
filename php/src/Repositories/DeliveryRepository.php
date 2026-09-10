@@ -52,16 +52,18 @@ final class DeliveryRepository
         return $row === false ? null : DeliveryZone::fromRow($row);
     }
 
+    /** @param array<int, array{lat: float, lng: float}>|null $polygon ya validado por el dominio */
     public function createZone(
         string $branchId,
         string $name,
         int $feeCents,
         int $minOrderCents,
         ?int $estMinutes,
+        ?array $polygon = null,
     ): DeliveryZone {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO delivery_zones (branch_id, name, fee, min_order, est_minutes)
-             VALUES (:branch_id, :name, :fee, :min_order, :est_minutes) RETURNING *'
+            'INSERT INTO delivery_zones (branch_id, name, fee, min_order, est_minutes, polygon)
+             VALUES (:branch_id, :name, :fee, :min_order, :est_minutes, :polygon) RETURNING *'
         );
         $stmt->execute([
             'branch_id' => $branchId,
@@ -69,6 +71,7 @@ final class DeliveryRepository
             'fee' => Money::toDecimalString($feeCents),
             'min_order' => Money::toDecimalString($minOrderCents),
             'est_minutes' => $estMinutes,
+            'polygon' => self::polygonJson($polygon),
         ]);
         return DeliveryZone::fromRow($stmt->fetch());
     }
@@ -80,6 +83,27 @@ final class DeliveryRepository
         );
         $stmt->execute(['is_active' => Row::pgBool($isActive), 'id' => $zoneId]);
         return DeliveryZone::fromRow($stmt->fetch());
+    }
+
+    /**
+     * Aparte de `setZoneActive`: cada PATCH toca una sola columna, como ya
+     * hacía el resto de este repositorio.
+     *
+     * @param array<int, array{lat: float, lng: float}>|null $polygon ya validado por el dominio, o null para borrar la forma
+     */
+    public function updatePolygon(string $zoneId, ?array $polygon): DeliveryZone
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE delivery_zones SET polygon = :polygon WHERE id = :id RETURNING *'
+        );
+        $stmt->execute(['polygon' => self::polygonJson($polygon), 'id' => $zoneId]);
+        return DeliveryZone::fromRow($stmt->fetch());
+    }
+
+    /** @param array<int, array{lat: float, lng: float}>|null $polygon */
+    private static function polygonJson(?array $polygon): ?string
+    {
+        return $polygon === null ? null : json_encode($polygon, JSON_UNESCAPED_UNICODE);
     }
 
     // ---------- Entrega de un pedido ----------
