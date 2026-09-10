@@ -568,7 +568,8 @@ y de ahí en adelante habla por la conexión `app()`, bajo RLS.
 Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
 obligatorio, cobro por partes, reembolso, las tres reglas de
 `StatusChangeRules` contra el saldo real), la edición de un pedido abierto,
-los movimientos del cajón, los descuentos con su tope por rol, la propina, las estaciones, los combos —el precio del paquete,
+los movimientos del cajón, los descuentos con su tope por rol, la propina, las estaciones, el documento
+fiscal con su numeración, los combos —el precio del paquete,
 la composición congelada y el bloqueo al archivar— y el aislamiento entre
 empresas,
 que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
@@ -769,6 +770,41 @@ barra. Si esa estación se borra, el filtro se suelta solo en vez de dejar el
 tablero vacío para siempre. Una estación con categorías encima no se borra,
 y el mensaje dice cuántas hay que mover.
 
+- **Fase 12 (cumplimiento y confianza)**, en curso: el documento electrónico
+  (F12.1).
+
+Sobre el documento fiscal, cuatro decisiones:
+
+- **Numerar y transmitir son dos cosas distintas.** La numeración es del
+  restaurante y la autoriza la DIAN por resolución (prefijo, rango y
+  vigencia); existe aunque no haya proveedor tecnológico conectado, porque el
+  papel que se entrega ya la lleva. La transmisión es de un tercero y puede
+  fallar. Separarlas es lo que permite lo siguiente.
+- **Que el proveedor falle no puede impedir vender.** El documento se numera,
+  se guarda y se imprime; si la transmisión no sale, queda en
+  `contingency` para reintentarla. Un restaurante que no puede cobrar porque
+  un tercero está caído devuelve el producto y pierde al cliente.
+- **El consecutivo se consume antes de transmitir.** Si la transmisión falla,
+  ese número ya es de ese documento y no se le puede dar a otro: un número
+  saltado se explica, uno repetido no se corrige sin nota de crédito. Y la
+  resolución se lee con `FOR UPDATE`, porque dos cajas emitiendo a la vez
+  leerían el mismo consecutivo.
+- **Sin proveedor el documento queda en contingencia, no en aceptado.**
+  `LocalFiscalProvider` no finge éxito: decir 'accepted' sin haber
+  transmitido nada sería mentir en el único sitio donde la mentira la
+  descubre la autoridad y no el usuario.
+
+`Services\FiscalProvider` es el mismo patrón que `PaymentProvider`: cuando
+entre un proveedor autorizado de verdad se agrega a `FiscalProviders` y se
+elige por configuración del tenant, sin tocar el servicio ni los
+controladores. **Falta elegir cuál** —eso necesita cuenta y credenciales del
+cliente—; lo que ya funciona sin él es numerar, imprimir con el número,
+guardar y reintentar.
+
+Un pedido tiene un documento y solo uno, y lo impone la clave única: volver a
+emitirlo devuelve el que ya existe, como una llave de idempotencia. Se emite
+sobre una venta saldada, porque el documento dice cuánto se cobró.
+
 **Siguiente**: el resto de la fase 4 (estado de las mesas, mapa del salón,
 mover y juntar, mesero a cargo, tiempos y pre-cuenta) y las fases 7 a 12 del
 segundo plan de obra: caja completa, impresión por estaciones, domicilios,
@@ -795,8 +831,8 @@ Pendientes conocidos:
   entre períodos con su descarga en CSV, los combos en la pantalla del menú,
   la edición de un pedido abierto, los movimientos del cajón, el descuento
   con motivo y permiso, la propina al cobrar, las estaciones de preparación
-  con su filtro y su comanda partida, y que un botón que falla vuelva a
-  servir.
+  con su filtro y su comanda partida, el documento fiscal con su número en el
+  ticket, y que un botón que falla vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

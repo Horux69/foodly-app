@@ -414,6 +414,11 @@ textarea {
 
 /* La marca de reimpresión es lo que evita que la cocina prepare dos veces lo
    mismo, así que se imprime grande y no como una nota al pie. */
+.doc-fiscal {
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
 .doc-estacion {
   text-align: center;
   font-weight: 700;

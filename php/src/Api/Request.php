@@ -104,6 +104,26 @@ final class Request
         return $value;
     }
 
+    /**
+     * Fecha opcional del cuerpo, en formato YYYY-MM-DD.
+     *
+     * La misma comprobacion que queryDate —incluido el `!` del formato, que
+     * pone a cero la hora, y la vuelta a cadena, que atrapa un 2026-02-31 que
+     * PHP interpretaria como 3 de marzo— pero leyendo del JSON.
+     */
+    public static function optionalDate(array $data, string $key): ?string
+    {
+        $value = $data[$key] ?? null;
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $parsed = is_string($value) ? \DateTimeImmutable::createFromFormat('!Y-m-d', $value) : false;
+        if ($parsed === false || $parsed->format('Y-m-d') !== $value) {
+            throw new ApiException(422, "'{$key}' debe ser una fecha en formato YYYY-MM-DD");
+        }
+        return $value;
+    }
+
     /** Bandera de query: presente y con un valor afirmativo. */
     public static function queryBool(string $key, bool $default = false): bool
     {

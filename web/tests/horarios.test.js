@@ -50,7 +50,9 @@ async function montarHorarios(horarios, extra = {}) {
       // El editor de estados carga el flujo del restaurante.
       '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
       '/print-profiles': [],
+      '/fiscal/resolutions': [],
       '/tax-rates': [],
+      '/fiscal/resolutions': [],
       ...extra,
     },
   });
@@ -185,6 +187,7 @@ describe('horarios de sucursal', () => {
         '/branches/*': (url) => (url.includes('/schedules') ? { schedules: [franja()], channels_without_windows: [] } : []),
         '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
         '/tax-rates': [],
+        '/fiscal/resolutions': [],
       },
     });
     boton('Horarios').click();

@@ -47,6 +47,7 @@ const SECCIONES = [
     visible: ({ ajustes }) => ajustes.channels.includes('delivery'),
   },
   { clave: 'impresion', etiqueta: 'Impresión', icono: 'archivar', permiso: 'branches.manage' },
+  { clave: 'facturacion', etiqueta: 'Facturación', icono: 'impuesto', permiso: 'settings.view' },
   { clave: 'equipo', etiqueta: 'Equipo', icono: 'clientes', permiso: 'users.manage' },
 ];
 
@@ -81,6 +82,8 @@ export async function admin(outlet) {
     if (can('branches.manage')) {
       estado.impresion = await api.get(`/print-profiles${branchQuery()}`);
     }
+
+    estado.resoluciones = await api.get('/fiscal/resolutions');
 
     if (can('users.manage')) {
       const [roles, usuarios, permisos] = await Promise.all([
@@ -131,10 +134,110 @@ export async function admin(outlet) {
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
     else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
     else if (clave === 'impresion') render(panel, seccionImpresion(estado, refrescar));
+    else if (clave === 'facturacion') render(panel, seccionFacturacion(estado, refrescar));
     else render(panel, seccionEquipo(estado, refrescar));
   }
 
   mostrar(activa);
+}
+
+// =========================================================
+// Facturación
+// =========================================================
+
+/**
+ * La numeración autorizada.
+ *
+ * Es del restaurante y la autoriza la DIAN por resolución: prefijo, rango y
+ * vigencia. Existe aunque no haya proveedor tecnológico conectado, porque el
+ * papel que se entrega ya lleva el número — y quedarse sin rango es dejar de
+ * facturar, así que se avisa antes.
+ */
+function seccionFacturacion(estado, refrescar) {
+  const numero = input({ placeholder: '18764000001234', class: 'campo' });
+  const prefijo = input({ placeholder: 'POS', class: 'campo w-24' });
+  const desde = input({ type: 'number', min: '1', placeholder: '1', class: 'campo w-28 tabular-nums' });
+  const hasta = input({ type: 'number', min: '1', placeholder: '5000', class: 'campo w-28 tabular-nums' });
+  const vence = input({ type: 'date', class: 'campo' });
+  const aviso = h('div');
+
+  const crear = button('Activar resolución', {
+    onClick: async () => {
+      render(aviso);
+      crear.disabled = true;
+      try {
+        await api.post(`/fiscal/resolutions${branchQuery()}`, {
+          number: numero.value.trim(),
+          prefix: prefijo.value.trim(),
+          range_from: Number(desde.value || 0),
+          range_to: Number(hasta.value || 0),
+          valid_until: vence.value || null,
+        });
+        toast('Resolución activada', 'ok');
+        await refrescar();
+      } catch (error) {
+        render(aviso, errorBox(error.message));
+        crear.disabled = false;
+      }
+    },
+  });
+
+  const activa = estado.resoluciones.find((r) => r.is_active);
+
+  return [
+    section('Numeración autorizada', {
+      hint: 'La resolución con la que se numeran los documentos de esta sucursal. Activar una nueva apaga la anterior.',
+      body: h(
+        'div',
+        { class: 'space-y-2' },
+        h(
+          'div',
+          { class: 'flex flex-wrap items-end gap-2' },
+          field('Resolución', numero),
+          field('Prefijo', prefijo),
+          field('Desde', desde),
+          field('Hasta', hasta),
+          field('Vence', vence),
+          crear
+        ),
+        aviso,
+        activa && activa.running_out
+          ? h(
+              'div',
+              { class: 'text-[13px] text-amber-800 bg-amber-50 rounded px-2 py-1.5' },
+              `Quedan ${activa.remaining} números. Pide una resolución nueva antes de que se acaben: sin rango no se puede facturar.`
+            )
+          : null
+      ),
+      list: estado.resoluciones.length
+        ? estado.resoluciones.map((r) =>
+            h(
+              'div',
+              { class: 'fila' },
+              h(
+                'div',
+                { class: 'flex-1 min-w-0' },
+                h(
+                  'div',
+                  { class: 'text-[13.5px] text-stone-900 flex items-center gap-2' },
+                  `${r.prefix}${r.range_from} – ${r.prefix}${r.range_to}`,
+                  r.is_active ? badge('Activa', 'ok') : badge('Agotada o reemplazada')
+                ),
+                h(
+                  'div',
+                  { class: 'text-[12px] text-stone-500' },
+                  [
+                    `Resolución ${r.number}`,
+                    r.valid_until ? `vence ${r.valid_until}` : 'sin vencimiento',
+                    `quedan ${r.remaining}`,
+                  ].join(' · ')
+                )
+              )
+            )
+          )
+        : [h('p', { class: 'text-[13px] text-stone-500' }, 'Sin resolución: todavía no se puede emitir ningún documento.')],
+    }),
+  ];
 }
 
 // =========================================================

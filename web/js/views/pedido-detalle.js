@@ -93,6 +93,9 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
         api.get(`/orders/${orderId}/next-statuses`),
         api.get(`/orders/${orderId}/history`),
       ]);
+      // El documento fiscal se pide aparte y sin bloquear: un restaurante
+      // que no lo use no debería ver un error por algo que no tiene.
+      pedido.fiscal = (await api.get(`/orders/${orderId}/fiscal-document`).catch(() => null))?.document ?? null;
     } catch (error) {
       return render(cuerpo, errorBox(error.message, cargar));
     }
@@ -110,6 +113,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
       bloqueLineas(pedido, recargarTrasCambio),
       bloqueTotales(pedido, recargarTrasCambio),
       bloquePagos(pedido, pagos, recargarTrasCambio),
+      bloqueFiscal(pedido, recargarTrasCambio),
       bloqueAvance(pedido, siguientes, recargarTrasCambio),
       bloqueBitacora(bitacora)
     );
@@ -384,6 +388,56 @@ function abrirAgregar(pedido, recargar) {
       );
     })
     .catch((error) => render(lista, errorBox(error.message)));
+}
+
+/**
+ * El documento fiscal de la venta.
+ *
+ * Solo aparece con el pedido saldado: el documento dice cuánto se cobró, y
+ * emitirlo antes es prometer una cifra que todavía puede cambiar. Si el
+ * restaurante no tiene resolución configurada, el botón lo dice al pulsarlo
+ * en vez de esconderse — esconderlo dejaría a alguien buscando por qué no
+ * puede facturar.
+ */
+function bloqueFiscal(pedido, recargar) {
+  if (!pedido.balance.is_settled && !pedido.fiscal) return null;
+  if (!can('payments.register') && !pedido.fiscal) return null;
+
+  const emitir = button('Emitir documento', {
+    onClick: async () => {
+      emitir.disabled = true;
+      try {
+        await api.post(`/orders/${pedido.id}/fiscal-document`, {});
+        toast('Documento emitido', 'ok');
+        await recargar();
+      } catch (error) {
+        toast(error.message);
+        emitir.disabled = false;
+      }
+    },
+  });
+
+  if (!pedido.fiscal) {
+    return section('Documento', { body: h('div', { class: 'flex items-center gap-2' }, emitir) });
+  }
+
+  const doc = pedido.fiscal;
+  const tono = doc.status === 'accepted' ? 'ok' : doc.status === 'rejected' ? 'danger' : 'warn';
+  const etiqueta = {
+    accepted: 'Aceptado',
+    contingency: 'Sin transmitir',
+    rejected: 'Rechazado',
+  }[doc.status] ?? doc.status;
+
+  return section('Documento', {
+    body: h(
+      'div',
+      { class: 'flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px]' },
+      h('span', { class: 'font-semibold tabular-nums' }, doc.full_number),
+      badge(etiqueta, tono),
+      doc.external_id ? h('span', { class: 'text-[12px] text-stone-500 break-all' }, doc.external_id) : null
+    ),
+  });
 }
 
 function bloqueTotales(pedido, recargar) {

@@ -64,7 +64,9 @@ async function montarEstados(flujo = FLUJO, extra = {}) {
       '/branches': [{ id: '22222222-2222-4222-8222-222222222222', name: 'Centro', code: 'CEN', timezone: 'America/Bogota' }],
       '/branches/*': { schedules: [], channels_without_windows: [] },
       '/print-profiles': [],
+      '/fiscal/resolutions': [],
       '/tax-rates': [],
+      '/fiscal/resolutions': [],
       '/order-statuses': flujo,
       // Guardar, mover el inicial y fijar las salidas cuelgan del id.
       '/order-statuses/*': {},
@@ -222,6 +224,7 @@ describe('editor de estados', () => {
         '/branches': [{ id: '22222222-2222-4222-8222-222222222222', name: 'Centro', code: 'CEN', timezone: 'America/Bogota' }],
         '/branches/*': { schedules: [], channels_without_windows: [] },
         '/tax-rates': [],
+        '/fiscal/resolutions': [],
         '/order-statuses': FLUJO,
         '/order-statuses/*': {},
       },

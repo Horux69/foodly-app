@@ -226,6 +226,14 @@ export function imprimirTicket(pedido, pagos = []) {
         sede?.address ? h('div', {}, sede.address) : null,
         sede?.phone ? h('div', {}, `Tel. ${sede.phone}`) : null,
         h('div', { class: 'doc-numero' }, pedido.order_number),
+        // El número autorizado, cuando el restaurante emite documento: es lo
+        // que hace del papel un comprobante y no un recibo cualquiera.
+        pedido.fiscal
+          ? h('div', { class: 'doc-fiscal' }, pedido.fiscal.full_number)
+          : null,
+        pedido.fiscal?.external_id
+          ? h('div', { class: 'doc-detalle' }, pedido.fiscal.external_id)
+          : null,
         h(
           'div',
           {},

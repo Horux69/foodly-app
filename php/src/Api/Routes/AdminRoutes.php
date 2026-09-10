@@ -6,6 +6,7 @@ namespace App\Api\Routes;
 
 use App\Api\Controllers\AdminController;
 use App\Api\Controllers\OrderStatusController;
+use App\Api\Controllers\FiscalController;
 use App\Api\Controllers\PrintProfileController;
 use App\Api\Router;
 
@@ -14,6 +15,11 @@ final class AdminRoutes
 {
     public static function register(Router $router): void
     {
+        // Numeracion autorizada y reintento de lo que quedo sin transmitir (F12.1).
+        $router->get('/fiscal/resolutions', fn () => FiscalController::resolutions());
+        $router->post('/fiscal/resolutions', fn () => FiscalController::createResolution());
+        $router->post('/fiscal/retry', fn () => FiscalController::retry());
+
         // Como imprime esta sucursal (F8.2): ancho del papel y copias.
         $router->get('/print-profiles', fn () => PrintProfileController::index());
         $router->put('/print-profiles/{document}', fn ($p) => PrintProfileController::save($p));
