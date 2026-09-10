@@ -16,7 +16,11 @@ use App\Repositories\TaxRateRepository;
 /** Producto tal como lo ve quien vende: precio y disponibilidad ya resueltos para su sucursal. */
 final class MenuItemView
 {
-    /** @param \App\Models\ModifierGroup[] $modifierGroups */
+    /**
+     * @param \App\Models\ModifierGroup[] $modifierGroups
+     * @param array<int, array{item_id: string, name: string, quantity: int}> $components
+     *        lo que lleva, si es un combo
+     */
     public function __construct(
         public readonly string $id,
         public readonly string $name,
@@ -24,6 +28,7 @@ final class MenuItemView
         public readonly int $priceCents,
         public readonly bool $isAvailable,
         public readonly array $modifierGroups,
+        public readonly array $components = [],
     ) {
     }
 }

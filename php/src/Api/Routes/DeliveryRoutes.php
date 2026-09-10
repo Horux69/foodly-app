@@ -25,6 +25,8 @@ final class DeliveryRoutes
             fn ($p) => DeliveryController::setZoneActive($p),
         );
 
+        $router->get('/couriers', fn () => DeliveryController::listCouriers());
+
         $router->get('/orders/{order_id:uuid}/delivery', fn ($p) => DeliveryController::getDelivery($p));
         $router->put(
             '/orders/{order_id:uuid}/delivery/courier',

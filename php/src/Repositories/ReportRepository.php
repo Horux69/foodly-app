@@ -184,6 +184,209 @@ final class ReportRepository
     }
 
     /**
+     * Cuantas filas devuelve como maximo cada lista de ajustes.
+     *
+     * Los totales que las acompañan se calculan con funciones de ventana, que
+     * corren antes del LIMIT: la lista se corta pero la suma sigue siendo la
+     * de todo el periodo. Un reporte que muestre 200 anulaciones y diga que
+     * suman solo esas 200 no sirve para cuadrar.
+     */
+    private const MAX_AJUSTES = 200;
+
+    /**
+     * Ingresos por metodo de pago.
+     *
+     * A diferencia de los reportes de venta, este sigue la plata y no el
+     * pedido: se agrupa por la fecha del cobro y no la del pedido, y no se
+     * exige que el pedido este completado. Un cobro de hoy sobre un pedido de
+     * ayer entro hoy en la caja, y uno sobre un pedido todavia abierto es
+     * plata que ya se recibio.
+     *
+     * Un cobro cuenta aunque este marcado 'refunded' —esa etiqueta solo dice
+     * que ya se revirtio— y quien resta es su fila de reembolso.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function incomeByMethod(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $branchCondition = $branchId !== null ? 'AND o.branch_id = :branch_id' : '';
+        $stmt = $this->pdo->prepare(
+            "SELECT p.method,
+                    count(*) FILTER (
+                        WHERE p.refund_of_payment_id IS NULL AND p.status IN ('paid', 'refunded')
+                    ) AS charges,
+                    count(*) FILTER (
+                        WHERE p.refund_of_payment_id IS NOT NULL AND p.status = 'paid'
+                    ) AS refunds,
+                    coalesce(sum(p.amount) FILTER (
+                        WHERE p.refund_of_payment_id IS NULL AND p.status IN ('paid', 'refunded')
+                    ), 0) AS charged,
+                    coalesce(sum(p.amount) FILTER (
+                        WHERE p.refund_of_payment_id IS NOT NULL AND p.status = 'paid'
+                    ), 0) AS refunded,
+                    coalesce(sum(p.amount) FILTER (
+                        WHERE p.refund_of_payment_id IS NULL AND p.status IN ('paid', 'refunded')
+                    ), 0) - coalesce(sum(p.amount) FILTER (
+                        WHERE p.refund_of_payment_id IS NOT NULL AND p.status = 'paid'
+                    ), 0) AS net
+             FROM payments p
+             JOIN orders o ON o.id = p.order_id
+             JOIN branches b ON b.id = o.branch_id
+             WHERE o.tenant_id = :tenant_id
+               {$branchCondition}
+               AND (p.created_at AT TIME ZONE b.timezone)::date BETWEEN :from_date AND :to_date
+             GROUP BY p.method
+             ORDER BY net DESC"
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Ventas por quien tomo el pedido.
+     *
+     * Usa el mismo filtro que el resto de los reportes de venta: solo cuenta
+     * lo completado. `created_by` puede ser nulo —el usuario se dio de baja, o
+     * el pedido entro por una integracion— y esas ventas se agrupan juntas en
+     * vez de desaparecer del total.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function salesByUser(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT o.created_by AS user_id,
+                    u.name AS user_name,
+                    count(*) AS orders,
+                    sum(o.total) AS revenue
+             FROM orders o
+             LEFT JOIN users u ON u.id = o.created_by
+             ' . self::soldFilter($branchId) . '
+             GROUP BY o.created_by, u.name
+             ORDER BY revenue DESC'
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Pedidos anulados, con quien los anulo y por que.
+     *
+     * Se fecha por cuando se cancelo y no por cuando se creo el pedido: al
+     * cuadrar el dia importa lo que se anulo hoy, aunque el pedido fuera de
+     * ayer. El LATERAL busca la ultima entrada de la bitacora que lo llevo a
+     * un estado de categoria 'cancelled'; el motivo sale de ahi
+     * (order_status_history.note).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function cancellations(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $branchCondition = $branchId !== null ? 'AND o.branch_id = :branch_id' : '';
+        $stmt = $this->pdo->prepare(
+            "SELECT o.order_number,
+                    o.total,
+                    o.channel,
+                    h.changed_at AS at,
+                    h.note AS reason,
+                    u.name AS by_name,
+                    count(*) OVER () AS total_count,
+                    sum(o.total) OVER () AS total_amount
+             FROM orders o
+             JOIN order_statuses s ON s.id = o.status_id
+             JOIN branches b ON b.id = o.branch_id
+             LEFT JOIN LATERAL (
+                 SELECT hh.changed_at, hh.note, hh.changed_by
+                 FROM order_status_history hh
+                 JOIN order_statuses hs ON hs.id = hh.status_id
+                 WHERE hh.order_id = o.id AND hs.category = 'cancelled'
+                 ORDER BY hh.changed_at DESC
+                 LIMIT 1
+             ) h ON true
+             LEFT JOIN users u ON u.id = h.changed_by
+             WHERE o.tenant_id = :tenant_id
+               AND s.category = 'cancelled'
+               {$branchCondition}
+               AND (coalesce(h.changed_at, o.created_at) AT TIME ZONE b.timezone)::date
+                   BETWEEN :from_date AND :to_date
+             ORDER BY h.changed_at DESC NULLS LAST
+             LIMIT " . self::MAX_AJUSTES
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Reembolsos del periodo, con quien los hizo y por que.
+     *
+     * Fechados por cuando salio la plata, no por cuando entro.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function refunds(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $branchCondition = $branchId !== null ? 'AND o.branch_id = :branch_id' : '';
+        $stmt = $this->pdo->prepare(
+            "SELECT o.order_number,
+                    p.method,
+                    p.amount,
+                    p.created_at AS at,
+                    p.note AS reason,
+                    u.name AS by_name,
+                    count(*) OVER () AS total_count,
+                    sum(p.amount) OVER () AS total_amount
+             FROM payments p
+             JOIN orders o ON o.id = p.order_id
+             JOIN branches b ON b.id = o.branch_id
+             LEFT JOIN users u ON u.id = p.created_by
+             WHERE o.tenant_id = :tenant_id
+               AND p.refund_of_payment_id IS NOT NULL
+               AND p.status = 'paid'
+               {$branchCondition}
+               AND (p.created_at AT TIME ZONE b.timezone)::date BETWEEN :from_date AND :to_date
+             ORDER BY p.created_at DESC
+             LIMIT " . self::MAX_AJUSTES
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Descuentos aplicados, con quien tomo el pedido.
+     *
+     * Se excluyen los cancelados: un descuento sobre un pedido que no se
+     * vendio no es plata que el restaurante haya dejado de cobrar.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function discounts(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $branchCondition = $branchId !== null ? 'AND o.branch_id = :branch_id' : '';
+        $stmt = $this->pdo->prepare(
+            "SELECT o.order_number,
+                    o.discount,
+                    o.total,
+                    o.created_at AS at,
+                    u.name AS by_name,
+                    count(*) OVER () AS total_count,
+                    sum(o.discount) OVER () AS total_amount
+             FROM orders o
+             JOIN order_statuses s ON s.id = o.status_id
+             JOIN branches b ON b.id = o.branch_id
+             LEFT JOIN users u ON u.id = o.created_by
+             WHERE o.tenant_id = :tenant_id
+               AND o.discount > 0
+               AND s.category <> 'cancelled'
+               {$branchCondition}
+               AND (o.created_at AT TIME ZONE b.timezone)::date BETWEEN :from_date AND :to_date
+             ORDER BY o.discount DESC
+             LIMIT " . self::MAX_AJUSTES
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Mide demanda, no venta: cuenta todo lo que no fue cancelado, incluidos
      * los pedidos aun abiertos. Por eso no reutiliza el filtro de ventas.
      *

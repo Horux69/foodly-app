@@ -25,6 +25,10 @@ final class PaymentController
             'amount' => Money::toDecimalString($p->amountCents),
             'external_reference' => $p->externalReference,
             'paid_at' => $p->paidAt,
+            // Con esto la pantalla distingue un cobro de una devolucion sin
+            // tener que adivinarlo por el signo, que en la base no existe.
+            'refund_of_payment_id' => $p->refundOfPaymentId,
+            'note' => $p->note,
         ];
     }
 
@@ -46,6 +50,7 @@ final class PaymentController
                 $amount,
                 Request::optionalString($body, 'external_reference'),
                 Request::optionalString($body, 'idempotency_key'),
+                $ctx->userId,
             );
         } catch (PaymentError $e) {
             throw new ApiException(422, $e->getMessage());
@@ -74,11 +79,65 @@ final class PaymentController
             throw new ApiException(404, $e->getMessage());
         }
 
+        return OrderController::balanceOut($balance);
+    }
+
+    /**
+     * Propuesta de reparto de la cuenta.
+     *
+     * El calculo esta en Domain\BillSplit y no en el navegador por el
+     * centavo suelto: 41000 entre tres no da redondo, y dos divisiones con
+     * `toFixed(2)` dejarian el pedido con un centavo pendiente para siempre.
+     */
+    public static function split(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'payments.register');
+        $parts = Request::queryInt('parts', default: 2, min: 1, max: 50);
+
+        try {
+            $proposal = PaymentService::splitProposal($ctx->tenantId, $params['order_id'], $parts);
+        } catch (PaymentError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
         return [
-            'total' => Money::toDecimalString($balance->totalCents),
-            'paid' => Money::toDecimalString($balance->paidCents),
-            'pending' => Money::toDecimalString($balance->pendingCents),
-            'is_settled' => $balance->isSettled,
+            'pending' => Money::toDecimalString($proposal->pendingCents),
+            'parts' => array_map(Money::toDecimalString(...), $proposal->partsCents),
+            // Envio menos descuento mas propina: no esta en ninguna linea,
+            // asi que al repartir por productos hay que decirlo.
+            'non_item_total' => Money::toDecimalString($proposal->nonItemCents),
         ];
+    }
+
+    /**
+     * Reembolsa un cobro.
+     *
+     * Bajo 'payments.refund', el permiso que estaba en el catalogo desde el
+     * principio sin ningun endpoint que lo usara. Sin `amount` devuelve todo
+     * lo que quede de ese cobro, que es el caso comun.
+     */
+    public static function refund(array $params): JsonResponse
+    {
+        $ctx = Deps::require(Deps::getContext(), 'payments.refund');
+        $body = Request::json();
+
+        $amount = array_key_exists('amount', $body) && $body['amount'] !== null
+            ? Money::fromDecimalString(Request::decimalString($body, 'amount'))
+            : null;
+
+        try {
+            $refund = PaymentService::refundPayment(
+                $ctx->tenantId,
+                $params['order_id'],
+                $params['payment_id'],
+                $amount,
+                Request::optionalString($body, 'note'),
+                $ctx->userId,
+            );
+        } catch (PaymentError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return new JsonResponse(self::paymentOut($refund), 201);
     }
 }

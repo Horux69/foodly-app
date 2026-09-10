@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Plataforma de restaurantes">
+  <!-- El fondo llena el lienzo y la figura cabe en el 80% central: eso es lo
+       que exige `purpose: maskable`, porque Android recorta el icono con la
+       forma que use el lanzador. -->
+  <rect width="512" height="512" fill="#1c1917"/>
+  <circle cx="256" cy="256" r="100" fill="none" stroke="#ffffff" stroke-width="22"/>
+  <circle cx="256" cy="256" r="48" fill="#ffffff"/>
+</svg>

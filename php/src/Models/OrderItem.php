@@ -12,7 +12,10 @@ use App\Core\Money;
  */
 final class OrderItem
 {
-    /** @param OrderItemModifier[] $modifiers */
+    /**
+     * @param OrderItemModifier[] $modifiers
+     * @param OrderItemComponent[] $components lo que llevaba el combo; vacio si no lo es
+     */
     public function __construct(
         public readonly string $id,
         public readonly string $menuItemId,
@@ -23,14 +26,16 @@ final class OrderItem
         public readonly int $lineTotalCents,
         public readonly ?string $notes,
         public readonly array $modifiers = [],
+        public readonly array $components = [],
     ) {
     }
 
     /**
      * @param array<string, mixed> $row
      * @param OrderItemModifier[] $modifiers
+     * @param OrderItemComponent[] $components
      */
-    public static function fromRow(array $row, array $modifiers = []): self
+    public static function fromRow(array $row, array $modifiers = [], array $components = []): self
     {
         return new self(
             id: $row['id'],
@@ -42,6 +47,7 @@ final class OrderItem
             lineTotalCents: Money::fromDecimalString((string) $row['line_total']),
             notes: $row['notes'],
             modifiers: $modifiers,
+            components: $components,
         );
     }
 }

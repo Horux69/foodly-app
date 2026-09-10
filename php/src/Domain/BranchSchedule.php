@@ -26,16 +26,45 @@ final class BranchSchedule
     public static function isBranchOpen(int $weekday, string $at, string $channel, array $schedules): bool
     {
         foreach ($schedules as $window) {
-            if (!$window->isActive || $window->weekday !== $weekday) {
+            if (!$window->isActive) {
                 continue;
             }
+            // Un horario sin canal aplica a todos.
             if ($window->channel !== null && $window->channel !== $channel) {
                 continue;
             }
-            if ($window->opensAt <= $at && $at <= $window->closesAt) {
+            if (self::cubre($window, $weekday, $at)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Si la franja alcanza ese dia y esa hora.
+     *
+     * La que cierra antes de la hora a la que abre cruza la medianoche: el
+     * viernes de 20:00 a 02:00 esta abierta el viernes desde las 20:00 y el
+     * sabado hasta las 02:00. Sin esto, `opensAt <= $at && $at <= closesAt`
+     * no se cumple nunca —ninguna hora es a la vez posterior a las 20:00 y
+     * anterior a las 02:00— y un restaurante nocturno quedaria cerrado
+     * siempre, sin ningun error a la vista.
+     */
+    private static function cubre(ScheduleWindow $window, int $weekday, string $at): bool
+    {
+        if ($window->opensAt <= $window->closesAt) {
+            return $window->weekday === $weekday && $window->opensAt <= $at && $at <= $window->closesAt;
+        }
+
+        if ($window->weekday === $weekday) {
+            return $at >= $window->opensAt;      // la noche del propio dia
+        }
+        return $window->weekday === self::diaAnterior($weekday) && $at <= $window->closesAt; // la madrugada siguiente
+    }
+
+    /** Lunes=0..Domingo=6, asi que el anterior al lunes es el domingo. */
+    private static function diaAnterior(int $weekday): int
+    {
+        return ($weekday + 6) % 7;
     }
 }

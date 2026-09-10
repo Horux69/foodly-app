@@ -5,9 +5,10 @@
 // seguridad: el backend rechaza por su cuenta lo que no corresponde.
 
 import { api } from '../api.js';
-import { percent } from '../format.js';
+import { money, percent } from '../format.js';
 import { icon } from '../icons.js';
-import { can } from '../session.js';
+import * as router from '../router.js';
+import { activeBranch, can, load as cargarSesion } from '../session.js';
 import {
   badge, button, card, confirm, empty, errorBox, field, h, input, loading, pageHeader, render,
   section, select, skeleton, tabs, titledCard, toast,
@@ -21,10 +22,30 @@ const CANALES = [
   ['app', 'App'],
 ];
 
+// Los mismos que valida Domain\TenantSettings::BUSINESS_TYPES. Solo deciden
+// los valores por defecto de un restaurante recién creado, así que cambiarlo
+// después no cambia cómo opera: eso lo dicen los interruptores de abajo.
+const MODELOS = [
+  ['fast_food', 'Comida rápida'],
+  ['table_service', 'Servicio en mesa'],
+  ['delivery', 'Domicilios'],
+];
+
 const SECCIONES = [
   { clave: 'config', etiqueta: 'Cómo opera', icono: 'admin', permiso: 'settings.view' },
   { clave: 'sucursales', etiqueta: 'Sucursales', icono: 'sucursal', permiso: 'settings.view' },
+  { clave: 'horarios', etiqueta: 'Horarios', icono: 'reloj', permiso: 'settings.view' },
+  { clave: 'estados', etiqueta: 'Estados', icono: 'etiqueta', permiso: 'settings.view' },
   { clave: 'impuestos', etiqueta: 'Impuestos', icono: 'impuesto', permiso: 'settings.view' },
+  // Aparece si el restaurante tiene el canal de domicilios activo: por
+  // configuración, no por un condicional sobre el tenant.
+  {
+    clave: 'domicilios',
+    etiqueta: 'Domicilios',
+    icono: 'domicilio',
+    permiso: 'settings.view',
+    visible: ({ ajustes }) => ajustes.channels.includes('delivery'),
+  },
   { clave: 'equipo', etiqueta: 'Equipo', icono: 'clientes', permiso: 'users.manage' },
 ];
 
@@ -62,9 +83,22 @@ export async function admin(outlet) {
       ]);
       Object.assign(estado, { roles, usuarios, permisos });
     }
+
+    // Las zonas son de cada sucursal, así que se piden por la sucursal
+    // activa: cambiar de sede en la barra lateral remonta la pantalla.
+    const sede = activeBranch();
+    estado.sede = sede;
+    estado.zonas = sede && ajustes.channels.includes('delivery')
+      ? await api.get(`/branches/${sede.id}/delivery-zones`)
+      : [];
+    estado.horarios = sede
+      ? await api.get(`/branches/${sede.id}/schedules`)
+      : { schedules: [], channels_without_windows: [] };
+    // Los estados son del restaurante entero, no de una sede.
+    estado.flujo = await api.get('/order-statuses');
   }
 
-  const disponibles = SECCIONES.filter((s) => can(s.permiso));
+  const disponibles = SECCIONES.filter((s) => can(s.permiso) && (s.visible?.(estado) ?? true));
   let activa = disponibles[0]?.clave;
 
   function mostrar(clave) {
@@ -83,9 +117,12 @@ export async function admin(outlet) {
       mostrar(activa);
     };
 
-    if (clave === 'config') render(panel, seccionConfig(estado, refrescar));
+    if (clave === 'config') render(panel, seccionConfig(estado));
     else if (clave === 'sucursales') render(panel, seccionSucursales(estado, refrescar));
+    else if (clave === 'horarios') render(panel, seccionHorarios(estado, refrescar));
+    else if (clave === 'estados') render(panel, seccionEstados(estado, refrescar));
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
+    else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
     else render(panel, seccionEquipo(estado, refrescar));
   }
 
@@ -96,8 +133,21 @@ export async function admin(outlet) {
 // Cómo opera
 // =========================================================
 
-function seccionConfig({ ajustes }, refrescar) {
+function seccionConfig({ ajustes }) {
   const editable = can('settings.edit');
+
+  const nombre = input({ value: ajustes.name, maxlength: '150', disabled: !editable });
+  const modelo = select(
+    MODELOS.map(([value, label]) => ({ value, label, selected: value === ajustes.business_type })),
+    { disabled: !editable }
+  );
+  const moneda = input({
+    value: ajustes.currency,
+    maxlength: '3',
+    class: 'campo uppercase tabular-nums',
+    disabled: !editable,
+  });
+
   const casillas = CANALES.map(([code, nombre]) => ({
     code,
     control: h('input', {
@@ -115,9 +165,11 @@ function seccionConfig({ ajustes }, refrescar) {
     titledCard(
       'Cómo opera el restaurante',
       h(
-        'p',
-        { class: 'text-sm text-stone-600 mb-4' },
-        `${ajustes.name} · ${ajustes.business_type} · ${ajustes.currency}`
+        'div',
+        { class: 'grid grid-cols-1 sm:grid-cols-[2fr_1fr_auto] gap-3 mb-5' },
+        field('Nombre', nombre),
+        field('Modelo de negocio', modelo, 'Solo fija los valores por defecto'),
+        field('Moneda', moneda)
       ),
       h('div', { class: 'text-sm font-medium text-stone-700 mb-2' }, 'Canales de venta activos'),
       h(
@@ -134,18 +186,45 @@ function seccionConfig({ ajustes }, refrescar) {
       editable
         ? button('Guardar cambios', {
             onClick: async (e) => {
-              e.currentTarget.disabled = true;
+              // Se guarda antes de cualquier `await`: el navegador vacía
+              // `currentTarget` en cuanto termina el despacho del evento, y
+              // el diálogo de la moneda ocurre justo en medio.
+              const guardar = e.currentTarget;
+              const monedaNueva = moneda.value.trim().toUpperCase();
+              const cambiaMoneda = monedaNueva !== ajustes.currency;
+
+              // La API exige la confirmación aparte (`Domain\TenantProfile`),
+              // así que esto no es solo cortesía: sin el visto bueno el
+              // guardado se rechaza.
+              if (cambiaMoneda) {
+                const seguro = await confirm({
+                  title: `¿Cambiar la moneda de ${ajustes.currency} a ${monedaNueva}?`,
+                  message:
+                    'Los pedidos que ya se emitieron no se reconvierten: sus cifras se quedan como están y pasarían a leerse en la moneda nueva.',
+                  confirmLabel: 'Cambiar la moneda',
+                });
+                if (!seguro) return;
+              }
+
+              guardar.disabled = true;
               try {
                 await api.patch('/settings', {
+                  name: nombre.value.trim(),
+                  business_type: modelo.value,
+                  currency: monedaNueva,
+                  confirm_currency_change: cambiaMoneda,
                   channels: casillas.filter((c) => c.control.checked).map((c) => c.code),
                   uses_tables: mesas.checked,
                   asks_tip: propina.checked,
                 });
                 toast('Configuración guardada', 'ok');
-                await refrescar();
+                // El nombre se lee en el rail y la moneda en cada cifra de la
+                // aplicación: repintar solo esta pantalla dejaría las dos
+                // viejas hasta la siguiente navegación.
+                await recargarSesion();
               } catch (error) {
                 toast(error.message);
-                e.currentTarget.disabled = false;
+                guardar.disabled = false;
               }
             },
           })
@@ -157,6 +236,16 @@ function seccionConfig({ ajustes }, refrescar) {
       'Esto cambia cómo se comporta el sistema sin tocar código: los canales apagados se rechazan al tomar un pedido, y sin mesas ni propina esos campos desaparecen de la pantalla de venta.'
     ),
   ];
+}
+
+/**
+ * Vuelve a leer /auth/me y repinta todo: el enrutador llama de nuevo al
+ * pintado de la estructura, así que el rail y esta pantalla salen con los
+ * datos nuevos. Por eso no hace falta el `refrescar()` de la sección.
+ */
+async function recargarSesion() {
+  await cargarSesion();
+  await router.reload();
 }
 
 // =========================================================
@@ -333,6 +422,441 @@ async function verMesas(sucursal, host, ajustes) {
 }
 
 // =========================================================
+// Horarios
+// =========================================================
+
+// Lunes = 0, la misma convención que `branch_schedules` y que
+// `Domain\ScheduleRules::DIAS`.
+const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+function seccionHorarios({ horarios, sede, sucursales }, refrescar) {
+  const gestiona = can('branches.manage');
+
+  if (!sede) {
+    return card(
+      empty('Elige una sucursal', 'Los horarios son de cada sede. Selecciona una en la barra lateral.', null, 'sucursal')
+    );
+  }
+
+  const dia = select(DIAS.map((nombre, i) => ({ value: String(i), label: nombre })));
+  const desde = input({ type: 'time', value: '10:00' });
+  const hasta = input({ type: 'time', value: '22:00' });
+  const canal = select([
+    { value: '', label: 'Todos los canales' },
+    ...CANALES.map(([code, nombre]) => ({ value: code, label: nombre })),
+  ]);
+
+  const nombreCanal = (code) => CANALES.find(([c]) => c === code)?.[1] ?? code;
+
+  const filas = horarios.schedules;
+  const sinCobertura = horarios.channels_without_windows;
+
+  return [
+    titledCard(
+      `Horarios · ${sede.name}`,
+      h(
+        'div',
+        { class: 'text-[13px] text-stone-600 space-y-1.5 mb-4 border-l-2 border-amber-300 pl-3' },
+        h(
+          'p',
+          {},
+          h('b', {}, 'Sin ninguna franja la sucursal atiende siempre.'),
+          ' En cuanto haya una, solo se puede pedir dentro de las que apliquen al canal.'
+        ),
+        h(
+          'p',
+          {},
+          h('b', {}, 'Una franja sin canal vale para todos.'),
+          ' Poner una de mostrador y otra de domicilio es lo que permite cerrar los domicilios a las 10 y seguir atendiendo en la barra.'
+        ),
+        // La zona horaria sale de /branches, que es donde viaja: la de
+        // /auth/me solo trae lo que el rail necesita para el selector.
+        h('p', {}, `Las horas se leen en la zona horaria de la sede: ${sucursales.find((b) => b.id === sede.id)?.timezone ?? 'la suya'}.`)
+      ),
+
+      // Con horarios configurados, un canal sin franjas queda cerrado siempre
+      // y no da ninguna señal hasta que alguien intenta vender.
+      sinCobertura.length
+        ? h(
+            'p',
+            { class: 'text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[--r] px-3 py-2 mb-3' },
+            `Sin franjas para ${sinCobertura.map(nombreCanal).join(' y ')}: por ahí no se puede pedir en ningún momento. Agrega una franja para ese canal, o una sin canal que valga para todos.`
+          )
+        : null,
+
+      filas.length
+        ? h(
+            'div',
+            { class: 'divide-y divide-stone-100' },
+            filas.map((f) =>
+              h(
+                'div',
+                { class: `py-2.5 flex flex-wrap items-center gap-3 ${f.is_active ? '' : 'opacity-50'}` },
+                h('div', { class: 'w-24 text-sm font-medium text-stone-900' }, DIAS[f.weekday]),
+                h(
+                  'div',
+                  { class: 'text-sm tabular-nums text-stone-700' },
+                  `${f.opens_at} – ${f.closes_at}`,
+                  // Cerrar antes de abrir no es un error de captura: es la
+                  // franja nocturna, y decirlo evita que alguien la "corrija".
+                  f.crosses_midnight ? h('span', { class: 'text-stone-500' }, ' (del día siguiente)') : null
+                ),
+                h(
+                  'div',
+                  { class: 'flex-1 min-w-[120px]' },
+                  f.channel ? badge(nombreCanal(f.channel), 'info') : badge('Todos los canales')
+                ),
+                f.is_active ? null : badge('Apagada', 'warn'),
+                gestiona
+                  ? button(f.is_active ? 'Apagar' : 'Encender', {
+                      variant: 'secondary',
+                      onClick: async () => {
+                        try {
+                          await api.patch(`/schedules/${f.id}/active`, { is_active: !f.is_active });
+                          await refrescar();
+                        } catch (error) {
+                          toast(error.message);
+                        }
+                      },
+                    })
+                  : null,
+                gestiona
+                  ? button('Borrar', {
+                      variant: 'secondary',
+                      onClick: async () => {
+                        try {
+                          await api.delete(`/schedules/${f.id}`);
+                          await refrescar();
+                        } catch (error) {
+                          toast(error.message);
+                        }
+                      },
+                    })
+                  : null
+              )
+            )
+          )
+        : h('p', { class: 'text-sm text-stone-500' }, 'Sin franjas: esta sede atiende a cualquier hora.'),
+
+      gestiona
+        ? h(
+            'div',
+            { class: 'flex flex-wrap items-end gap-2 pt-4 mt-2 border-t border-stone-100' },
+            h('div', { class: 'min-w-[130px]' }, field('Día', dia)),
+            h('div', {}, field('Abre', desde)),
+            h('div', {}, field('Cierra', hasta)),
+            h('div', { class: 'min-w-[150px]' }, field('Canal', canal)),
+            button('Agregar franja', {
+              onClick: async (e) => {
+                const boton = e.currentTarget;
+                boton.disabled = true;
+                try {
+                  await api.post(`/branches/${sede.id}/schedules`, {
+                    weekday: Number(dia.value),
+                    opens_at: desde.value,
+                    closes_at: hasta.value,
+                    channel: canal.value || null,
+                  });
+                  toast('Franja agregada', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  toast(error.message);
+                  boton.disabled = false;
+                }
+              },
+            })
+          )
+        : null
+    ),
+
+    h(
+      'p',
+      { class: 'text-xs text-stone-500 px-1' },
+      'Para una sede que cierra pasada la medianoche, pon la hora de cierre menor que la de apertura: “Viernes 20:00 – 02:00” abre el viernes por la noche y cierra la madrugada del sábado.'
+    ),
+  ];
+}
+
+// =========================================================
+// Estados de pedido
+// =========================================================
+
+// El vocabulario fijo de la plataforma: los nombres los pone cada
+// restaurante, estas seis categorías no. El KDS, los reportes y los filtros
+// se apoyan en ellas y nunca en el nombre.
+const CATEGORIAS = {
+  new: 'Nuevo',
+  kitchen: 'En cocina',
+  ready: 'Listo',
+  in_transit: 'En camino',
+  completed: 'Completado',
+  cancelled: 'Anulado',
+};
+
+function seccionEstados({ flujo }, refrescar) {
+  const edita = can('settings.edit');
+  const { statuses, transitions, permissions } = flujo;
+
+  const salidasDe = (id) => transitions.filter((t) => t.from === id);
+
+  /** Una tarjeta por estado: sus datos arriba y sus salidas abajo. */
+  function tarjeta(estado) {
+    const nombre = input({ value: estado.name, maxlength: '80', class: 'campo flex-1 min-w-[150px]', disabled: !edita });
+    const categoria = select(
+      Object.entries(CATEGORIAS).map(([value, label]) => ({ value, label, selected: value === estado.category })),
+      { disabled: !edita }
+    );
+    const color = h('input', {
+      type: 'color',
+      value: estado.color ?? '#78716c',
+      class: 'h-9 w-12 rounded-lg border border-stone-300 bg-white p-1',
+      disabled: !edita,
+    });
+    const orden = input({ type: 'number', value: estado.sort_order, class: 'campo w-20 tabular-nums', disabled: !edita });
+    const esFinal = h('input', {
+      type: 'checkbox',
+      class: 'w-4 h-4 rounded border-stone-300',
+      checked: estado.is_final,
+      disabled: !edita,
+    });
+
+    // Una fila por cada otro estado: marcada, se puede ir ahí. Verlas todas
+    // —y no solo las configuradas— es lo que deja ver de un vistazo que un
+    // estado se quedó sin ninguna salida.
+    const destinos = statuses
+      .filter((s) => s.id !== estado.id)
+      .map((s) => {
+        const actual = salidasDe(estado.id).find((t) => t.to === s.id);
+        const marcado = h('input', {
+          type: 'checkbox',
+          class: 'w-4 h-4 rounded border-stone-300',
+          checked: Boolean(actual),
+          disabled: !edita,
+        });
+        const permiso = select(
+          [
+            { value: '', label: 'Cualquiera', selected: !actual?.permission },
+            ...permissions.map((p) => ({
+              value: p.code,
+              label: p.description,
+              selected: actual?.permission === p.code,
+            })),
+          ],
+          { class: 'campo h-8 py-0 text-[12.5px] flex-1 min-w-[180px]', disabled: !edita }
+        );
+        return { estado: s, marcado, permiso };
+      });
+
+    return card(
+      h(
+        'div',
+        { class: 'flex flex-wrap items-end gap-2' },
+        h('div', { class: 'flex-1 min-w-[150px]' }, field('Nombre', nombre)),
+        h('div', { class: 'min-w-[130px]' }, field('Categoría', categoria)),
+        h('div', {}, field('Color', color)),
+        h('div', {}, field('Orden', orden)),
+        h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600 pb-2' }, esFinal, 'Final'),
+        estado.is_initial
+          ? badge('Inicial', 'ok')
+          : edita
+            ? button('Hacer inicial', {
+                variant: 'secondary',
+                onClick: async () => {
+                  try {
+                    await api.put(`/order-statuses/${estado.id}/initial`, {});
+                    toast(`Los pedidos nuevos nacerán en “${estado.name}”`, 'ok');
+                    await refrescar();
+                  } catch (error) {
+                    toast(error.message);
+                  }
+                },
+              })
+            : null
+      ),
+
+      h(
+        'div',
+        { class: 'mt-3 pt-3 border-t border-stone-100' },
+        h('div', { class: 'text-[12.5px] font-medium text-stone-700 mb-1.5' }, 'Desde aquí se puede pasar a'),
+        destinos.length
+          ? h(
+              'div',
+              { class: 'space-y-1' },
+              destinos.map(({ estado: destino, marcado, permiso }) =>
+                h(
+                  'div',
+                  { class: 'flex flex-wrap items-center gap-2' },
+                  h(
+                    'label',
+                    { class: 'flex items-center gap-2 text-[13px] w-44 shrink-0' },
+                    marcado,
+                    h('span', { class: 'truncate' }, destino.name)
+                  ),
+                  permiso
+                )
+              )
+            )
+          : h('p', { class: 'text-sm text-stone-500' }, 'No hay otros estados a los que ir.'),
+        estado.is_final
+          ? h(
+              'p',
+              { class: 'text-[12px] text-stone-500 mt-1.5' },
+              'Es un estado final: de aquí no se sale, así que lo que se marque no se va a usar.'
+            )
+          : null
+      ),
+
+      edita
+        ? h(
+            'div',
+            { class: 'flex flex-wrap gap-2 mt-3' },
+            button('Guardar', {
+              variant: 'secondary',
+              onClick: async (e) => {
+                const boton = e.currentTarget;
+                boton.disabled = true;
+                try {
+                  await api.patch(`/order-statuses/${estado.id}`, {
+                    name: nombre.value.trim(),
+                    category: categoria.value,
+                    color: color.value,
+                    sort_order: Number(orden.value || 0),
+                    is_final: esFinal.checked,
+                  });
+                  // Las salidas van aparte porque su comprobación mira el
+                  // flujo entero: mandarlas juntas escondería cuál de las dos
+                  // cosas se rechazó.
+                  await api.put(`/order-statuses/${estado.id}/transitions`, {
+                    transitions: destinos
+                      .filter((d) => d.marcado.checked)
+                      .map((d) => ({ to_status_id: d.estado.id, required_permission: d.permiso.value || null })),
+                  });
+                  toast('Estado actualizado', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  toast(error.message);
+                  boton.disabled = false;
+                }
+              },
+            }),
+            button('Borrar', {
+              variant: 'secondary',
+              onClick: async () => {
+                try {
+                  await api.delete(`/order-statuses/${estado.id}`);
+                  toast('Estado borrado', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  // Con pedidos encima, en la bitácora, o dejando a otro sin
+                  // salida: el backend dice cuál.
+                  toast(error.message);
+                }
+              },
+            })
+          )
+        : null
+    );
+  }
+
+  const nuevoNombre = input({ placeholder: 'Ej. En espera de repartidor' });
+  const nuevaCategoria = select(Object.entries(CATEGORIAS).map(([value, label]) => ({ value, label })));
+  const nuevoOrden = input({ type: 'number', value: String((statuses.at(-1)?.sort_order ?? 0) + 1) });
+  const nuevoFinal = h('input', { type: 'checkbox', class: 'w-4 h-4 rounded border-stone-300' });
+
+  return [
+    titledCard(
+      'Estados de pedido',
+      h(
+        'div',
+        { class: 'text-[13px] text-stone-600 space-y-1.5 border-l-2 border-amber-300 pl-3' },
+        h(
+          'p',
+          {},
+          h('b', {}, 'El nombre es tuyo; la categoría, de la plataforma.'),
+          ' Llámalo como quieras: el KDS, los reportes y los filtros se guían por la categoría y nunca por el nombre.'
+        ),
+        h(
+          'p',
+          {},
+          h('b', {}, 'Un estado que no es final necesita al menos una salida.'),
+          ' Sin ella, un pedido que llegue ahí no avanza ni se puede cerrar, y eso frena el servicio.'
+        ),
+        h('p', {}, 'El permiso de cada salida es quién puede hacer ese paso. “Cualquiera” significa que no pide ninguno.')
+      )
+    ),
+
+    // Problemas y avisos los calcula Domain\StatusMachineRules, no esta
+    // pantalla. Los primeros impiden operar y normalmente no aparecen —una
+    // edición que los introduzca se rechaza—, pero hay que poder verlos:
+    // sobre una configuración rota se sigue pudiendo editar, justamente para
+    // arreglarla.
+    ...(flujo.problems?.length
+      ? [
+          h(
+            'div',
+            { class: 'text-[13px] text-red-700 bg-red-50 border border-red-200 rounded-[--r] px-3 py-2 space-y-1' },
+            h('p', { class: 'font-medium' }, 'El flujo está roto y hay que arreglarlo:'),
+            flujo.problems.map((problema) => h('p', {}, problema))
+          ),
+        ]
+      : []),
+
+    ...(flujo.warnings.length
+      ? [
+          h(
+            'div',
+            { class: 'text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[--r] px-3 py-2 space-y-1' },
+            flujo.warnings.map((aviso) => h('p', {}, aviso))
+          ),
+        ]
+      : []),
+
+    ...statuses.map(tarjeta),
+
+    edita
+      ? titledCard(
+          'Nuevo estado',
+          h(
+            'div',
+            { class: 'flex flex-wrap items-end gap-3' },
+            h('div', { class: 'flex-1 min-w-[200px]' }, field('Nombre', nuevoNombre)),
+            h('div', { class: 'min-w-[140px]' }, field('Categoría', nuevaCategoria)),
+            h('div', { class: 'w-24' }, field('Orden', nuevoOrden)),
+            h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600 pb-2' }, nuevoFinal, 'Final'),
+            button('Crear estado', {
+              onClick: async (e) => {
+                const boton = e.currentTarget;
+                boton.disabled = true;
+                try {
+                  await api.post('/order-statuses', {
+                    name: nuevoNombre.value.trim(),
+                    category: nuevaCategoria.value,
+                    sort_order: Number(nuevoOrden.value || 0),
+                    is_final: nuevoFinal.checked,
+                  });
+                  nuevoNombre.value = '';
+                  toast('Estado creado', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  // Un estado no final nace sin salidas, así que el backend
+                  // lo rechaza y dice por qué.
+                  toast(error.message);
+                  boton.disabled = false;
+                }
+              },
+            })
+          ),
+          h(
+            'p',
+            { class: 'text-[12.5px] text-stone-500 mt-2' },
+            'Un estado nuevo nace sin salidas: créalo como final, o dale una salida desde su tarjeta apenas exista. Para que se use, marca en otro estado que se puede pasar a él.'
+          )
+        )
+      : null,
+  ];
+}
+
+// =========================================================
 // Impuestos
 // =========================================================
 
@@ -428,8 +952,268 @@ function seccionImpuestos({ impuestos }, refrescar) {
 }
 
 // =========================================================
+// Domicilios: zonas de reparto
+// =========================================================
+
+/**
+ * Zonas de reparto de la sucursal activa.
+ *
+ * Las dos reglas que el backend impone van escritas en la pantalla, no en un
+ * comentario: son las que generan discusiones con el restaurante, y una
+ * pantalla que no las diga las convierte en una sorpresa.
+ */
+function seccionDomicilios({ zonas, sede }, refrescar) {
+  const gestiona = can('branches.manage');
+
+  if (!sede) {
+    return card(
+      empty(
+        'Elige una sucursal',
+        'Las zonas de reparto son de cada sede. Selecciona una en la barra lateral.',
+        null,
+        'sucursal'
+      )
+    );
+  }
+
+  const nombre = input({ placeholder: 'Ej. Centro' });
+  const tarifa = input({ type: 'number', min: '0', placeholder: '5000' });
+  const minimo = input({ type: 'number', min: '0', value: '0' });
+  const minutos = input({ type: 'number', min: '1', placeholder: '30' });
+
+  return [
+    titledCard(
+      `Zonas de reparto · ${sede.name}`,
+      h(
+        'div',
+        { class: 'text-[13px] text-stone-600 space-y-1.5 mb-4 border-l-2 border-amber-300 pl-3' },
+        h(
+          'p',
+          {},
+          h('b', {}, 'La tarifa la pone la zona.'),
+          ' Si el pedido llega con una zona, se cobra el envío de la zona y se ignora el importe que venga en el pedido.'
+        ),
+        h(
+          'p',
+          {},
+          h('b', {}, 'El mínimo se mide contra el subtotal,'),
+          ' nunca contra el total: contar el envío para alcanzar el mínimo sería hacer trampa.'
+        )
+      ),
+      zonas.length
+        ? h(
+            'div',
+            { class: 'divide-y divide-stone-100' },
+            zonas.map((z) =>
+              h(
+                'div',
+                { class: 'py-3 flex flex-wrap items-center gap-3' },
+                h(
+                  'div',
+                  { class: 'flex-1 min-w-[180px]' },
+                  h(
+                    'div',
+                    { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
+                    z.name,
+                    z.is_active ? null : badge('Inactiva', 'warn')
+                  ),
+                  h(
+                    'div',
+                    { class: 'text-xs text-stone-500' },
+                    [
+                      `Envío ${money(z.fee)}`,
+                      Number(z.min_order) ? `mínimo ${money(z.min_order)} de subtotal` : 'sin mínimo',
+                      z.est_minutes ? `${z.est_minutes} min estimados` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  )
+                ),
+                gestiona
+                  ? button(z.is_active ? 'Desactivar' : 'Activar', {
+                      variant: 'secondary',
+                      onClick: async () => {
+                        try {
+                          await api.patch(`/delivery-zones/${z.id}/active`, { is_active: !z.is_active });
+                          await refrescar();
+                        } catch (error) {
+                          toast(error.message);
+                        }
+                      },
+                    })
+                  : null
+              )
+            )
+          )
+        : empty(
+            'Esta sede no tiene zonas',
+            'Sin zonas, un domicilio se cobra con el envío que traiga el pedido y sin mínimo.',
+            null,
+            'domicilio'
+          )
+    ),
+
+    gestiona
+      ? titledCard(
+          'Nueva zona',
+          h(
+            'div',
+            { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3' },
+            field('Nombre', nombre),
+            field('Tarifa de envío', tarifa, 'Lo que se cobra por llevar a esta zona.'),
+            field('Pedido mínimo', minimo, 'Medido contra el subtotal. 0 para no exigir mínimo.'),
+            field('Minutos estimados', minutos, 'Opcional. Lo que se le promete al cliente.')
+          ),
+          h(
+            'div',
+            { class: 'mt-3' },
+            button('Crear zona', {
+              onClick: async (e) => {
+                // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+                // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+                // no podria volver a habilitar el boton.
+                const boton = e.currentTarget;
+                boton.disabled = true;
+                try {
+                  await api.post(`/branches/${sede.id}/delivery-zones`, {
+                    name: nombre.value.trim(),
+                    fee: Number(tarifa.value || 0),
+                    min_order: Number(minimo.value || 0),
+                    est_minutes: minutos.value.trim() === '' ? null : Number(minutos.value),
+                  });
+                  toast('Zona creada', 'ok');
+                  await refrescar();
+                } catch (error) {
+                  toast(error.message);
+                  boton.disabled = false;
+                }
+              },
+            })
+          )
+        )
+      : null,
+  ];
+}
+
+// =========================================================
 // Equipo: usuarios y roles
 // =========================================================
+
+/**
+ * La rejilla de casillas del catálogo de permisos.
+ *
+ * La comparten el alta de un rol y la edición de uno existente: son la misma
+ * decisión —qué permisos agrupa este rol— y tenerla escrita dos veces era la
+ * forma segura de que se separaran.
+ */
+function rejillaPermisos(permisos, seleccionados = []) {
+  const casillas = permisos.map((p) => ({
+    code: p.code,
+    control: h('input', {
+      type: 'checkbox',
+      class: 'mt-0.5 w-4 h-4 rounded border-stone-300',
+      checked: seleccionados.includes(p.code),
+    }),
+    descripcion: p.description,
+  }));
+
+  const nodo = h(
+    'div',
+    { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-stone-200 rounded-lg p-2' },
+    casillas.map((p) =>
+      h(
+        'label',
+        { class: 'flex items-start gap-2 text-sm py-0.5' },
+        p.control,
+        h(
+          'span',
+          {},
+          h('span', { class: 'font-mono text-xs' }, p.code),
+          h('br'),
+          h('span', { class: 'text-xs text-stone-500' }, p.descripcion ?? '')
+        )
+      )
+    )
+  );
+
+  return { nodo, elegidos: () => casillas.filter((p) => p.control.checked).map((p) => p.code) };
+}
+
+/**
+ * Una fila de rol, con sus permisos editables.
+ *
+ * Antes un rol se creaba y quedaba congelado: `PUT /roles/{id}/permissions`
+ * existía y nadie lo llamaba, así que corregir un rol significaba crear otro
+ * y mover a la gente. Los roles del sistema no se tocan y el backend los
+ * rechaza: el rol admin es la salida de emergencia del restaurante y
+ * quitarle `users.manage` dejaría a la empresa sin nadie que pueda
+ * devolvérselo.
+ */
+function filaRol(rol, permisos, refrescar) {
+  const editor = h('div');
+  let abierto = false;
+
+  const resumen = h(
+    'div',
+    { class: 'text-xs text-stone-500 mt-1' },
+    `${rol.permissions.length} permisos: ${rol.permissions.join(', ')}`
+  );
+
+  function alternar() {
+    abierto = !abierto;
+    if (!abierto) return render(editor);
+
+    const rejilla = rejillaPermisos(permisos, rol.permissions);
+    const guardar = button('Guardar permisos', {
+      onClick: async () => {
+        guardar.disabled = true;
+        try {
+          await api.put(`/roles/${rol.id}/permissions`, { permissions: rejilla.elegidos() });
+          toast('Permisos actualizados', 'ok');
+          await refrescar();
+        } catch (error) {
+          toast(error.message);
+          guardar.disabled = false;
+        }
+      },
+    });
+
+    render(
+      editor,
+      h(
+        'div',
+        { class: 'mt-3 space-y-3' },
+        rejilla.nodo,
+        h('div', { class: 'flex gap-2' }, guardar, button('Cancelar', { variant: 'secondary', onClick: alternar }))
+      )
+    );
+  }
+
+  return h(
+    'div',
+    { class: 'py-3' },
+    h(
+      'div',
+      { class: 'flex flex-wrap items-center gap-2' },
+      h(
+        'div',
+        { class: 'flex-1 min-w-[180px]' },
+        h(
+          'div',
+          { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
+          rol.name,
+          badge(rol.code),
+          rol.is_system ? badge('Del sistema', 'info') : null
+        ),
+        resumen
+      ),
+      rol.is_system
+        ? h('span', { class: 'text-xs text-stone-400' }, 'No se puede modificar')
+        : button('Editar permisos', { variant: 'secondary', onClick: alternar })
+    ),
+    editor
+  );
+}
 
 function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
   const nombre = input({ placeholder: 'Nombre y apellido', autocomplete: 'off' });
@@ -445,11 +1229,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
 
   const rolCodigo = input({ placeholder: 'mesero' });
   const rolNombre = input({ placeholder: 'Mesero' });
-  const casillasPermisos = permisos.map((p) => ({
-    code: p.code,
-    control: h('input', { type: 'checkbox', class: 'mt-0.5 w-4 h-4 rounded border-stone-300' }),
-    descripcion: p.description,
-  }));
+  const permisosNuevoRol = rejillaPermisos(permisos);
 
   return [
     titledCard(
@@ -531,28 +1311,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
 
     titledCard(
       'Roles',
-      h(
-        'div',
-        { class: 'divide-y divide-stone-100' },
-        roles.map((r) =>
-          h(
-            'div',
-            { class: 'py-3' },
-            h(
-              'div',
-              { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
-              r.name,
-              badge(r.code),
-              r.is_system ? badge('Del sistema', 'info') : null
-            ),
-            h(
-              'div',
-              { class: 'text-xs text-stone-500 mt-1' },
-              `${r.permissions.length} permisos: ${r.permissions.join(', ')}`
-            )
-          )
-        )
-      )
+      h('div', { class: 'divide-y divide-stone-100' }, roles.map((r) => filaRol(r, permisos, refrescar)))
     ),
 
     titledCard(
@@ -563,24 +1322,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
         field('Código', rolCodigo),
         field('Nombre', rolNombre)
       ),
-      h(
-        'div',
-        { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-stone-200 rounded-lg p-2' },
-        casillasPermisos.map((p) =>
-          h(
-            'label',
-            { class: 'flex items-start gap-2 text-sm py-0.5' },
-            p.control,
-            h(
-              'span',
-              {},
-              h('span', { class: 'font-mono text-xs' }, p.code),
-              h('br'),
-              h('span', { class: 'text-xs text-stone-500' }, p.descripcion ?? '')
-            )
-          )
-        )
-      ),
+      permisosNuevoRol.nodo,
       h(
         'div',
         { class: 'mt-3' },
@@ -590,7 +1332,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
               await api.post('/roles', {
                 code: rolCodigo.value.trim(),
                 name: rolNombre.value.trim(),
-                permissions: casillasPermisos.filter((p) => p.control.checked).map((p) => p.code),
+                permissions: permisosNuevoRol.elegidos(),
               });
               rolCodigo.value = '';
               rolNombre.value = '';

@@ -46,6 +46,31 @@ final class UserRepository
         return $row === false ? null : $this->hydrate($row, withPermissions: true);
     }
 
+    /**
+     * Los usuarios activos cuyo rol incluye un permiso dado.
+     *
+     * Asi es como se responde "quien puede repartir" en un sistema donde los
+     * roles son configurables y los permisos no: no se pregunta por un
+     * role_code —que cada restaurante bautiza como quiere: 'repartidor',
+     * 'domiciliario', 'moto'— sino por la capacidad, que es fija
+     * (Core\Permissions).
+     *
+     * @return User[]
+     */
+    public function listWithPermission(string $tenantId, string $permissionCode): array
+    {
+        $stmt = $this->pdo->prepare(
+            self::SELECT . ' JOIN role_permissions rp ON rp.role_id = r.id
+                             JOIN permissions p ON p.id = rp.permission_id
+                            WHERE u.tenant_id = :tenant_id
+                              AND u.is_active = true
+                              AND p.code = :permission
+                            ORDER BY u.name'
+        );
+        $stmt->execute(['tenant_id' => $tenantId, 'permission' => $permissionCode]);
+        return array_map(fn (array $row) => $this->hydrate($row), $stmt->fetchAll());
+    }
+
     public function get(string $tenantId, string $userId): ?User
     {
         $stmt = $this->pdo->prepare(self::SELECT . ' WHERE u.tenant_id = :tenant_id AND u.id = :id');
@@ -93,6 +118,12 @@ final class UserRepository
         ]);
         $id = $stmt->fetchColumn();
         return $this->get($tenantId, $id);
+    }
+
+    public function setPasswordHash(string $userId, string $passwordHash): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE users SET password_hash = :hash WHERE id = :id');
+        $stmt->execute(['hash' => $passwordHash, 'id' => $userId]);
     }
 
     public function setActive(string $tenantId, string $userId, bool $isActive): User

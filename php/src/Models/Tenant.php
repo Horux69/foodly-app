@@ -12,6 +12,7 @@ final class Tenant
     public function __construct(
         public readonly string $id,
         public readonly string $name,
+        public readonly string $slug,
         public readonly string $businessType,
         public readonly string $currency,
         public readonly array $settings,
@@ -25,6 +26,7 @@ final class Tenant
         return new self(
             id: $row['id'],
             name: $row['name'],
+            slug: $row['slug'],
             businessType: $row['business_type'],
             currency: $row['currency'],
             settings: Row::json($row['settings']),

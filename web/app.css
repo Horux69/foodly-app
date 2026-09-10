@@ -322,3 +322,121 @@ textarea {
   border-left-color: var(--peligro);
   background: #fffbfb;
 }
+
+/* =========================================================
+   Impresión: comanda de cocina y ticket de cliente
+   =========================================================
+   Se imprime con el navegador y no por ESC/POS a propósito: funciona con
+   cualquier impresora que tenga driver, no ata el producto a un modelo y no
+   exige un servicio local corriendo en el restaurante.
+
+   El documento se arma en #impresion, que es hijo directo de <body>. Al
+   imprimir se esconde todo lo demás en vez de abrir otra ventana: así no hay
+   que volver a cargar la aplicación ni pelear con el bloqueador de emergentes.
+   ========================================================= */
+
+#impresion {
+  display: none;
+}
+
+.doc {
+  /* 72mm entra en una térmica de 80mm y también en una hoja carta. */
+  width: 72mm;
+  max-width: 100%;
+  margin: 0 auto;
+  color: #000;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.doc-cabeza {
+  text-align: center;
+  border-bottom: 1px dashed #000;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+.doc-titulo {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.doc-numero {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* En la comanda manda la cantidad y el producto: se lee de reojo, con las
+   manos ocupadas y a un metro de distancia. */
+.doc-comanda .doc-linea {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px dotted #999;
+}
+
+.doc-comanda .doc-cantidad {
+  min-width: 22px;
+}
+
+.doc-comanda .doc-detalle {
+  font-size: 11px;
+  font-weight: 400;
+  padding-left: 28px;
+}
+
+.doc-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.doc-total {
+  border-top: 1px dashed #000;
+  margin-top: 6px;
+  padding-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.doc-pie {
+  text-align: center;
+  border-top: 1px dashed #000;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+
+/* La marca de reimpresión es lo que evita que la cocina prepare dos veces lo
+   mismo, así que se imprime grande y no como una nota al pie. */
+.doc-reimpresion {
+  border: 2px solid #000;
+  text-align: center;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 3px;
+  margin-bottom: 6px;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 4mm;
+  }
+
+  /* Solo se imprime el documento: todo lo demás desaparece. */
+  body.imprimiendo > *:not(#impresion) {
+    display: none !important;
+  }
+
+  body.imprimiendo #impresion {
+    display: block !important;
+  }
+
+  body.imprimiendo {
+    background: #fff;
+  }
+}

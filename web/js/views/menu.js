@@ -6,18 +6,23 @@
 
 import { api } from '../api.js';
 import { money, percent } from '../format.js';
-import { can } from '../session.js';
+import { activeBranch, branchQuery, branches, can } from '../session.js';
 import {
-  badge, button, card, confirm, empty, errorBox, field, h, input, pageHeader, render, select, skeleton, titledCard, toast,
+  badge, button, card, confirm, empty, errorBox, field, h, input, montarDialogo, pageHeader,
+  render, select, skeleton, tabs, titledCard, toast,
 } from '../ui.js';
 
 export async function menu(outlet) {
   render(outlet, skeleton({ rows: 3 }));
 
   let catalogo;
+  let grupos = [];
   let impuestos = [];
   try {
-    catalogo = await api.get('/menu/catalog');
+    [catalogo, grupos] = await Promise.all([
+      api.get(`/menu/catalog${branchQuery()}`),
+      api.get('/menu/modifier-groups'),
+    ]);
     if (can('settings.view')) impuestos = await api.get('/tax-rates');
   } catch (error) {
     return render(outlet, errorBox(error.message, () => menu(outlet)));
@@ -27,9 +32,17 @@ export async function menu(outlet) {
   const lista = h('div', { class: 'space-y-4' });
 
   const recargar = async () => {
-    catalogo = await api.get('/menu/catalog');
+    [catalogo, grupos] = await Promise.all([
+      api.get(`/menu/catalog${branchQuery()}`),
+      api.get('/menu/modifier-groups'),
+    ]);
     pintar();
+    if (pestana === 'opciones') pintarPanel();
   };
+
+  // El precio por sucursal solo tiene sentido con más de una: en un local
+  // único, "el precio de esta sede" y "el precio" son la misma cifra.
+  const porSucursal = branches().length > 1 ? activeBranch() : null;
 
   function nombreImpuesto(id) {
     const impuesto = impuestos.find((t) => t.id === id);
@@ -77,6 +90,20 @@ export async function menu(outlet) {
       { class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' }
     );
 
+    // Vacío significa "esta sede no ajusta el precio", no cero: el producto
+    // se vende al precio base. Es también la forma de deshacer un ajuste.
+    const ajuste = item.branch_override?.price ?? null;
+    const precioSucursal = porSucursal
+      ? input({
+          type: 'number',
+          min: '0',
+          value: ajuste ?? '',
+          placeholder: 'Precio base',
+          title: `Precio en ${porSucursal.name}`,
+          class: 'w-32 rounded-lg border border-amber-300 bg-amber-50/40 px-2 py-1.5 text-sm tabular-nums',
+        })
+      : null;
+
     return h(
       'div',
       { class: `py-3 flex flex-wrap items-center gap-3 ${item.is_archived ? 'opacity-50' : ''}` },
@@ -87,27 +114,61 @@ export async function menu(outlet) {
           'div',
           { class: 'font-medium text-sm text-stone-900 flex items-center gap-2' },
           item.name,
+          item.components?.length ? badge('Combo', 'ok') : null,
           item.is_archived ? badge('Archivado') : null,
           !item.is_available && !item.is_archived ? badge('Agotado', 'warn') : null
         ),
-        h('div', { class: 'text-xs text-stone-500' }, `${money(item.base_price)} · ${nombreImpuesto(item.tax_rate_id)}`)
+        h(
+          'div',
+          { class: 'text-xs text-stone-500' },
+          `${money(item.base_price)} · ${nombreImpuesto(item.tax_rate_id)}`,
+          porSucursal && ajuste !== null
+            ? h('span', { class: 'text-amber-800' }, ` · en ${porSucursal.name} ${money(ajuste)}`)
+            : null
+        ),
+        item.components?.length
+          ? h(
+              'div',
+              { class: 'text-xs text-stone-600' },
+              `Lleva: ${item.components.map((c) => `${c.quantity}× ${c.name}`).join(', ')}`
+            )
+          : null
       ),
       precio,
+      precioSucursal,
       impuesto,
       button('Guardar', {
         variant: 'secondary',
         onClick: async (e) => {
-          e.currentTarget.disabled = true;
+          // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+          // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+          // no podria volver a habilitar el boton.
+          const boton = e.currentTarget;
+          boton.disabled = true;
           try {
             await api.patch(`/menu/items/${item.id}`, {
               base_price: Number(precio.value),
               tax_rate_id: impuesto.value || null,
             });
+            // El ajuste de sucursal solo se escribe si cambió: así una
+            // corrección del precio base no crea un override en la sede que
+            // se esté mirando.
+            if (precioSucursal) {
+              const nuevo = precioSucursal.value.trim() === '' ? null : Number(precioSucursal.value);
+              if (nuevo !== (ajuste === null ? null : Number(ajuste))) {
+                await api.put(`/menu/items/${item.id}/branch-override${branchQuery()}`, {
+                  price: nuevo,
+                  // Se conserva lo que la sucursal ya decía de la
+                  // disponibilidad: aquí solo se está tocando el precio.
+                  is_available: item.branch_override?.is_available ?? null,
+                });
+              }
+            }
             toast('Producto actualizado', 'ok');
             await recargar();
           } catch (error) {
             toast(error.message);
-            e.currentTarget.disabled = false;
+            boton.disabled = false;
           }
         },
       }),
@@ -122,6 +183,18 @@ export async function menu(outlet) {
                 toast(error.message);
               }
             },
+          })
+        : null,
+      !item.is_archived
+        ? button(`Opciones · ${item.modifier_group_ids.length}`, {
+            variant: 'secondary',
+            onClick: () => abrirGruposDelProducto(item),
+          })
+        : null,
+      !item.is_archived
+        ? button(item.components?.length ? `Combo · ${item.components.length}` : 'Combo', {
+            variant: 'secondary',
+            onClick: () => abrirComponentes(item),
           })
         : null,
       button(item.is_archived ? 'Desarchivar' : 'Archivar', {
@@ -149,6 +222,446 @@ export async function menu(outlet) {
     );
   }
 
+
+  // =========================================================
+  // Opciones (grupos de modificadores)
+  // =========================================================
+
+  /**
+   * Elegir qué grupos tiene un producto.
+   *
+   * El orden de la lista es el orden en que se van a pedir —primero el
+   * término de la carne, después las adiciones—, así que se manda el mismo
+   * que se ve, y el backend lo guarda en `sort_order`.
+   */
+  function abrirGruposDelProducto(item) {
+    if (!grupos.length) {
+      return toast('Todavía no hay grupos de opciones: créalos en la pestaña Opciones', 'warn');
+    }
+
+    const casillas = grupos.map((g) => ({
+      grupo: g,
+      control: h('input', {
+        type: 'checkbox',
+        class: 'w-4 h-4 rounded border-stone-300 mt-0.5 shrink-0',
+        checked: item.modifier_group_ids.includes(g.id),
+      }),
+    }));
+
+    let desmontar;
+    const cerrar = () => desmontar();
+    const guardar = button('Guardar', {
+      onClick: async () => {
+        guardar.disabled = true;
+        try {
+          await api.put(`/menu/items/${item.id}/modifier-groups`, {
+            group_ids: casillas.filter((c) => c.control.checked).map((c) => c.grupo.id),
+          });
+          cerrar();
+          toast('Opciones del producto actualizadas', 'ok');
+          await recargar();
+        } catch (error) {
+          toast(error.message);
+          guardar.disabled = false;
+        }
+      },
+    });
+
+    const overlay = h(
+      'div',
+      {
+        class: 'fixed inset-0 z-50 bg-stone-900/30 flex items-center justify-center p-4',
+        onClick: (e) => e.target === overlay && cerrar(),
+      },
+      h(
+        'div',
+        {
+          class: 'aparece bg-white rounded-[--r-g] max-w-md w-full p-5 shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+          role: 'dialog',
+          'aria-modal': 'true',
+        },
+        h('h3', { class: 'text-[15px] font-semibold' }, `Opciones de “${item.name}”`),
+        h(
+          'p',
+          { class: 'text-[13px] text-stone-500 mt-1 mb-3' },
+          'Al pedir este producto se preguntará por cada grupo marcado, en este orden.'
+        ),
+        h(
+          'div',
+          { class: 'space-y-2' },
+          casillas.map(({ grupo, control }) =>
+            h(
+              'label',
+              { class: 'flex items-start gap-2 text-sm cursor-pointer' },
+              control,
+              h(
+                'span',
+                {},
+                h('span', { class: 'font-medium' }, grupo.name),
+                h('span', { class: 'text-stone-500' }, ` · ${grupo.rule}`),
+                h(
+                  'span',
+                  { class: 'block text-[12px] text-stone-400' },
+                  grupo.modifiers.length
+                    ? grupo.modifiers.map((m) => m.name).join(', ')
+                    : 'Sin opciones todavía'
+                )
+              )
+            )
+          )
+        ),
+        h(
+          'div',
+          { class: 'flex justify-end gap-2 mt-5' },
+          button('Cancelar', { variant: 'secondary', onClick: cerrar }),
+          guardar
+        )
+      )
+    );
+
+    desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  }
+
+
+  // =========================================================
+  // Combos
+  // =========================================================
+
+  /**
+   * Qué lleva un combo.
+   *
+   * Se marca lo que entra y con qué cantidad. La lista que se manda reemplaza
+   * a la anterior entera, y vaciarla devuelve el producto a suelto.
+   *
+   * El precio no se toca aquí: un combo se cobra por su propio `base_price`,
+   * el del paquete. Repartir un descuento entre los componentes es de donde
+   * salen los centavos que no cuadran.
+   */
+  function abrirComponentes(item) {
+    // Ni él mismo ni los archivados: lo primero lo rechaza el backend, y lo
+    // segundo sería armar un combo con algo que ya no se vende.
+    const candidatos = catalogo.items.filter((i) => i.id !== item.id && !i.is_archived);
+    if (!candidatos.length) {
+      return toast('Hace falta al menos otro producto para armar un combo', 'warn');
+    }
+
+    const actuales = new Map((item.components ?? []).map((c) => [c.item_id, c.quantity]));
+    const filas = candidatos.map((candidato) => {
+      const cantidad = input({
+        type: 'number',
+        min: '1',
+        value: actuales.get(candidato.id) ?? 1,
+        class: 'w-16 rounded-lg border border-stone-300 px-2 py-1 text-sm tabular-nums',
+        'aria-label': `Cantidad de ${candidato.name}`,
+      });
+      const marca = h('input', {
+        type: 'checkbox',
+        class: 'w-4 h-4 rounded border-stone-300 shrink-0',
+        checked: actuales.has(candidato.id),
+      });
+      return { candidato, marca, cantidad };
+    });
+
+    const elegidos = () =>
+      filas
+        .filter((f) => f.marca.checked)
+        .map((f) => ({ item_id: f.candidato.id, quantity: Math.max(1, Number(f.cantidad.value) || 1) }));
+
+    let desmontar;
+    const cerrar = () => desmontar();
+    const guardar = button('Guardar', {
+      onClick: async () => {
+        guardar.disabled = true;
+        try {
+          await api.put(`/menu/items/${item.id}/components`, { components: elegidos() });
+          cerrar();
+          toast('Combo actualizado', 'ok');
+          await recargar();
+        } catch (error) {
+          toast(error.message);
+          guardar.disabled = false;
+        }
+      },
+    });
+
+    const overlay = h(
+      'div',
+      {
+        class: 'fixed inset-0 z-50 bg-stone-900/30 flex items-center justify-center p-4',
+        onClick: (e) => e.target === overlay && cerrar(),
+      },
+      h(
+        'div',
+        {
+          class: 'aparece bg-white rounded-[--r-g] max-w-md w-full p-5 shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+          role: 'dialog',
+          'aria-modal': 'true',
+        },
+        h('h3', { class: 'text-[15px] font-semibold' }, `¿Qué lleva “${item.name}”?`),
+        h(
+          'p',
+          { class: 'text-[13px] text-stone-500 mt-1 mb-3' },
+          `Se vende como una sola línea, a ${money(item.base_price)}. La cocina recibe los productos marcados; ` +
+            'sin ninguno, vuelve a ser un producto suelto.'
+        ),
+        h(
+          'div',
+          { class: 'space-y-1' },
+          filas.map(({ candidato, marca, cantidad }) =>
+            h(
+              'div',
+              { class: 'flex items-center gap-2 text-sm' },
+              h(
+                'label',
+                { class: 'flex items-center gap-2 flex-1 min-w-0 cursor-pointer' },
+                marca,
+                h('span', { class: 'truncate' }, candidato.name),
+                candidato.components?.length ? badge('Combo', 'ok') : null
+              ),
+              cantidad
+            )
+          )
+        ),
+        h(
+          'div',
+          { class: 'flex justify-end gap-2 mt-5' },
+          button('Cancelar', { variant: 'secondary', onClick: cerrar }),
+          guardar
+        )
+      )
+    );
+
+    desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  }
+
+  /** Una opción del grupo: nombre, cuánto suma o resta, y si se ofrece. */
+  function filaOpcion(opcion) {
+    const nombre = input({ value: opcion.name, class: 'campo flex-1 min-w-[140px]' });
+    // Puede ser negativo: "sin queso" descuenta.
+    const precio = input({ type: 'number', value: opcion.price_delta, class: 'campo w-28 tabular-nums' });
+    const disponible = h('input', {
+      type: 'checkbox',
+      class: 'w-4 h-4 rounded border-stone-300',
+      checked: opcion.is_available,
+    });
+
+    return h(
+      'div',
+      { class: 'py-2 flex flex-wrap items-center gap-2' },
+      nombre,
+      precio,
+      h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600' }, disponible, 'Se ofrece'),
+      button('Guardar', {
+        variant: 'secondary',
+        onClick: async (e) => {
+          const boton = e.currentTarget;
+          boton.disabled = true;
+          try {
+            await api.patch(`/menu/modifiers/${opcion.id}`, {
+              name: nombre.value.trim(),
+              price_delta: Number(precio.value || 0),
+              is_available: disponible.checked,
+            });
+            toast('Opción actualizada', 'ok');
+            await recargar();
+          } catch (error) {
+            toast(error.message);
+            boton.disabled = false;
+          }
+        },
+      }),
+      button('Borrar', {
+        variant: 'secondary',
+        onClick: async () => {
+          try {
+            await api.delete(`/menu/modifiers/${opcion.id}`);
+            await recargar();
+          } catch (error) {
+            // Una opción ya vendida no se borra, y el backend explica por qué.
+            toast(error.message);
+          }
+        },
+      })
+    );
+  }
+
+  function tarjetaGrupo(grupo) {
+    const nombre = input({ value: grupo.name, class: 'campo flex-1 min-w-[160px]' });
+    const minimo = input({ type: 'number', min: '0', value: grupo.min_select, class: 'campo w-20 tabular-nums' });
+    const maximo = input({ type: 'number', min: '1', value: grupo.max_select, class: 'campo w-20 tabular-nums' });
+    const obligatorio = h('input', {
+      type: 'checkbox',
+      class: 'w-4 h-4 rounded border-stone-300',
+      checked: grupo.is_required,
+      // Obligatorio con mínimo 0 se contradice y el backend lo rechaza: la
+      // casilla sube el mínimo para que no haya que adivinarlo.
+      onChange: (e) => {
+        if (e.target.checked && Number(minimo.value || 0) < 1) minimo.value = '1';
+      },
+    });
+
+    const nuevaOpcion = input({ placeholder: 'Ej. Tres cuartos', class: 'campo flex-1 min-w-[140px]' });
+    const nuevoPrecio = input({ type: 'number', value: '0', class: 'campo w-28 tabular-nums' });
+
+    const sinOfrecer = grupo.is_required && !grupo.modifiers.some((m) => m.is_available);
+
+    return card(
+      h(
+        'div',
+        { class: 'flex flex-wrap items-end gap-2 mb-3' },
+        h('div', { class: 'flex-1 min-w-[160px]' }, field('Nombre del grupo', nombre)),
+        h('div', {}, field('Mínimo', minimo)),
+        h('div', {}, field('Máximo', maximo)),
+        h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600 pb-2' }, obligatorio, 'Obligatorio'),
+        button('Guardar', {
+          variant: 'secondary',
+          onClick: async (e) => {
+            const boton = e.currentTarget;
+            boton.disabled = true;
+            try {
+              await api.patch(`/menu/modifier-groups/${grupo.id}`, {
+                name: nombre.value.trim(),
+                min_select: Number(minimo.value || 0),
+                max_select: Number(maximo.value || 1),
+                is_required: obligatorio.checked,
+              });
+              toast('Grupo actualizado', 'ok');
+              await recargar();
+            } catch (error) {
+              toast(error.message);
+              boton.disabled = false;
+            }
+          },
+        }),
+        button('Borrar grupo', {
+          variant: 'secondary',
+          onClick: async () => {
+            try {
+              await api.delete(`/menu/modifier-groups/${grupo.id}`);
+              toast('Grupo borrado', 'ok');
+              await recargar();
+            } catch (error) {
+              // En uso o ya vendido: el backend dice cuál de las dos.
+              toast(error.message);
+            }
+          },
+        })
+      ),
+
+      h(
+        'div',
+        { class: 'flex flex-wrap items-center gap-2 mb-2' },
+        badge(grupo.rule, grupo.is_required ? 'warn' : 'neutral'),
+        h(
+          'span',
+          { class: 'text-[12.5px] text-stone-500' },
+          grupo.used_by_items === 0
+            ? 'Sin asignar a ningún producto'
+            : `Lo usan ${grupo.used_by_items} producto${grupo.used_by_items === 1 ? '' : 's'}`
+        )
+      ),
+
+      // Un grupo obligatorio sin nada que elegir vuelve impedible cualquier
+      // producto que lo tenga, y el error saldría en el mostrador.
+      sinOfrecer
+        ? h(
+            'p',
+            { class: 'text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[--r] px-2 py-1.5 mb-2' },
+            'Es obligatorio y no tiene ninguna opción que se ofrezca: mientras siga así, los productos con este grupo no se pueden pedir.'
+          )
+        : null,
+
+      grupo.modifiers.length
+        ? h('div', { class: 'divide-y divide-stone-100' }, grupo.modifiers.map(filaOpcion))
+        : h('p', { class: 'text-sm text-stone-500 py-2' }, 'Todavía no tiene opciones.'),
+
+      h(
+        'div',
+        { class: 'flex flex-wrap items-end gap-2 pt-3 mt-1 border-t border-stone-100' },
+        h('div', { class: 'flex-1 min-w-[140px]' }, field('Nueva opción', nuevaOpcion)),
+        h('div', {}, field('Suma o resta', nuevoPrecio)),
+        button('Agregar', {
+          variant: 'secondary',
+          onClick: async () => {
+            try {
+              await api.post(`/menu/modifier-groups/${grupo.id}/modifiers`, {
+                name: nuevaOpcion.value.trim(),
+                price_delta: Number(nuevoPrecio.value || 0),
+              });
+              nuevaOpcion.value = '';
+              nuevoPrecio.value = '0';
+              await recargar();
+            } catch (error) {
+              toast(error.message);
+            }
+          },
+        })
+      )
+    );
+  }
+
+  const grupoNombre = input({ placeholder: 'Ej. Término de la carne' });
+  const grupoMinimo = input({ type: 'number', min: '0', value: '0' });
+  const grupoMaximo = input({ type: 'number', min: '1', value: '1' });
+  const grupoObligatorio = h('input', {
+    type: 'checkbox',
+    class: 'w-4 h-4 rounded border-stone-300',
+    onChange: (e) => {
+      if (e.target.checked && Number(grupoMinimo.value || 0) < 1) grupoMinimo.value = '1';
+    },
+  });
+
+  function panelOpciones() {
+    return [
+      titledCard(
+        'Nuevo grupo de opciones',
+        h(
+          'div',
+          { class: 'flex flex-wrap items-end gap-3' },
+          h('div', { class: 'flex-1 min-w-[200px]' }, field('Nombre', grupoNombre)),
+          h('div', { class: 'w-24' }, field('Mínimo', grupoMinimo)),
+          h('div', { class: 'w-24' }, field('Máximo', grupoMaximo)),
+          h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600 pb-2' }, grupoObligatorio, 'Obligatorio'),
+          button('Crear grupo', {
+            onClick: async () => {
+              try {
+                await api.post('/menu/modifier-groups', {
+                  name: grupoNombre.value.trim(),
+                  min_select: Number(grupoMinimo.value || 0),
+                  max_select: Number(grupoMaximo.value || 1),
+                  is_required: grupoObligatorio.checked,
+                });
+                grupoNombre.value = '';
+                toast('Grupo creado', 'ok');
+                await recargar();
+              } catch (error) {
+                toast(error.message);
+              }
+            },
+          })
+        ),
+        h(
+          'p',
+          { class: 'text-[12.5px] text-stone-500 mt-2' },
+          'Un grupo agrupa opciones de un mismo producto: el término de la carne, el tamaño, las adiciones. Después se asigna a los productos que lo usen.'
+        )
+      ),
+
+      ...(grupos.length
+        ? grupos.map(tarjetaGrupo)
+        : [
+            card(
+              empty(
+                'Todavía no hay grupos de opciones',
+                'Crea uno arriba y asígnalo a los productos que lo necesiten.',
+                null,
+                'etiqueta'
+              )
+            ),
+          ]),
+    ];
+  }
+
   // ---------- formularios de alta ----------
 
   const catNombre = input({ placeholder: 'Ej. Hamburguesas' });
@@ -172,13 +685,8 @@ export async function menu(outlet) {
     );
   }
 
-  render(
-    outlet,
-    h(
-      'div',
-      { class: 'space-y-4' },
-      pageHeader('Menú', { hint: 'Lo que aquí cambies se refleja de inmediato en la pantalla de venta.' }),
-
+  function panelProductos() {
+    return [
       titledCard(
         'Nueva categoría',
         h(
@@ -248,6 +756,7 @@ export async function menu(outlet) {
         h('input', {
           type: 'checkbox',
           class: 'w-4 h-4 rounded border-stone-300',
+          checked: verArchivados,
           onChange: (e) => {
             verArchivados = e.target.checked;
             pintar();
@@ -256,9 +765,55 @@ export async function menu(outlet) {
         'Mostrar productos archivados'
       ),
 
-      lista
+      lista,
+    ];
+  }
+
+  // ---------- armado ----------
+
+  // Dos pestañas y no una pantalla sola: los grupos de opciones se tocan una
+  // vez cada varios meses y los precios todos los días. Mezclarlos dejaría lo
+  // frecuente debajo de lo raro.
+  const PESTANAS = [
+    { key: 'productos', label: 'Productos' },
+    { key: 'opciones', label: 'Opciones' },
+  ];
+  let pestana = 'productos';
+  const barra = h('div');
+  const panel = h('div', { class: 'space-y-4' });
+
+  function pintarPestanas() {
+    render(
+      barra,
+      tabs(PESTANAS, pestana, (clave) => {
+        pestana = clave;
+        pintarPestanas();
+        pintarPanel();
+      })
+    );
+  }
+
+  function pintarPanel() {
+    render(panel, ...(pestana === 'productos' ? panelProductos() : panelOpciones()));
+  }
+
+  render(
+    outlet,
+    h(
+      'div',
+      { class: 'space-y-4' },
+      pageHeader('Menú', {
+        hint: porSucursal
+          ? `Lo que aquí cambies se refleja de inmediato en la pantalla de venta. La columna ámbar es el precio en ${porSucursal.name}: vacía, se vende al precio base.`
+          : 'Lo que aquí cambies se refleja de inmediato en la pantalla de venta.',
+      }),
+      barra,
+      panel
     )
   );
+
+  pintarPestanas();
+  pintarPanel();
 
   refrescarSelects();
   pintar();

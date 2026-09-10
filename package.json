@@ -1,0 +1,14 @@
+{
+  "name": "foodly-web",
+  "private": true,
+  "type": "module",
+  "description": "Solo herramientas de desarrollo: la SPA de web/ se sigue sirviendo tal cual desde php/public/index.php, sin paso de compilación.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1",
+    "vitest": "^5.0.0"
+  }
+}

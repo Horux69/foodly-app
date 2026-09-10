@@ -8,16 +8,20 @@ use App\Api\ApiException;
 use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
-use App\Api\RequestContext;
+use App\Core\Database;
 use App\Core\Money;
+use App\Domain\PaymentBalance;
 use App\Models\Order;
 use App\Models\OrderStatusRow;
 use App\Services\DeliveryInput;
 use App\Services\OrderError;
 use App\Services\OrderLineInput;
+use App\Services\OrderListFilters;
 use App\Services\OrderService;
 use App\Services\OrderStatusError;
+use App\Repositories\DeliveryRepository;
 use App\Services\OrderStatusService;
+use App\Services\PaymentService;
 
 /** Equivalente PHP de app/api/v1/orders.py. */
 final class OrderController
@@ -28,6 +32,9 @@ final class OrderController
             'id' => $order->id,
             'order_number' => $order->orderNumber,
             'channel' => $order->channel,
+            'created_at' => $order->createdAt,
+            'table_code' => $order->tableCode,
+            'status' => $order->status !== null ? self::statusOut($order->status) : null,
             'subtotal' => Money::toDecimalString($order->subtotalCents),
             'tax_total' => Money::toDecimalString($order->taxTotalCents),
             'delivery_fee' => Money::toDecimalString($order->deliveryFeeCents),
@@ -49,6 +56,13 @@ final class OrderController
                     'name_snapshot' => $m->nameSnapshot,
                     'price_delta' => Money::toDecimalString($m->priceDeltaCents),
                 ], $i->modifiers),
+                // Lo que llevaba el combo cuando se vendio, no lo que lleva
+                // hoy: sin precio, porque el paquete se cobra entero.
+                'components' => array_map(static fn ($c) => [
+                    'menu_item_id' => $c->menuItemId,
+                    'name_snapshot' => $c->nameSnapshot,
+                    'quantity' => $c->quantity,
+                ], $i->components),
             ], $order->items),
         ];
     }
@@ -56,14 +70,6 @@ final class OrderController
     public static function statusOut(OrderStatusRow $s): array
     {
         return ['id' => $s->id, 'code' => $s->code, 'name' => $s->name, 'category' => $s->category, 'color' => $s->color];
-    }
-
-    private static function branchOf(RequestContext $ctx): string
-    {
-        if ($ctx->branchId === null) {
-            throw new ApiException(400, 'El usuario no tiene una sucursal asignada');
-        }
-        return $ctx->branchId;
     }
 
     /**
@@ -144,7 +150,7 @@ final class OrderController
     public static function create(): JsonResponse
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.create');
-        $branchId = self::branchOf($ctx);
+        $branchId = Deps::activeBranchId($ctx);
         $body = Request::json();
         [$deliveryFee, $discount, $tip] = self::adjustments($body);
 
@@ -179,22 +185,29 @@ final class OrderController
     public static function preview(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.create');
-        $branchId = self::branchOf($ctx);
+        $branchId = Deps::activeBranchId($ctx);
         $body = Request::json();
         [$deliveryFee, $discount, $tip] = self::adjustments($body);
 
+        // La zona se acepta suelta y no dentro de 'delivery': previsualizar
+        // no necesita la direccion, solo saber que tarifa se va a cobrar.
+        $zoneId = Request::optionalUuid($body, 'zone_id');
+
         try {
-            $totals = OrderService::previewTotals(
+            $preview = OrderService::previewTotals(
                 $ctx->tenantId,
                 $branchId,
                 self::linesFrom($body),
                 $deliveryFee,
                 $discount,
                 $tip,
+                $zoneId,
             );
         } catch (OrderError $e) {
             throw new ApiException(422, $e->getMessage());
         }
+
+        $totals = $preview->totals;
 
         return [
             'subtotal' => Money::toDecimalString($totals->subtotalCents),
@@ -203,9 +216,20 @@ final class OrderController
             'discount' => Money::toDecimalString($totals->discountCents),
             'tip' => Money::toDecimalString($totals->tipCents),
             'total' => Money::toDecimalString($totals->totalCents),
+            // Ya redactado por Domain\DeliveryRules: la pantalla lo muestra,
+            // no rehace la comparacion contra el subtotal.
+            'delivery_warning' => $preview->minimumWarning,
         ];
     }
 
+    /**
+     * El pedido con todo lo que el panel de detalle necesita para pintarse.
+     *
+     * El saldo y la entrega viajan dentro y no en dos peticiones aparte, por
+     * la misma razon que en la lista: abrir un pedido no deberia costar
+     * cuatro llamadas. La aritmetica del saldo sigue siendo de
+     * Domain\PaymentBalance.
+     */
     public static function get(array $params): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
@@ -213,14 +237,98 @@ final class OrderController
         if ($order === null) {
             throw new ApiException(404, 'Pedido no encontrado');
         }
-        return self::orderOut($order);
+
+        $delivery = (new DeliveryRepository(Database::app()))->getForOrder($order->id);
+
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+            // Solo los domicilios tienen entrega; su presencia es lo que
+            // convierte al pedido en uno.
+            'delivery' => $delivery === null ? null : DeliveryController::infoOut($delivery),
+        ];
     }
 
+    /** Quien movio el pedido, cuando y con que nota. */
+    public static function history(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.view');
+
+        try {
+            $events = OrderService::statusHistory($ctx->tenantId, $params['order_id']);
+        } catch (OrderError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
+
+        return array_map(static fn ($e) => [
+            'id' => $e->id,
+            'status' => self::statusOut($e->status),
+            'changed_by_name' => $e->changedByName,
+            'note' => $e->note,
+            'changed_at' => $e->changedAt,
+        ], $events);
+    }
+
+    public static function balanceOut(PaymentBalance $b): array
+    {
+        return [
+            'total' => Money::toDecimalString($b->totalCents),
+            'paid' => Money::toDecimalString($b->paidCents),
+            'refunded' => Money::toDecimalString($b->refundedCents),
+            'net_paid' => Money::toDecimalString($b->netPaidCents),
+            'pending' => Money::toDecimalString($b->pendingCents),
+            'is_settled' => $b->isSettled,
+        ];
+    }
+
+    /**
+     * Lista paginada, filtrable y buscable.
+     *
+     * Antes devolvia un array pelado con un LIMIT 50 fijo y sin filtros, y la
+     * pantalla completaba con una peticion de saldo por pedido. Ahora
+     * devuelve un objeto con `items` y `next_cursor`, y el saldo viene
+     * dentro de cada fila.
+     */
     public static function list(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
-        $orders = OrderService::listOrders($ctx->tenantId, self::branchOf($ctx));
-        return array_map(self::orderOut(...), $orders);
+
+        try {
+            $filters = new OrderListFilters(
+                statusCategory: Request::queryString('status_category', 20),
+                channel: Request::queryString('channel', 20),
+                search: Request::queryString('q', 80),
+                fromDate: Request::queryDate('from_date'),
+                toDate: Request::queryDate('to_date'),
+                limit: Request::queryInt(
+                    'limit',
+                    default: OrderListFilters::LIMIT_DEFAULT,
+                    min: 1,
+                    max: OrderListFilters::LIMIT_MAX,
+                ),
+                cursor: Request::queryString('cursor', 200),
+                onlyDelivery: Request::queryBool('only_delivery'),
+                withNextStatuses: Request::queryBool('with_next_statuses'),
+            );
+            $page = OrderService::listOrders($ctx->tenantId, Deps::activeBranchId($ctx), $filters);
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return [
+            'items' => array_map(
+                static fn ($order) => self::orderOut($order) + [
+                    'balance' => self::balanceOut($page->balances[$order->id]),
+                    'delivery' => isset($page->deliveries[$order->id])
+                        ? DeliveryController::infoOut($page->deliveries[$order->id])
+                        : null,
+                    'next_statuses' => isset($page->nextStatuses[$order->id])
+                        ? array_map(self::statusOut(...), $page->nextStatuses[$order->id])
+                        : null,
+                ],
+                $page->orders,
+            ),
+            'next_cursor' => $page->nextCursor,
+        ];
     }
 
     public static function nextStatuses(array $params): array

@@ -11,6 +11,7 @@ use App\Api\Request;
 use App\Core\Money;
 use App\Models\DeliveryInfo;
 use App\Models\DeliveryZone;
+use App\Services\AdminService;
 use App\Services\DeliveryService;
 use App\Services\DeliveryServiceError;
 
@@ -30,7 +31,8 @@ final class DeliveryController
         ];
     }
 
-    private static function infoOut(DeliveryInfo $i): array
+    /** Publico porque el detalle del pedido embebe la entrega con esta misma forma. */
+    public static function infoOut(DeliveryInfo $i): array
     {
         return [
             'order_id' => $i->orderId,
@@ -49,7 +51,10 @@ final class DeliveryController
 
     public static function listZones(array $params): array
     {
-        $ctx = Deps::require(Deps::getContext(), 'settings.view');
+        // Tambien con orders.create: quien toma un domicilio tiene que poder
+        // elegir la zona, y no deberia hacer falta darle a la caja un
+        // permiso de administracion para eso.
+        $ctx = Deps::requireAny(Deps::getContext(), 'settings.view', 'orders.create');
         try {
             $zones = DeliveryService::listZones($ctx->tenantId, $params['branch_id']);
         } catch (DeliveryServiceError $e) {
@@ -105,6 +110,23 @@ final class DeliveryController
             throw new ApiException(404, $e->getMessage());
         }
         return self::zoneOut($zone);
+    }
+
+    /**
+     * Los repartidores entre los que se puede elegir.
+     *
+     * Bajo 'delivery.assign' y no bajo 'users.manage': quien despacha
+     * domicilios necesita esta lista y no deberia hacer falta darle un
+     * permiso de administracion para que pueda trabajar. Devuelve solo id y
+     * nombre —lo unico que el selector necesita—, no la ficha del empleado.
+     */
+    public static function listCouriers(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'delivery.assign');
+        return array_map(
+            static fn ($u) => ['id' => $u->id, 'name' => $u->name],
+            AdminService::listCouriers($ctx->tenantId),
+        );
     }
 
     // ---------- Entrega de un pedido ----------

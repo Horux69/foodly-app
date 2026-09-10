@@ -6,6 +6,11 @@
 // Cada ruta declara el permiso que necesita. La navegación no es seguridad
 // —el backend rechaza por su cuenta— pero evita ofrecerle a alguien una
 // pantalla que va a rebotar.
+//
+// Una ruta puede además declarar `visible()`, para las pantallas que
+// dependen de cómo opera el restaurante y no de quién eres: Domicilios solo
+// existe si el canal está activo. Es configuración, no un condicional sobre
+// el tenant.
 
 import { toast } from './ui.js';
 import { can } from './session.js';
@@ -33,20 +38,27 @@ export function go(path, { replace = false } = {}) {
   else window.location.hash = destino;
 }
 
+/** Vuelve a montar la vista actual: cambiar de sucursal cambia lo que pinta. */
+export function reload() {
+  return resolver();
+}
+
 export function current() {
   return window.location.hash.replace(/^#\/?/, '').split('?')[0] || '';
 }
 
+const alcanzable = (route) => (!route.permission || can(route.permission)) && (route.visible?.() ?? true);
+
 /** Primera ruta que el usuario sí puede abrir, para no dejarlo en el vacío. */
 export function firstAllowed() {
   for (const route of rutas.values()) {
-    if (!route.public && (!route.permission || can(route.permission))) return route.path;
+    if (!route.public && alcanzable(route)) return route.path;
   }
   return null;
 }
 
 export function menuRoutes() {
-  return [...rutas.values()].filter((r) => r.label && (!r.permission || can(r.permission)));
+  return [...rutas.values()].filter((r) => r.label && alcanzable(r));
 }
 
 async function resolver() {
@@ -69,8 +81,12 @@ async function resolver() {
   }
   vistaActiva = null;
 
-  if (route.permission && !can(route.permission)) {
-    toast('No tienes permiso para esa pantalla');
+  if (!route.public && !alcanzable(route)) {
+    toast(
+      route.permission && !can(route.permission)
+        ? 'No tienes permiso para esa pantalla'
+        : 'Esa pantalla no está disponible en este restaurante'
+    );
     return go(firstAllowed() ?? 'ingresar', { replace: true });
   }
 

@@ -5,17 +5,26 @@
 // restaurante no usa (mesas, propina) no aparece, porque lo dice su
 // configuración y no un condicional en el código.
 
-import { api } from '../api.js';
-import { money, moneyExact } from '../format.js';
+import { api, query, uuid } from '../api.js';
+import * as cola from '../cola.js';
+import { date, money, moneyExact, time } from '../format.js';
 import { icon } from '../icons.js';
-import { me } from '../session.js';
-import { badge, button, card, empty, errorBox, h, input, render, section, skeleton, tabs, toast } from '../ui.js';
+import { activeBranchId, branchQuery, can, me } from '../session.js';
+import {
+  badge, button, card, clear, empty, errorBox, h, input, loading, montarDialogo, render,
+  select, skeleton, tabs, toast,
+} from '../ui.js';
 import { canal } from './cocina.js';
+import { abrirPedido, metodoPago, tonoEstado } from './pedido-detalle.js';
 
 export async function pedidos(outlet) {
   const contenido = h('div');
   const barra = h('div');
   let activa = 'nuevo';
+  // Cada pestaña puede dejar algo corriendo (la espera del buscador, el
+  // temporizador de totales). Se apaga al cambiar de pestaña y al salir de
+  // la pantalla, igual que el enrutador hace con las vistas.
+  let vivaActual = null;
 
   const ITEMS = [
     { key: 'nuevo', label: 'Nuevo pedido' },
@@ -33,23 +42,34 @@ export async function pedidos(outlet) {
     );
   }
 
-  const pintar = () => (activa === 'nuevo' ? vistaNuevo(contenido) : vistaDelDia(contenido));
+  async function pintar() {
+    vivaActual?.destroy?.();
+    vivaActual = (await (activa === 'nuevo' ? vistaNuevo(contenido) : vistaDelDia(contenido))) ?? null;
+  }
 
   render(outlet, barra, contenido);
   pintarPestanas();
-  pintar();
+  await pintar();
+
+  return {
+    destroy() {
+      vivaActual?.destroy?.();
+    },
+  };
 }
 
 // =========================================================
 // Nuevo pedido
 // =========================================================
 
+const ESPERA_CLIENTE_MS = 350;
+
 async function vistaNuevo(host) {
   render(host, skeleton({ rows: 2 }));
 
   let menu;
   try {
-    menu = await api.get('/menu');
+    menu = await api.get(`/menu${branchQuery()}`);
   } catch (error) {
     return render(host, errorBox(error.message, () => vistaNuevo(host)));
   }
@@ -58,11 +78,18 @@ async function vistaNuevo(host) {
   const carrito = [];
   let filtro = '';
 
+  // Llave de idempotencia del intento en curso. Vive mientras el pedido no
+  // se confirme: si la respuesta se pierde por red lenta y el cajero vuelve
+  // a tocar, el backend reconoce la llave y devuelve el pedido que ya creó
+  // en vez de crear un segundo. Se renueva recién al confirmarse, que es
+  // cuando empieza otro pedido.
+  let intento = uuid();
+
   const panelMenu = h('div', { class: 'space-y-4' });
 
   const buscador = input({
     type: 'search',
-    placeholder: 'Buscar un producto…',
+    placeholder: 'Buscar un producto…  (tecla /)',
     class: 'campo pl-10',
     oninput: (e) => {
       filtro = e.target.value.trim().toLowerCase();
@@ -98,19 +125,98 @@ async function vistaNuevo(host) {
   }
 
   const mesa = input({ placeholder: 'Ej. M1' });
-  const telefono = input({ placeholder: 'Teléfono', type: 'tel' });
   const nombre = input({ placeholder: 'Nombre del cliente' });
   const domicilio = input({ type: 'number', min: '0', value: '0' });
   const descuento = input({ type: 'number', min: '0', value: '0' });
   const propina = input({ type: 'number', min: '0', value: '0' });
   const notas = h('textarea', { rows: '2', placeholder: 'Notas para la cocina', class: 'campo' });
 
+  // --- cliente conocido ---
+  // Al teclear el teléfono se busca en la base y se ofrece lo que ya se sabe
+  // de esa persona. Es la diferencia entre teclear un pedido telefónico
+  // completo y confirmarlo.
+  const sugerencias = h('div', { class: 'space-y-1' });
+  let temporizadorCliente = null;
+
+  const telefono = input({
+    placeholder: 'Teléfono',
+    type: 'tel',
+    oninput: () => {
+      clearTimeout(temporizadorCliente);
+      render(sugerencias);
+      const termino = telefono.value.trim();
+      // Menos de tres dígitos devuelve media base: no es una sugerencia.
+      if (!can('customers.view') || termino.length < 3) return;
+      temporizadorCliente = setTimeout(() => buscarCliente(termino), ESPERA_CLIENTE_MS);
+    },
+  });
+
+  async function buscarCliente(termino) {
+    let encontrados;
+    try {
+      encontrados = await api.get(`/customers${query({ q: termino })}`);
+    } catch {
+      return; // sugerir es una comodidad: si falla, se teclea a mano
+    }
+    if (telefono.value.trim() !== termino) return; // ya siguió escribiendo
+
+    render(
+      sugerencias,
+      encontrados.slice(0, 4).map((c) =>
+        h(
+          'button',
+          {
+            class: 'w-full text-left px-2.5 py-1.5 rounded-lg border border-stone-200 hover:border-stone-900 text-sm flex items-center gap-2',
+            onClick: () => usarCliente(c),
+          },
+          icon('clientes', { size: 15, class: 'text-stone-400 shrink-0' }),
+          h('span', { class: 'font-medium truncate' }, c.name || 'Sin nombre'),
+          h('span', { class: 'text-stone-500 tabular-nums text-xs' }, c.phone)
+        )
+      )
+    );
+  }
+
+  async function usarCliente(cliente) {
+    telefono.value = cliente.phone;
+    nombre.value = cliente.name ?? '';
+    render(sugerencias);
+
+    // La última dirección solo se pide si hace falta: en un pedido de
+    // mostrador no aporta nada.
+    if (!esDomicilio.checked || direccion.value.trim() !== '') return;
+    try {
+      const detalle = await api.get(`/customers/${cliente.id}`);
+      if (detalle.last_address) direccion.value = detalle.last_address;
+    } catch {
+      // sin dirección previa se escribe a mano
+    }
+  }
+
+  // --- domicilio ---
+  // Lo que convierte un pedido en domicilio es que traiga dirección, no el
+  // canal: el restaurante puede haber bautizado sus canales como quiera
+  // (misma regla que aplica OrderController::deliveryFrom).
+  const bloqueDomicilio = h('div', { class: 'hidden space-y-2 mt-2' });
+  const direccion = input({ placeholder: 'Dirección de entrega' });
+  const zona = select([{ value: '', label: 'Sin zona' }], { onChange: recalcular });
+  const avisoZona = h('p', { class: 'text-[12px] text-stone-500' });
+
+  const esDomicilio = h('input', {
+    type: 'checkbox',
+    class: 'w-4 h-4 rounded border-stone-300 accent-amber-700',
+    onChange: () => {
+      bloqueDomicilio.classList.toggle('hidden', !esDomicilio.checked);
+      recalcular();
+    },
+  });
+
   [domicilio, descuento, propina].forEach((el) => el.addEventListener('change', recalcular));
 
   const lineas = h('div', { class: 'divide-y divide-stone-100' });
   const totales = h('div', { class: 'space-y-1.5 text-sm' });
   const contador = h('span');
-  const crear = button('Crear pedido', { onClick: enviar, iconName: 'check', full: true });
+  const crear = button('Crear pedido', { onClick: enviar, iconName: 'check', full: true, title: 'Enter' });
 
   // ---------- menú ----------
 
@@ -165,6 +271,15 @@ async function vistaNuevo(host) {
         'div',
         {},
         h('div', { class: 'font-medium text-sm text-stone-900 leading-snug' }, item.name),
+        // Lo que lleva el combo, para poder responder "¿y qué trae?" sin
+        // salir de la pantalla de venta.
+        item.components?.length
+          ? h(
+              'div',
+              { class: 'text-[11px] text-stone-500 mt-0.5' },
+              item.components.map((c) => `${c.quantity}× ${c.name}`).join(' · ')
+            )
+          : null,
         item.modifier_groups.length
           ? h('div', { class: 'text-[11px] text-stone-400 mt-0.5' }, 'Con opciones')
           : null
@@ -231,7 +346,24 @@ async function vistaNuevo(host) {
       carrito.map((linea) =>
         h(
           'div',
-          { class: 'py-2.5 flex items-start gap-2' },
+          {
+            class: 'py-2.5 flex items-start gap-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400',
+            // Con foco, las flechas cambian la cantidad: en un mostrador con
+            // cola es más rápido que apuntar a un botón de 36 píxeles.
+            tabindex: '0',
+            role: 'group',
+            'aria-label': `${linea.item.name}, ${linea.cantidad}. Flechas arriba y abajo para cambiar la cantidad`,
+            onKeydown: (event) => {
+              const paso = { ArrowUp: 1, '+': 1, ArrowDown: -1, '-': -1 }[event.key];
+              if (paso === undefined) return;
+              event.preventDefault();
+              cambiarCantidad(linea.clave, paso);
+              // Tras repintar, el foco vuelve a la línea equivalente; si
+              // desapareció, al carrito.
+              const filas = lineas.querySelectorAll('[role="group"]');
+              (filas[carrito.findIndex((l) => l.clave === linea.clave)] ?? filas[0] ?? buscador).focus();
+            },
+          },
           h(
             'div',
             { class: 'flex-1 min-w-0' },
@@ -274,7 +406,7 @@ async function vistaNuevo(host) {
 
     temporizador = setTimeout(async () => {
       try {
-        const t = await api.post('/orders/preview', cuerpo());
+        const t = await api.post(`/orders/preview${branchQuery()}`, cuerpoPreview());
         render(
           totales,
           fila('Subtotal', money(t.subtotal)),
@@ -287,7 +419,15 @@ async function vistaNuevo(host) {
             { class: 'flex justify-between items-baseline pt-2.5 mt-1.5 border-t border-stone-200' },
             h('span', { class: 'font-medium text-stone-700' }, 'Total'),
             h('span', { class: 'text-2xl font-bold tracking-tight text-stone-900' }, money(t.total))
-          )
+          ),
+          // Lo redactó Domain\DeliveryRules; aquí no se compara nada.
+          t.delivery_warning
+            ? h(
+                'p',
+                { class: 'text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[--r] px-2 py-1.5 mt-2' },
+                t.delivery_warning
+              )
+            : null
         );
       } catch (error) {
         render(totales, h('p', { class: 'text-sm text-red-600' }, error.message));
@@ -299,15 +439,23 @@ async function vistaNuevo(host) {
     h('div', { class: 'flex justify-between text-stone-500' }, h('span', {}, etiqueta), h('span', { class: 'tabular-nums' }, valor));
 
   function cuerpo() {
+    const entrega =
+      esDomicilio.checked && direccion.value.trim()
+        ? { address: direccion.value.trim(), zone_id: zona.value || null }
+        : null;
+
     return {
       channel: canalActivo,
       table_code: contexto.uses_tables ? mesa.value.trim() || null : null,
       customer_phone: telefono.value.trim() || null,
       customer_name: nombre.value.trim() || null,
       notes: notas.value.trim() || null,
+      // Con zona, la tarifa la pone la zona y el backend ignora esto: por eso
+      // el campo se deshabilita en pantalla en vez de mentir con una cifra.
       delivery_fee: Number(domicilio.value || 0),
       discount: Number(descuento.value || 0),
       tip: contexto.asks_tip ? Number(propina.value || 0) : 0,
+      delivery: entrega,
       items: carrito.map((l) => ({
         menu_item_id: l.item.id,
         quantity: l.cantidad,
@@ -316,20 +464,60 @@ async function vistaNuevo(host) {
     };
   }
 
+  /**
+   * Previsualizar no necesita la dirección, solo la zona: la tarifa y el
+   * mínimo dependen de ella y de nada más. Va suelta y no dentro de
+   * `delivery` justamente por eso —si esperara a que haya dirección escrita,
+   * el total no cambiaría al elegir la zona, que es cuando el cajero mira.
+   */
+  function cuerpoPreview() {
+    const { delivery, ...resto } = cuerpo();
+    return { ...resto, zone_id: esDomicilio.checked ? zona.value || null : null };
+  }
+
   async function enviar() {
     crear.disabled = true;
+    const url = `/orders${branchQuery()}`;
+    const enviado = { ...cuerpo(), idempotency_key: intento };
     try {
-      const pedido = await api.post('/orders', cuerpo());
+      const pedido = await api.post(url, enviado);
       toast(`Pedido ${pedido.order_number} creado por ${money(pedido.total)}`, 'ok');
-      carrito.length = 0;
-      [telefono, nombre, mesa].forEach((el) => (el.value = ''));
-      notas.value = '';
-      pintarCarrito();
+      limpiar();
     } catch (error) {
-      toast(error.message);
+      // `status` 0 es que la petición no salió del navegador: el pedido se
+      // guarda y se reenvía solo. Cualquier otro código es una respuesta del
+      // servidor —el pedido llegó y lo rechazó—, y encolarlo sería insistir
+      // con algo que ya se sabe que no entra.
+      if (error.status !== 0) {
+        toast(error.message);
+      } else {
+        const cuantos = cola.encolar(url, enviado, resumenDelPedido());
+        toast(`Sin conexión: el pedido quedó en cola (${cuantos}) y se enviará solo`, 'warn');
+        limpiar();
+      }
     } finally {
       crear.disabled = carrito.length === 0;
     }
+  }
+
+  /** Deja la pantalla lista para el siguiente pedido. */
+  function limpiar() {
+    // La llave se renueva también al encolar: el pedido de la cola se lleva
+    // la suya, y si el siguiente reusara la misma, el backend creería que es
+    // un reintento del anterior y devolvería aquel en vez de crear este.
+    intento = uuid();
+    carrito.length = 0;
+    [telefono, nombre, mesa, direccion].forEach((el) => (el.value = ''));
+    notas.value = '';
+    render(sugerencias);
+    pintarCarrito();
+  }
+
+  /** Con qué nombrar el pedido en la cola: en ella todavía no tiene número. */
+  function resumenDelPedido() {
+    const unidades = carrito.reduce((suma, l) => suma + l.cantidad, 0);
+    const quien = nombre.value.trim() || telefono.value.trim();
+    return `${unidades} ${unidades === 1 ? 'producto' : 'productos'}${quien ? ` · ${quien}` : ''}`;
   }
 
   // ---------- armado ----------
@@ -387,7 +575,15 @@ async function vistaNuevo(host) {
             'div',
             { class: 'mt-3 space-y-2' },
             telefono,
+            sugerencias,
             nombre,
+            h(
+              'label',
+              { class: 'flex items-center gap-2 text-sm text-stone-700 cursor-pointer pt-1' },
+              esDomicilio,
+              'Es un domicilio'
+            ),
+            bloqueDomicilio,
             h(
               'div',
               { class: 'grid grid-cols-2 gap-2' },
@@ -402,9 +598,100 @@ async function vistaNuevo(host) {
     )
   );
 
+  render(
+    bloqueDomicilio,
+    direccion,
+    zona,
+    avisoZona
+  );
+
   pintarCanal();
   pintarMenu();
   pintarCarrito();
+  cargarZonas();
+
+  /**
+   * Las zonas de la sucursal activa. Solo las activas: una zona dada de baja
+   * no es un destino al que se pueda seguir repartiendo.
+   */
+  async function cargarZonas() {
+    if (!activeBranchId()) return;
+
+    let zonas;
+    try {
+      zonas = await api.get(`/branches/${activeBranchId()}/delivery-zones`);
+    } catch {
+      // Sin zonas configuradas el domicilio se cobra con el importe de al
+      // lado, que es como funcionaba hasta ahora.
+      return;
+    }
+
+    const activas = zonas.filter((z) => z.is_active);
+    if (!activas.length) {
+      render(avisoZona, 'Esta sede no tiene zonas configuradas: el envío se cobra con el importe de abajo.');
+      return;
+    }
+
+    render(
+      zona,
+      h('option', { value: '' }, 'Sin zona'),
+      activas.map((z) => h('option', { value: z.id }, `${z.name} · ${money(z.fee)}`))
+    );
+
+    const explicar = () => {
+      const elegida = activas.find((z) => z.id === zona.value);
+      // Con zona, la tarifa la pone la zona: el campo de importe se
+      // deshabilita en vez de mostrar una cifra que el backend va a ignorar.
+      domicilio.disabled = Boolean(elegida);
+      render(
+        avisoZona,
+        elegida
+          ? `La tarifa la pone la zona: ${money(elegida.fee)}.${
+              Number(elegida.min_order) ? ` Mínimo ${money(elegida.min_order)} de subtotal.` : ''
+            }`
+          : 'Sin zona, se cobra el envío que escribas abajo.'
+      );
+    };
+    zona.addEventListener('change', explicar);
+    explicar();
+  }
+
+  // ---------- teclado ----------
+  //
+  // Un mostrador con cola se opera con las dos manos ocupadas: `/` lleva al
+  // buscador y Enter crea el pedido. Solo cuando no se está escribiendo en un
+  // campo —si no, `/` no se podría teclear en el nombre de un cliente— y solo
+  // sin diálogo abierto, porque ahí la tecla es del diálogo.
+  function atajos(event) {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (document.querySelector('[role="dialog"]')) return;
+
+    const enUnCampo = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+    if (event.key === '/' && !enUnCampo) {
+      event.preventDefault();
+      buscador.focus();
+      buscador.select();
+      return;
+    }
+    // Desde el buscador también, que es donde están las manos: escribir el
+    // producto, tocarlo y confirmar sin soltar el teclado.
+    if (event.key === 'Enter' && (!enUnCampo || document.activeElement === buscador)) {
+      if (crear.disabled) return;
+      event.preventDefault();
+      enviar();
+    }
+  }
+
+  document.addEventListener('keydown', atajos);
+
+  return {
+    destroy() {
+      clearTimeout(temporizador);
+      clearTimeout(temporizadorCliente);
+      document.removeEventListener('keydown', atajos);
+    },
+  };
 }
 
 const campoNumero = (etiqueta, control) =>
@@ -415,10 +702,13 @@ const campoNumero = (etiqueta, control) =>
 function abrirModificadores(item, alConfirmar) {
   const cuerpo = h('div', { class: 'p-4 space-y-5' });
   const seleccion = new Map();
+  // Las casillas de cada grupo, para poder cerrarlas al llegar a su máximo.
+  const casillas = new Map();
 
   for (const grupo of item.modifier_groups) {
     const unico = grupo.max_select === 1;
     seleccion.set(grupo.id, new Set());
+    casillas.set(grupo.id, []);
 
     cuerpo.append(
       h(
@@ -426,45 +716,102 @@ function abrirModificadores(item, alConfirmar) {
         {},
         h(
           'div',
-          { class: 'flex items-baseline justify-between mb-2' },
+          { class: 'flex items-baseline justify-between mb-2 gap-2' },
           h('span', { class: 'font-medium text-sm text-stone-900' }, grupo.name),
-          grupo.is_required ? badge('Obligatorio', 'warn') : h('span', { class: 'text-xs text-stone-500' }, `Hasta ${grupo.max_select}`)
+          // La frase la escribe el dominio (`ModifierGroupRules::describe`) y
+          // llega en `rule`: así la pantalla de venta y la de configuración
+          // dicen exactamente lo mismo.
+          h(
+            'span',
+            { class: 'text-xs shrink-0' },
+            grupo.is_required ? badge(grupo.rule ?? 'Obligatorio', 'warn') : h('span', { class: 'text-stone-500' }, grupo.rule ?? `Hasta ${grupo.max_select}`)
+          )
         ),
         h(
           'div',
           { class: 'space-y-0.5' },
-          grupo.modifiers.map((m) =>
-            h(
+          grupo.modifiers.map((m) => {
+            const control = h('input', {
+              type: unico ? 'radio' : 'checkbox',
+              name: `g-${grupo.id}`,
+              class: 'w-4 h-4 accent-amber-700',
+              disabled: !m.is_available,
+              onChange: (e) => {
+                const elegidos = seleccion.get(grupo.id);
+                if (unico) elegidos.clear();
+                if (e.target.checked) elegidos.add(m);
+                else elegidos.delete(m);
+                revisar();
+              },
+            });
+            casillas.get(grupo.id).push({ modificador: m, control });
+
+            return h(
               'label',
               {
                 class: `flex items-center gap-2.5 text-sm py-2 px-2 -mx-2 rounded-lg cursor-pointer hover:bg-stone-50 ${
                   m.is_available ? '' : 'opacity-40 cursor-not-allowed'
                 }`,
               },
-              h('input', {
-                type: unico ? 'radio' : 'checkbox',
-                name: `g-${grupo.id}`,
-                class: 'w-4 h-4 accent-amber-700',
-                disabled: !m.is_available,
-                onChange: (e) => {
-                  const elegidos = seleccion.get(grupo.id);
-                  if (unico) elegidos.clear();
-                  if (e.target.checked) elegidos.add(m);
-                  else elegidos.delete(m);
-                },
-              }),
+              control,
               h('span', { class: 'flex-1' }, m.name),
               Number(m.price_delta)
                 ? h('span', { class: 'text-sm font-medium text-amber-800' }, `+ ${money(m.price_delta)}`)
                 : null
-            )
-          )
+            );
+          })
         )
       )
     );
   }
 
-  const cerrar = () => overlay.remove();
+  /**
+   * Lo que falta para poder agregar.
+   *
+   * No es una segunda fuente de verdad —quien decide sigue siendo
+   * `Domain\ModifierValidation` al crear el pedido— sino la guía para no
+   * llegar hasta el final con algo que se va a rechazar. Enterarse al
+   * confirmar, con el carrito lleno y alguien esperando, es la peor forma.
+   */
+  function faltantes() {
+    return item.modifier_groups
+      .filter((g) => {
+        const cuantos = seleccion.get(g.id).size;
+        return (g.is_required && cuantos === 0) || cuantos < g.min_select;
+      })
+      .map((g) => g.name);
+  }
+
+  function revisar() {
+    // Al llegar al máximo se cierran las que quedan sin marcar, en vez de
+    // dejar marcarlas y rechazarlo después. Los grupos de una sola son
+    // radios: el navegador ya los limita.
+    for (const grupo of item.modifier_groups) {
+      if (grupo.max_select === 1) continue;
+      const lleno = seleccion.get(grupo.id).size >= grupo.max_select;
+      for (const { modificador, control } of casillas.get(grupo.id)) {
+        control.disabled = !modificador.is_available || (lleno && !control.checked);
+      }
+    }
+
+    const faltan = faltantes();
+    agregar.disabled = faltan.length > 0;
+    render(aviso, faltan.length ? `Falta elegir: ${faltan.join(', ')}.` : null);
+  }
+
+  const aviso = h('p', { class: 'text-[12.5px] text-amber-800 px-4 pb-1' });
+
+  const agregar = button('Agregar', {
+    iconName: 'mas',
+    full: true,
+    onClick: () => {
+      alConfirmar([...seleccion.values()].flatMap((s) => [...s]));
+      cerrar();
+    },
+  });
+
+  let desmontar;
+  const cerrar = () => desmontar();
   const overlay = h(
     'div',
     {
@@ -473,7 +820,12 @@ function abrirModificadores(item, alConfirmar) {
     },
     h(
       'div',
-      { class: 'aparece bg-white rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl' },
+      {
+        class: 'aparece bg-white rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': `Opciones de ${item.name}`,
+      },
       h(
         'div',
         { class: 'p-4 border-b border-stone-200 flex items-center justify-between gap-2 sticky top-0 bg-white' },
@@ -485,57 +837,198 @@ function abrirModificadores(item, alConfirmar) {
         )
       ),
       cuerpo,
+      aviso,
       h(
         'div',
         { class: 'p-4 border-t border-stone-200 flex gap-2 sticky bottom-0 bg-white' },
         button('Cancelar', { variant: 'secondary', onClick: cerrar, full: true }),
-        button('Agregar', {
-          iconName: 'mas',
-          full: true,
-          onClick: () => {
-            alConfirmar([...seleccion.values()].flatMap((s) => [...s]));
-            cerrar();
-          },
-        })
+        agregar
       )
     )
   );
 
-  document.body.append(overlay);
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  // El estado inicial también se calcula: con un grupo obligatorio, el botón
+  // nace deshabilitado y el aviso dice qué falta.
+  revisar();
 }
 
 // =========================================================
 // Pedidos del día
 // =========================================================
 
-async function vistaDelDia(host) {
-  render(host, skeleton({ rows: 3 }));
+// El filtro va por categoría de estado, nunca por código: cada restaurante
+// bautiza sus estados como quiere ("En plancha", "En preparación") pero la
+// categoría es la parte que la plataforma entiende igual en todas.
+const CATEGORIAS = [
+  { valor: '', etiqueta: 'Todos los estados' },
+  { valor: 'new', etiqueta: 'Nuevos' },
+  { valor: 'kitchen', etiqueta: 'En cocina' },
+  { valor: 'ready', etiqueta: 'Listos' },
+  { valor: 'in_transit', etiqueta: 'En camino' },
+  { valor: 'completed', etiqueta: 'Completados' },
+  { valor: 'cancelled', etiqueta: 'Cancelados' },
+];
 
-  let pedidos;
-  try {
-    pedidos = await api.get('/orders');
-  } catch (error) {
-    return render(host, errorBox(error.message, () => vistaDelDia(host)));
+const ESPERA_BUSQUEDA_MS = 300;
+
+const ICONO_METODO = { cash: 'dinero', card: 'etiqueta', transfer: 'domicilio' };
+
+/**
+ * La lista de pedidos.
+ *
+ * Antes traía los 50 últimos sin filtro y pedía el saldo de cada uno por
+ * separado: hasta 51 peticiones para pintar una pantalla. Ahora el saldo
+ * viene dentro de cada fila y la ventana la deciden los filtros, así que un
+ * restaurante con 400 pedidos al día puede encontrar uno.
+ */
+function vistaDelDia(host) {
+  const filtros = { q: '', status_category: '', channel: '', from_date: '', to_date: '' };
+  let cursor = null;
+  let cargando = false;
+  let temporizadorBusqueda = null;
+
+  const lista = h('div', { class: 'space-y-3' });
+  const pie = h('div', { class: 'flex justify-center' });
+
+  const buscador = input({
+    type: 'search',
+    placeholder: 'Número de pedido o teléfono',
+    class: 'campo pl-10',
+    // Con espera: un mostrador teclea "3001234567" y no hacen falta diez
+    // consultas para llegar al mismo resultado.
+    oninput: () => {
+      clearTimeout(temporizadorBusqueda);
+      temporizadorBusqueda = setTimeout(() => {
+        filtros.q = buscador.value.trim();
+        recargar();
+      }, ESPERA_BUSQUEDA_MS);
+    },
+  });
+
+  const estado = select(
+    CATEGORIAS.map((c) => ({ value: c.valor, label: c.etiqueta })),
+    { class: 'campo w-auto', 'aria-label': 'Estado', onChange: (e) => cambiar('status_category', e.target.value) }
+  );
+
+  const canalFiltro = select(
+    [{ value: '', label: 'Todos los canales' }, ...me().channels.map((c) => ({ value: c, label: canal(c) }))],
+    { class: 'campo w-auto', 'aria-label': 'Canal', onChange: (e) => cambiar('channel', e.target.value) }
+  );
+
+  const desde = input({ type: 'date', class: 'campo w-auto', 'aria-label': 'Desde', onChange: (e) => cambiar('from_date', e.target.value) });
+  const hasta = input({ type: 'date', class: 'campo w-auto', 'aria-label': 'Hasta', onChange: (e) => cambiar('to_date', e.target.value) });
+
+  const limpiar = button('Limpiar', {
+    variant: 'subtle',
+    onClick: () => {
+      Object.keys(filtros).forEach((k) => (filtros[k] = ''));
+      buscador.value = '';
+      [estado, canalFiltro, desde, hasta].forEach((el) => (el.value = ''));
+      recargar();
+    },
+  });
+
+  function cambiar(clave, valor) {
+    filtros[clave] = valor;
+    recargar();
   }
 
-  if (!pedidos.length) {
-    return render(
-      host,
-      h('div', { class: 'seccion' }, empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.', null, 'pedidos'))
-    );
-  }
-
-  // El saldo lo sabe el backend; aquí no se resta nada.
-  const saldos = await Promise.all(pedidos.map((p) => api.get(`/orders/${p.id}/balance`).catch(() => null)));
+  const hayFiltros = () => Object.values(filtros).some(Boolean);
 
   render(
     host,
-    h('div', { class: 'space-y-3' }, pedidos.map((p, i) => tarjetaPedido(p, saldos[i], () => vistaDelDia(host))))
+    h(
+      'div',
+      { class: 'space-y-4' },
+      h(
+        'div',
+        { class: 'flex flex-wrap items-center gap-2' },
+        h(
+          'div',
+          { class: 'relative flex-1 min-w-[220px]' },
+          h('span', { class: 'absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none' }, icon('buscar', { size: 18 })),
+          buscador
+        ),
+        estado,
+        canalFiltro,
+        desde,
+        hasta,
+        limpiar
+      ),
+      lista,
+      pie
+    )
   );
+
+  async function cargar({ reemplazar }) {
+    if (cargando) return;
+    cargando = true;
+    render(pie, loading(reemplazar ? 'Cargando…' : 'Trayendo más…'));
+
+    let pagina;
+    try {
+      pagina = await api.get(`/orders${branchQuery({ ...filtros, cursor })}`);
+    } catch (error) {
+      cargando = false;
+      render(pie);
+      if (reemplazar) render(lista, errorBox(error.message, () => cargar({ reemplazar: true })));
+      else render(pie, errorBox(error.message, () => cargar({ reemplazar: false })));
+      return;
+    }
+
+    if (reemplazar) clear(lista);
+    cursor = pagina.next_cursor;
+    cargando = false;
+
+    for (const pedido of pagina.items) lista.append(tarjetaPedido(pedido, recargar));
+
+    if (!lista.childElementCount) {
+      render(
+        lista,
+        h(
+          'div',
+          { class: 'seccion' },
+          hayFiltros()
+            ? empty('Ningún pedido coincide', 'Prueba con otro estado, otro canal u otras fechas.', null, 'buscar')
+            : empty('Todavía no hay pedidos', 'Los que crees aparecerán aquí.', null, 'pedidos')
+        )
+      );
+    }
+
+    render(
+      pie,
+      cursor ? button('Cargar más', { variant: 'secondary', onClick: () => cargar({ reemplazar: false }) }) : null
+    );
+  }
+
+  function recargar() {
+    cursor = null;
+    render(lista, skeleton({ rows: 3 }));
+    return cargar({ reemplazar: true });
+  }
+
+  recargar();
+
+  return {
+    destroy() {
+      clearTimeout(temporizadorBusqueda);
+    },
+  };
 }
 
-function tarjetaPedido(pedido, saldo, refrescar) {
-  const pendiente = saldo && !saldo.is_settled;
+function tarjetaPedido(pedido, refrescar) {
+  // El saldo llega dentro del pedido: la resta la hizo Domain\PaymentBalance,
+  // aquí no se calcula nada.
+  const saldo = pedido.balance;
+  const pendiente = !saldo.is_settled;
+
+  // Una llave por tarjeta, compartida por los tres métodos. Es a propósito:
+  // si el cobro en efectivo se registró pero la respuesta se perdió, tocar
+  // "Tarjeta" devuelve ese cobro en vez de cobrar dos veces. La tarjeta se
+  // vuelve a pintar tras cada cobro exitoso, así que el siguiente cobro
+  // parcial del mismo pedido ya trae otra llave.
+  const cobro = uuid();
 
   return card(
     h(
@@ -546,25 +1039,33 @@ function tarjetaPedido(pedido, saldo, refrescar) {
         { class: 'min-w-0' },
         h(
           'div',
-          { class: 'flex items-center gap-2' },
-          h('span', { class: 'font-semibold text-stone-900 tabular-nums' }, pedido.order_number),
-          badge(canal(pedido.channel))
+          { class: 'flex items-center gap-2 flex-wrap' },
+          h(
+          'button',
+          {
+            class: 'font-semibold text-stone-900 tabular-nums hover:underline',
+            onClick: () => abrirPedido(pedido.id, { alCambiar: refrescar }),
+          },
+          pedido.order_number
+        ),
+          pedido.status ? badge(pedido.status.name, tonoEstado(pedido.status.category)) : null,
+          badge(canal(pedido.channel)),
+          pedido.table_code ? badge(`Mesa ${pedido.table_code}`) : null
         ),
         h(
           'div',
           { class: 'text-sm text-stone-600 mt-1' },
           pedido.items.map((i) => `${i.quantity}× ${i.name_snapshot}`).join(', ')
-        )
+        ),
+        h('div', { class: 'text-xs text-stone-400 mt-0.5' }, `${date(pedido.created_at)} · ${time(pedido.created_at)}`)
       ),
       h(
         'div',
         { class: 'text-right shrink-0' },
         h('div', { class: 'font-semibold text-stone-900 tabular-nums' }, money(pedido.total)),
-        saldo
-          ? pendiente
-            ? h('div', { class: 'text-xs text-amber-700 mt-0.5' }, `Falta ${money(saldo.pending)}`)
-            : badge('Pagado', 'ok', 'check')
-          : null
+        pendiente
+          ? h('div', { class: 'text-xs text-amber-700 mt-0.5' }, `Falta ${money(saldo.pending)}`)
+          : badge('Pagado', 'ok', 'check')
       )
     ),
     pendiente && me().permissions.includes('payments.register')
@@ -575,23 +1076,31 @@ function tarjetaPedido(pedido, saldo, refrescar) {
           h(
             'div',
             { class: 'flex flex-wrap gap-2' },
-            [
-              ['cash', 'Efectivo', 'dinero'],
-              ['card', 'Tarjeta', 'etiqueta'],
-              ['transfer', 'Transferencia', 'domicilio'],
-            ].map(([metodo, etiqueta, ico]) =>
-              button(etiqueta, {
+            // Los métodos los declara el backend (`PaymentProviders`) y llegan
+            // en la sesión: el día que entre una pasarela real aparece aquí
+            // sola. Este es el atajo del mostrador —cobrar todo con un
+            // toque—; el cobro parcial vive en el detalle del pedido.
+            (me().payment_methods ?? []).map((metodo) =>
+              button(metodoPago(metodo), {
                 variant: 'secondary',
-                iconName: ico,
+                iconName: ICONO_METODO[metodo] ?? 'dinero',
                 onClick: async (event) => {
-                  event.currentTarget.disabled = true;
+                  // `currentTarget` se guarda antes del primer `await`: el navegador lo deja
+                  // en null en cuanto termina el despacho del evento, y sin esto el `catch`
+                  // no podria volver a habilitar el boton.
+                  const boton = event.currentTarget;
+                  boton.disabled = true;
                   try {
-                    await api.post(`/orders/${pedido.id}/payments`, { method: metodo, amount: saldo.pending });
+                    await api.post(`/orders/${pedido.id}/payments`, {
+                      method: metodo,
+                      amount: saldo.pending,
+                      idempotency_key: cobro,
+                    });
                     toast('Pago registrado', 'ok');
                     refrescar();
                   } catch (error) {
                     toast(error.message);
-                    event.currentTarget.disabled = false;
+                    boton.disabled = false;
                   }
                 },
               })

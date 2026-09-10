@@ -236,6 +236,101 @@ final class MenuRepository
         return MenuItem::fromRow($stmt->fetch());
     }
 
+    // ---------- Combos ----------
+
+    /**
+     * Que lleva cada combo del tenant, indexado por el id del combo.
+     *
+     * Una consulta para todos y no una por producto: la pantalla del menu
+     * necesita saber cuales son combos para pintarlos distinto.
+     *
+     * @return array<string, array<int, array{item_id: string, name: string, quantity: int}>>
+     */
+    public function componentsByItem(string $tenantId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT c.parent_item_id, c.component_item_id, c.quantity, hijo.name
+               FROM menu_item_components c
+               JOIN menu_items padre ON padre.id = c.parent_item_id
+               JOIN menu_categories cat ON cat.id = padre.category_id
+               JOIN menu_items hijo ON hijo.id = c.component_item_id
+              WHERE cat.tenant_id = :tenant_id
+           ORDER BY c.parent_item_id, c.sort_order'
+        );
+        $stmt->execute(['tenant_id' => $tenantId]);
+
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['parent_item_id']][] = [
+                'item_id' => $row['component_item_id'],
+                'name' => $row['name'],
+                'quantity' => (int) $row['quantity'],
+            ];
+        }
+        return $result;
+    }
+
+    /**
+     * Lo que lleva un combo concreto, en orden.
+     *
+     * @return array<int, array{item_id: string, name: string, quantity: int}>
+     */
+    public function componentsOf(string $itemId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT c.component_item_id, c.quantity, hijo.name
+               FROM menu_item_components c
+               JOIN menu_items hijo ON hijo.id = c.component_item_id
+              WHERE c.parent_item_id = :id
+           ORDER BY c.sort_order'
+        );
+        $stmt->execute(['id' => $itemId]);
+
+        return array_map(static fn (array $row) => [
+            'item_id' => $row['component_item_id'],
+            'name' => $row['name'],
+            'quantity' => (int) $row['quantity'],
+        ], $stmt->fetchAll());
+    }
+
+    /**
+     * Reemplaza lo que lleva un combo.
+     *
+     * @param array<int, array{item_id: string, quantity: int}> $componentes
+     */
+    public function setComponents(string $itemId, array $componentes): void
+    {
+        $this->pdo->prepare('DELETE FROM menu_item_components WHERE parent_item_id = :id')
+            ->execute(['id' => $itemId]);
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO menu_item_components (parent_item_id, component_item_id, quantity, sort_order)
+             VALUES (:parent, :component, :quantity, :sort_order)'
+        );
+        foreach (array_values($componentes) as $posicion => $componente) {
+            $stmt->execute([
+                'parent' => $itemId,
+                'component' => $componente['item_id'],
+                'quantity' => $componente['quantity'],
+                'sort_order' => $posicion,
+            ]);
+        }
+    }
+
+    /** Los combos que llevan este producto: lo que impide archivarlo sin darse cuenta. */
+    public function combosThatUse(string $itemId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT padre.name
+               FROM menu_item_components c
+               JOIN menu_items padre ON padre.id = c.parent_item_id
+              WHERE c.component_item_id = :id AND NOT padre.is_archived
+           ORDER BY padre.name'
+        );
+        $stmt->execute(['id' => $itemId]);
+        return array_column($stmt->fetchAll(), 'name');
+    }
+
     /**
      * Actualiza solo las columnas presentes en $changes.
      *

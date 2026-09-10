@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Routes;
 
 use App\Api\Controllers\AdminController;
+use App\Api\Controllers\OrderStatusController;
 use App\Api\Router;
 
 /** Mismas rutas (y sin prefijo /admin) que app/api/v1/admin.py monta en router.py. */
@@ -19,12 +20,26 @@ final class AdminRoutes
         $router->post('/branches', fn () => AdminController::createBranch());
         $router->patch('/branches/{branch_id:uuid}/active', fn ($p) => AdminController::setBranchActive($p));
 
+        // Horarios de sucursal (F5.3): franjas por dia y por canal.
+        $router->get('/branches/{branch_id:uuid}/schedules', fn ($p) => AdminController::listSchedules($p));
+        $router->post('/branches/{branch_id:uuid}/schedules', fn ($p) => AdminController::createSchedule($p));
+        $router->patch('/schedules/{schedule_id:uuid}/active', fn ($p) => AdminController::setScheduleActive($p));
+        $router->delete('/schedules/{schedule_id:uuid}', fn ($p) => AdminController::deleteSchedule($p));
+
         $router->get('/tax-rates', fn () => AdminController::listTaxRates());
         $router->post('/tax-rates', fn () => AdminController::createTaxRate());
         $router->put('/tax-rates/{tax_rate_id:uuid}/default', fn ($p) => AdminController::setDefaultTaxRate($p));
 
         $router->get('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::listTables($p));
         $router->post('/branches/{branch_id:uuid}/tables', fn ($p) => AdminController::createTable($p));
+
+        // Estados de pedido y transiciones (F5.2).
+        $router->get('/order-statuses', fn () => OrderStatusController::getConfiguration());
+        $router->post('/order-statuses', fn () => OrderStatusController::createStatus());
+        $router->patch('/order-statuses/{status_id:uuid}', fn ($p) => OrderStatusController::updateStatus($p));
+        $router->put('/order-statuses/{status_id:uuid}/initial', fn ($p) => OrderStatusController::setInitial($p));
+        $router->delete('/order-statuses/{status_id:uuid}', fn ($p) => OrderStatusController::deleteStatus($p));
+        $router->put('/order-statuses/{status_id:uuid}/transitions', fn ($p) => OrderStatusController::setTransitions($p));
 
         $router->get('/permissions', fn () => AdminController::listPermissions());
 

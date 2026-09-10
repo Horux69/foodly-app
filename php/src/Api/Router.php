@@ -63,6 +63,11 @@ final class Router
         $this->add('PUT', $pattern, $handler);
     }
 
+    public function delete(string $pattern, callable $handler): void
+    {
+        $this->add('DELETE', $pattern, $handler);
+    }
+
     /**
      * @param array<string, string> $params
      * @param array<string, string> $types
@@ -107,6 +112,11 @@ final class Router
             $result = ($route['handler'])($params);
             if ($result instanceof JsonResponse) {
                 return [$result->status, $result->data];
+            }
+            // Una RawResponse viaja tal cual: el front controller la reconoce
+            // y no le pone el Content-Type de JSON.
+            if ($result instanceof RawResponse) {
+                return [$result->status, $result];
             }
             return [200, $result];
         }

@@ -61,6 +61,9 @@ function serveStaticFile(string $path): bool
         'js' => 'text/javascript; charset=utf-8',
         'css' => 'text/css; charset=utf-8',
         'json' => 'application/json; charset=utf-8',
+        // El navegador solo trata el manifiesto como tal con este tipo; con
+        // application/json lo descarta y la aplicacion deja de ser instalable.
+        'webmanifest' => 'application/manifest+json; charset=utf-8',
         'svg' => 'image/svg+xml',
         'png' => 'image/png',
         'jpg' => 'image/jpeg',
@@ -113,7 +116,24 @@ require __DIR__ . '/../src/Api/routes.php';
 try {
     [$status, $body] = $router->dispatch($_SERVER['REQUEST_METHOD'], $path);
     http_response_code($status);
-    echo json_encode($body, JSON_UNESCAPED_UNICODE);
+
+    // Lo que no es JSON (el CSV de los reportes) trae su propio tipo y sus
+    // propias cabeceras, y se escribe tal cual.
+    if ($body instanceof App\Api\RawResponse) {
+        header('Content-Type: ' . $body->contentType);
+        foreach ($body->headers as $nombre => $valor) {
+            header($nombre . ': ' . $valor);
+        }
+        echo $body->body;
+        Database::endAppTransaction(success: true);
+        return;
+    }
+
+    // 204 es "hecho, y no hay nada que devolver": un cuerpo ahi es invalido
+    // y algunos proxies lo descartan o se atragantan. api.js ya lo espera.
+    if ($status !== 204) {
+        echo json_encode($body, JSON_UNESCAPED_UNICODE);
+    }
     Database::endAppTransaction(success: true);
 } catch (ApiException $e) {
     http_response_code($e->status);

@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Domain\ComboError;
+use App\Domain\ComboRules;
 use App\Domain\MenuPricing;
 use App\Models\BranchMenuOverride;
 use App\Models\MenuCategory;
 use App\Models\MenuItem;
 use App\Repositories\BranchRepository;
 use App\Repositories\MenuRepository;
+use App\Repositories\ModifierRepository;
 use App\Repositories\TaxRateRepository;
 
 final class MenuService
@@ -30,6 +33,9 @@ final class MenuService
 
         $categories = $repo->listCategoriesWithItems($tenantId);
         $overrides = $branchId !== null ? $repo->getOverridesForBranch($branchId) : [];
+        // Que lleva cada combo, para que quien vende pueda decirlo sin
+        // abrir otra pantalla.
+        $components = $repo->componentsByItem($tenantId);
 
         $result = [];
         foreach ($categories as $category) {
@@ -52,6 +58,7 @@ final class MenuService
                     priceCents: $effective->priceCents,
                     isAvailable: $effective->isAvailable,
                     modifierGroups: $item->modifierGroups,
+                    components: $components[$item->id] ?? [],
                 );
             }
             $result[] = new MenuCategoryView($category->id, $category->name, $items);
@@ -64,10 +71,39 @@ final class MenuService
      *
      * @return array{0: MenuCategory[], 1: MenuItem[]}
      */
-    public static function getCatalog(string $tenantId): array
+    /**
+     * Catalogo de administracion, con los ajustes de la sucursal que se este
+     * mirando si hay una.
+     *
+     * Los overrides viajan aparte del producto y no mezclados en su precio:
+     * la pantalla necesita ver las dos cifras —el precio base y el de esta
+     * sucursal— para poder decidir. Quien resuelve cual manda es
+     * Domain\MenuPricing, en un solo lugar.
+     *
+     * @return array{0: MenuCategory[], 1: MenuItem[], 2: array<string, \App\Models\BranchMenuOverride>}
+     */
+    /**
+     * @return array{0: MenuCategory[], 1: MenuItem[], 2: array<string, BranchMenuOverride>, 3: array<string, string[]>,
+     *         4: array<string, array<int, array{item_id: string, name: string, quantity: int}>>}
+     *         categorias, productos, overrides de la sucursal, grupos de
+     *         modificadores por producto y componentes de los que son combo
+     */
+    public static function getCatalog(string $tenantId, ?string $branchId = null): array
     {
-        $repo = new MenuRepository(Database::app());
-        return [$repo->listAllCategories($tenantId), $repo->listAllItems($tenantId)];
+        $pdo = Database::app();
+        $repo = new MenuRepository($pdo);
+        return [
+            $repo->listAllCategories($tenantId),
+            $repo->listAllItems($tenantId),
+            $branchId === null ? [] : $repo->getOverridesForBranch($branchId),
+            // Una consulta para todos los productos, no una por fila: la
+            // pantalla necesita saber que grupos tiene cada uno para poder
+            // ofrecer cambiarlos.
+            (new ModifierRepository($pdo))->groupIdsByItem($tenantId),
+            // Igual que los grupos: una consulta para todo el catalogo. Solo
+            // los combos aparecen aqui, y son pocos.
+            $repo->componentsByItem($tenantId),
+        ];
     }
 
     public static function createCategory(string $tenantId, string $name, int $sortOrder = 0): MenuCategory
@@ -143,8 +179,71 @@ final class MenuService
             $changes['tax_rate_id'] = self::resolveTaxRateId($tenantId, $changes['tax_rate_id']);
         }
 
+        // Archivar un producto que un combo lleva dentro vaciaria ese combo
+        // en silencio: se seguiria vendiendo al mismo precio con una cosa
+        // menos, y nadie se enteraria hasta que alguien reclamara su gaseosa.
+        if (($changes['is_archived'] ?? false) === true && !$item->isArchived) {
+            $combos = $repo->combosThatUse($itemId);
+            if ($combos !== []) {
+                throw new MenuError(
+                    "'{$item->name}' esta dentro de " . count($combos) . ' combo(s): '
+                    . implode(', ', $combos) . '. Quitalo de ahi antes de archivarlo.'
+                );
+            }
+        }
+
         $repo->updateItem($itemId, $changes);
         return $repo->getItem($tenantId, $itemId);
+    }
+
+    /**
+     * Define que lleva un combo. Una lista vacia lo devuelve a producto suelto.
+     *
+     * @param array<int, array{item_id: string, quantity: int}> $componentes
+     * @return array<int, array{item_id: string, name: string, quantity: int}>
+     */
+    public static function setComponents(string $tenantId, string $itemId, array $componentes): array
+    {
+        $repo = new MenuRepository(Database::app());
+        $combo = $repo->getItem($tenantId, $itemId);
+        if ($combo === null) {
+            throw new MenuError('El producto no existe para este tenant');
+        }
+
+        // Los ids se resuelven contra el catalogo del tenant antes de tocar
+        // nada: uno de otra empresa no existe desde aqui, aunque la clave
+        // foranea de la base lo aceptara.
+        foreach ($componentes as $componente) {
+            if ($repo->getItem($tenantId, $componente['item_id']) === null) {
+                throw new MenuError("El producto {$componente['item_id']} no existe para este tenant");
+            }
+        }
+
+        if ($componentes !== []) {
+            try {
+                ComboRules::validate($itemId, $componentes, self::composicionActual($repo, $tenantId));
+            } catch (ComboError $e) {
+                throw new MenuError($e->getMessage());
+            }
+        }
+
+        $repo->setComponents($itemId, $componentes);
+        return $repo->componentsOf($itemId);
+    }
+
+    /**
+     * Que lleva hoy cada combo del tenant, solo con los ids: es lo que
+     * ComboRules necesita para descubrir un ciclo indirecto.
+     *
+     * @return array<string, string[]>
+     */
+    private static function composicionActual(MenuRepository $repo, string $tenantId): array
+    {
+        $result = [];
+        foreach ($repo->componentsByItem($tenantId) as $parentId => $componentes) {
+            $result[$parentId] = array_column($componentes, 'item_id');
+        }
+        return $result;
     }
 
     public static function setItemAvailability(string $tenantId, string $itemId, bool $isAvailable): MenuItem
@@ -157,6 +256,13 @@ final class MenuService
         return $repo->getItem($tenantId, $itemId);
     }
 
+    /**
+     * Fija —o quita— el ajuste de un producto en una sucursal.
+     *
+     * Un `null` no es "no cambies": es "esta sucursal no ajusta eso", y el
+     * producto vuelve a regirse por su precio o su disponibilidad base. Es la
+     * forma de deshacer un ajuste sin borrar la fila.
+     */
     public static function setBranchOverride(
         string $tenantId,
         string $branchId,

@@ -104,6 +104,19 @@ final class Request
         return $value;
     }
 
+    /** Bandera de query: presente y con un valor afirmativo. */
+    public static function queryBool(string $key, bool $default = false): bool
+    {
+        $value = $_GET[$key] ?? null;
+        if ($value === null || $value === '') {
+            return $default;
+        }
+        if (!is_string($value) || !in_array($value, ['true', 'false', '1', '0'], true)) {
+            throw new ApiException(422, "'{$key}' debe ser true o false");
+        }
+        return $value === 'true' || $value === '1';
+    }
+
     public static function queryInt(string $key, int $default, int $min, int $max): int
     {
         $value = $_GET[$key] ?? null;

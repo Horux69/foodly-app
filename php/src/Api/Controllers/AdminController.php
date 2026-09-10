@@ -9,14 +9,15 @@ use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
 use App\Models\Branch;
+use App\Models\BranchScheduleRow;
 use App\Models\Role;
 use App\Models\Table;
 use App\Models\TaxRate;
 use App\Models\User;
-use App\Repositories\RoleRepository;
 use App\Services\AdminError;
 use App\Services\AdminService;
-use App\Core\Database;
+use App\Core\Permissions;
+use App\Domain\ScheduleRules;
 
 /**
  * Equivalente PHP de app/api/v1/admin.py. Cada metodo repite el mismo
@@ -109,8 +110,19 @@ final class AdminController
             $changes['asks_tip'] = Request::bool($body, 'asks_tip');
         }
 
+        // Identidad del restaurante: van aparte porque son columnas de
+        // `tenants` y no claves del JSONB de configuracion.
+        $profile = [];
+        foreach (['name', 'business_type', 'currency'] as $campo) {
+            if (array_key_exists($campo, $body) && $body[$campo] !== null) {
+                $profile[$campo] = Request::string($body, $campo, 1, 150);
+            }
+        }
+        $currencyConfirmed = array_key_exists('confirm_currency_change', $body)
+            && Request::bool($body, 'confirm_currency_change');
+
         try {
-            [$tenant, $settings] = AdminService::updateSettings($ctx->tenantId, $changes);
+            [$tenant, $settings] = AdminService::updateSettings($ctx->tenantId, $changes, $profile, $currencyConfirmed);
         } catch (AdminError $e) {
             throw new ApiException(422, $e->getMessage());
         }
@@ -163,6 +175,86 @@ final class AdminController
             throw new ApiException(404, $e->getMessage());
         }
         return self::branchOut($branch);
+    }
+
+    // ---------- Horarios ----------
+
+    private static function scheduleOut(BranchScheduleRow $s): array
+    {
+        return [
+            'id' => $s->id,
+            'branch_id' => $s->branchId,
+            'weekday' => $s->weekday,
+            'weekday_name' => ScheduleRules::DIAS[$s->weekday],
+            'opens_at' => substr($s->opensAt, 0, 5),
+            'closes_at' => substr($s->closesAt, 0, 5),
+            // Que cierre antes de abrir significa que cruza la medianoche; la
+            // pantalla lo dice en vez de dejar que parezca un error de captura.
+            'crosses_midnight' => $s->closesAt < $s->opensAt,
+            'channel' => $s->channel,
+            'is_active' => $s->isActive,
+        ];
+    }
+
+    public static function listSchedules(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'settings.view');
+        try {
+            [$rows, $sinCobertura] = AdminService::listSchedules($ctx->tenantId, $params['branch_id']);
+        } catch (AdminError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
+
+        return [
+            'schedules' => array_map(self::scheduleOut(...), $rows),
+            // Con horarios configurados, un canal sin ninguna franja queda
+            // cerrado siempre y no da senal hasta que alguien intenta vender.
+            'channels_without_windows' => $sinCobertura,
+        ];
+    }
+
+    public static function createSchedule(array $params): JsonResponse
+    {
+        $ctx = Deps::require(Deps::getContext(), 'branches.manage');
+        $body = Request::json();
+
+        try {
+            $schedule = AdminService::createSchedule(
+                $ctx->tenantId,
+                $params['branch_id'],
+                Request::int($body, 'weekday', min: 0),
+                Request::string($body, 'opens_at', 4, 8),
+                Request::string($body, 'closes_at', 4, 8),
+                Request::optionalString($body, 'channel'),
+            );
+        } catch (AdminError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return new JsonResponse(self::scheduleOut($schedule), 201);
+    }
+
+    public static function setScheduleActive(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'branches.manage');
+        $body = Request::json();
+        try {
+            $schedule = AdminService::setScheduleActive($ctx->tenantId, $params['schedule_id'], Request::bool($body, 'is_active'));
+        } catch (AdminError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
+        return self::scheduleOut($schedule);
+    }
+
+    public static function deleteSchedule(array $params): JsonResponse
+    {
+        $ctx = Deps::require(Deps::getContext(), 'branches.manage');
+        try {
+            AdminService::deleteSchedule($ctx->tenantId, $params['schedule_id']);
+        } catch (AdminError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
+        return new JsonResponse(null, 204);
     }
 
     // ---------- Impuestos ----------
@@ -240,11 +332,19 @@ final class AdminController
 
     // ---------- Roles y permisos ----------
 
+    /**
+     * Del catalogo de la plataforma, no de la tabla: es el mismo arreglo que
+     * valida los roles, asi que la pantalla no puede ofrecer un permiso que
+     * luego se rechace al guardarlo.
+     */
     public static function listPermissions(): array
     {
         Deps::require(Deps::getContext(), 'users.manage');
-        $permissions = (new RoleRepository(Database::app()))->listPermissions();
-        return array_map(static fn ($p) => ['code' => $p->code, 'description' => $p->description], $permissions);
+        $salida = [];
+        foreach (Permissions::CATALOG as $code => $description) {
+            $salida[] = ['code' => $code, 'description' => $description];
+        }
+        return $salida;
     }
 
     public static function listRoles(): array

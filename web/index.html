@@ -6,6 +6,18 @@
     <title>Plataforma de restaurantes</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/app.css" />
+
+    <!-- Instalable: una tableta de mostrador se abre a pantalla completa y,
+         con el service worker que registra app.js, sigue sirviendo cuando el
+         internet se corta. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#1c1917" />
+    <link rel="icon" href="/iconos/app.svg" type="image/svg+xml" />
+    <!-- iOS no lee el manifiesto: su icono de pantalla de inicio sale de
+         aquí, y solo acepta PNG. -->
+    <link rel="apple-touch-icon" href="/iconos/app-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div class="flex min-h-screen">
@@ -23,6 +35,11 @@
 
     <div id="barra-inferior"></div>
     <div id="toast-host" class="fixed bottom-20 md:bottom-5 right-5 z-50"></div>
+
+    <!-- Aquí se arma lo que se va a imprimir. Vive fuera de la aplicación y
+         es hijo directo de <body> porque la hoja de impresión esconde a
+         todos sus hermanos: ver `@media print` en app.css. -->
+    <div id="impresion"></div>
 
     <script type="module" src="/js/app.js"></script>
     <noscript><p class="p-4">Esta aplicación necesita JavaScript para funcionar.</p></noscript>

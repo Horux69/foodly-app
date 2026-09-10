@@ -10,6 +10,7 @@ DECLARE
   tax_id UUID;
   role_admin UUID;
   cat_id UUID;
+  grp_termino UUID; grp_adiciones UUID;
   st_pend UUID; st_paid UUID; st_prep UUID; st_ready UUID; st_done UUID; st_canc UUID;
 BEGIN
   INSERT INTO tenants (name, business_type, currency, settings)
@@ -71,4 +72,29 @@ BEGIN
   VALUES
     (cat_id, tax_id, 'Hamburguesa clásica', 18000, 10),
     (cat_id, tax_id, 'Hamburguesa doble carne', 26000, 14);
+
+  -- Modificadores: uno obligatorio de eleccion unica y uno opcional de varias.
+  -- Estan aqui para que una instalacion nueva vea funcionar la pantalla de
+  -- opciones y el modal de la venta sin tener que armarlos primero.
+  INSERT INTO modifier_groups (tenant_id, name, min_select, max_select, is_required)
+  VALUES (t_id, 'Término de la carne', 1, 1, true) RETURNING id INTO grp_termino;
+  INSERT INTO modifiers (group_id, name, price_delta) VALUES
+    (grp_termino, 'Término medio', 0),
+    (grp_termino, 'Tres cuartos', 0),
+    (grp_termino, 'Bien asada', 0);
+
+  INSERT INTO modifier_groups (tenant_id, name, min_select, max_select, is_required)
+  VALUES (t_id, 'Adiciones', 0, 3, false) RETURNING id INTO grp_adiciones;
+  INSERT INTO modifiers (group_id, name, price_delta) VALUES
+    (grp_adiciones, 'Tocineta', 3000),
+    (grp_adiciones, 'Queso extra', 2500),
+    (grp_adiciones, 'Sin cebolla', 0);
+
+  -- El termino primero: es lo que la cocina necesita saber antes que nada.
+  INSERT INTO item_modifier_groups (item_id, group_id, sort_order)
+  SELECT i.id, g.group_id, g.sort_order
+    FROM menu_items i
+    JOIN menu_categories c ON c.id = i.category_id
+   CROSS JOIN (VALUES (grp_termino, 0), (grp_adiciones, 1)) AS g(group_id, sort_order)
+   WHERE c.tenant_id = t_id;
 END $$;

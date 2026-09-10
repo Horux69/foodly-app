@@ -255,6 +255,8 @@ export function toast(message, kind = 'error') {
     error: ['bg-red-700', 'alerta'],
     ok: ['bg-stone-900', 'check'],
     info: ['bg-stone-900', 'alerta'],
+    // Ni error ni éxito: quedó pendiente y alguien tiene que saberlo.
+    warn: ['bg-amber-700', 'alerta'],
   }[kind];
 
   render(
@@ -271,14 +273,78 @@ export function toast(message, kind = 'error') {
   toastTimer = setTimeout(() => clear(host), 4500);
 }
 
+// ---------- diálogos ----------
+
+const ENFOCABLES = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Monta un diálogo modal y le da el comportamiento de teclado que se espera
+ * de uno: Escape cierra, Tab no se escapa, el foco entra al abrir y vuelve a
+ * donde estaba al cerrar.
+ *
+ * Cada diálogo arma su propio marcado —son muy distintos entre sí— y este
+ * helper solo aporta la conducta, que sí es la misma en todos. Sin el ciclo
+ * de Tab, tabular desde el último botón se va a la aplicación de atrás, que
+ * para quien navega con teclado o lector de pantalla es quedarse sin diálogo
+ * sin haberlo cerrado.
+ *
+ * Devuelve la función que lo desmonta: el `cerrar` de cada diálogo la llama.
+ */
+export function montarDialogo(overlay, { alCerrar, foco } = {}) {
+  const previo = document.activeElement;
+
+  const enfocables = () =>
+    [...overlay.querySelectorAll(ENFOCABLES)].filter((el) => !el.disabled && el.getAttribute('aria-hidden') !== 'true');
+
+  const onKey = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      alCerrar?.();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const lista = enfocables();
+    if (lista.length === 0) return;
+    const primero = lista[0];
+    const ultimo = lista[lista.length - 1];
+
+    // El foco puede estar fuera del diálogo (recién abierto, o el navegador
+    // lo movió): en ese caso Tab entra en vez de salir.
+    if (!overlay.contains(document.activeElement)) {
+      event.preventDefault();
+      primero.focus();
+      return;
+    }
+    if (event.shiftKey && document.activeElement === primero) {
+      event.preventDefault();
+      ultimo.focus();
+    } else if (!event.shiftKey && document.activeElement === ultimo) {
+      event.preventDefault();
+      primero.focus();
+    }
+  };
+
+  // En captura para ganarle a los atajos de la pantalla de atrás: con un
+  // diálogo abierto, la tecla es del diálogo.
+  document.addEventListener('keydown', onKey, true);
+  document.body.append(overlay);
+  (foco ?? enfocables()[0])?.focus();
+
+  return function desmontar() {
+    document.removeEventListener('keydown', onKey, true);
+    overlay.remove();
+    previo?.focus?.();
+  };
+}
+
 export function confirm({ title, message, confirmLabel = 'Confirmar', variant = 'danger' }) {
   return new Promise((resolve) => {
+    let desmontar;
     const close = (answer) => {
-      overlay.remove();
-      document.removeEventListener('keydown', onKey);
+      desmontar();
       resolve(answer);
     };
-    const onKey = (e) => e.key === 'Escape' && close(false);
     const confirmar = button(confirmLabel, { variant, onClick: () => close(true) });
 
     const overlay = h(
@@ -301,8 +367,6 @@ export function confirm({ title, message, confirmLabel = 'Confirmar', variant = 
       )
     );
 
-    document.body.append(overlay);
-    document.addEventListener('keydown', onKey);
-    confirmar.focus();
+    desmontar = montarDialogo(overlay, { alCerrar: () => close(false), foco: confirmar });
   });
 }

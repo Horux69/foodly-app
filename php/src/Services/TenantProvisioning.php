@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Core\Permissions;
 use App\Domain\SettingsError;
+use App\Domain\Slug;
 use App\Domain\TenantSettings;
 use App\Models\Tenant;
 use App\Repositories\OrderStatusRepository;
@@ -101,8 +103,10 @@ final class TenantProvisioning
         // AdminService::setRolePermissions), asi que no puede quedar como un
         // rol mas que alguien edite hasta dejarlo sin permisos.
         $adminRole = $roles->create($tenantId, 'admin', 'Administrador', isSystem: true);
-        $allPermissionCodes = array_map(static fn ($p) => $p->code, $roles->listPermissions());
-        $roles->setPermissions($adminRole->id, $allPermissionCodes);
+        // Todos los del catalogo de la plataforma, que desde F5.5 es la
+        // fuente: antes se leian de la tabla `permissions`, que es el destino
+        // del join y no el catalogo.
+        $roles->setPermissions($adminRole->id, Permissions::codes());
     }
 
     /**
@@ -116,6 +120,7 @@ final class TenantProvisioning
         string $businessType = 'fast_food',
         string $currency = 'COP',
         ?array $settings = null,
+        ?string $slug = null,
     ): Tenant {
         if ($settings === null) {
             $settings = TenantSettings::defaultsFor($businessType);
@@ -138,7 +143,12 @@ final class TenantProvisioning
         }
 
         try {
-            $tenant = (new TenantRepository($pdo))->create($name, $businessType, $currency, $settings);
+            // El slug se genera del nombre si no lo dan: es lo que alguien
+            // escribe al entrar cuando su correo esta en mas de un
+            // restaurante, y una cosa menos que inventar al dar de alta.
+            $tenants = new TenantRepository($pdo);
+            $elegido = Slug::unique($slug ?? $name, static fn (string $s) => $tenants->slugExists($s));
+            $tenant = $tenants->create($name, $elegido, $businessType, $currency, $settings);
             self::provisionTenant($pdo, $tenant->id, $businessType);
             if ($ownsTransaction) {
                 $pdo->commit();

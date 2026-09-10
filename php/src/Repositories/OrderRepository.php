@@ -7,12 +7,32 @@ namespace App\Repositories;
 use App\Core\Money;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemComponent;
 use App\Models\OrderItemModifier;
+use App\Models\OrderStatusEvent;
 use App\Models\OrderStatusRow;
+use App\Services\OrderCursor;
+use App\Services\OrderListFilters;
 use PDO;
 
 final class OrderRepository
 {
+    /**
+     * Un pedido nunca se lee suelto: el estado se necesita en todas partes
+     * (categoria para el KDS y los filtros, nombre y color para pintarlo) y
+     * la mesa es un codigo que vive en otra tabla. Una sola consulta base
+     * para no repetir el join —ni olvidarlo en una lectura y que la interfaz
+     * reciba un pedido sin estado.
+     */
+    private const SELECT_ORDER =
+        'SELECT o.*, t.code AS table_code,
+                s.id AS s_id, s.code AS s_code, s.name AS s_name, s.category AS s_category,
+                s.color AS s_color, s.sort_order AS s_sort_order,
+                s.is_initial AS s_is_initial, s.is_final AS s_is_final
+         FROM orders o
+         JOIN order_statuses s ON s.id = o.status_id
+         LEFT JOIN tables t ON t.id = o.table_id';
+
     public function __construct(private readonly PDO $pdo)
     {
     }
@@ -40,10 +60,10 @@ final class OrderRepository
 
     public function getById(string $tenantId, string $orderId): ?Order
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM orders WHERE tenant_id = :tenant_id AND id = :id');
+        $stmt = $this->pdo->prepare(self::SELECT_ORDER . ' WHERE o.tenant_id = :tenant_id AND o.id = :id');
         $stmt->execute(['tenant_id' => $tenantId, 'id' => $orderId]);
         $row = $stmt->fetch();
-        return $row === false ? null : Order::fromRow($row, $this->itemsForOrders([$row['id']])[$row['id']] ?? []);
+        return $row === false ? null : $this->hydrateAll([$row])[0];
     }
 
     /**
@@ -59,34 +79,82 @@ final class OrderRepository
      */
     public function getByIdForUpdate(string $tenantId, string $orderId): ?Order
     {
+        // FOR UPDATE OF o y no FOR UPDATE a secas: se quiere bloquear el
+        // pedido, no las filas de order_statuses ni de tables que trae el
+        // join —bloquear un estado seria serializar a todo el restaurante.
         $stmt = $this->pdo->prepare(
-            'SELECT * FROM orders WHERE tenant_id = :tenant_id AND id = :id FOR UPDATE'
+            self::SELECT_ORDER . ' WHERE o.tenant_id = :tenant_id AND o.id = :id FOR UPDATE OF o'
         );
         $stmt->execute(['tenant_id' => $tenantId, 'id' => $orderId]);
         $row = $stmt->fetch();
-        return $row === false ? null : Order::fromRow($row, $this->itemsForOrders([$row['id']])[$row['id']] ?? []);
+        return $row === false ? null : $this->hydrateAll([$row])[0];
     }
 
-    /** @return Order[] */
-    public function listForBranch(string $tenantId, string $branchId, int $limit = 50): array
+    /**
+     * Una pagina de pedidos de la sucursal, de la mas reciente hacia atras.
+     *
+     * Devuelve hasta $filters->limit + 1: la de mas no se muestra, solo dice
+     * que hay pagina siguiente sin tener que contar el total.
+     *
+     * @return Order[]
+     */
+    public function listForBranch(string $tenantId, string $branchId, OrderListFilters $filters): array
     {
+        $where = ['o.tenant_id = :tenant_id', 'o.branch_id = :branch_id'];
+        $params = ['tenant_id' => $tenantId, 'branch_id' => $branchId];
+
+        if ($filters->statusCategory !== null) {
+            $where[] = 's.category = :status_category';
+            $params['status_category'] = $filters->statusCategory;
+        }
+        if ($filters->channel !== null) {
+            $where[] = 'o.channel = :channel';
+            $params['channel'] = $filters->channel;
+        }
+        if ($filters->search !== null) {
+            // Numero de pedido o telefono: las dos cosas que alguien tiene a
+            // mano cuando pregunta por un pedido en el mostrador.
+            $where[] = "(o.order_number ILIKE :q ESCAPE '\\' OR c.phone ILIKE :q ESCAPE '\\')";
+            $params['q'] = '%' . addcslashes($filters->search, '\\%_') . '%';
+        }
+        // El dia se mide en la zona de la sucursal, no en la del servidor: a
+        // las 8 de la noche en Bogota ya es manana en UTC, y "los pedidos de
+        // hoy" empezarian a mostrarse cortados.
+        if ($filters->fromDate !== null) {
+            $where[] = '(o.created_at AT TIME ZONE b.timezone)::date >= :from_date::date';
+            $params['from_date'] = $filters->fromDate;
+        }
+        if ($filters->toDate !== null) {
+            $where[] = '(o.created_at AT TIME ZONE b.timezone)::date <= :to_date::date';
+            $params['to_date'] = $filters->toDate;
+        }
+        if ($filters->cursor !== null) {
+            [$cursorAt, $cursorId] = OrderCursor::decode($filters->cursor);
+            $where[] = '(o.created_at, o.id) < (:cursor_at::timestamptz, :cursor_id::uuid)';
+            $params['cursor_at'] = $cursorAt;
+            $params['cursor_id'] = $cursorId;
+        }
+
         $stmt = $this->pdo->prepare(
-            'SELECT * FROM orders
-             WHERE tenant_id = :tenant_id AND branch_id = :branch_id
-             ORDER BY created_at DESC
-             LIMIT :limit'
+            self::SELECT_ORDER
+            . ' JOIN branches b ON b.id = o.branch_id'
+            . ' LEFT JOIN customers c ON c.id = o.customer_id'
+            // INNER JOIN cuando se piden solo domicilios: tener entrega es
+            // exactamente lo que hace domicilio a un pedido.
+            . ($filters->onlyDelivery ? ' JOIN delivery_info di ON di.order_id = o.id' : '')
+            . ' WHERE ' . implode(' AND ', $where)
+            // El id desempata para que el cursor no se salte un pedido
+            // cuando dos comparten el instante de creacion.
+            . ' ORDER BY o.created_at DESC, o.id DESC'
+            . ' LIMIT :limit'
         );
-        $stmt->bindValue('tenant_id', $tenantId);
-        $stmt->bindValue('branch_id', $branchId);
-        $stmt->bindValue('limit', $limit, PDO::PARAM_INT);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->bindValue('limit', $filters->limit + 1, PDO::PARAM_INT);
         $stmt->execute();
 
-        $rows = $stmt->fetchAll();
-        $itemsByOrder = $this->itemsForOrders(array_column($rows, 'id'));
-        return array_map(
-            static fn (array $row) => Order::fromRow($row, $itemsByOrder[$row['id']] ?? []),
-            $rows,
-        );
+        return $this->hydrateAll($stmt->fetchAll());
     }
 
     /**
@@ -96,23 +164,47 @@ final class OrderRepository
      * @param string[] $categories
      * @return Order[]
      */
-    public function listByStatusCategories(string $tenantId, string $branchId, array $categories): array
-    {
+    public function listByStatusCategories(
+        string $tenantId,
+        string $branchId,
+        array $categories,
+        ?int $sinceMinutes = null,
+    ): array {
         $placeholders = implode(',', array_fill(0, count($categories), '?'));
-        $stmt = $this->pdo->prepare(
-            "SELECT o.*, t.code AS table_code,
-                    s.id AS s_id, s.code AS s_code, s.name AS s_name, s.category AS s_category,
-                    s.color AS s_color, s.sort_order AS s_sort_order,
-                    s.is_initial AS s_is_initial, s.is_final AS s_is_final
-             FROM orders o
-             JOIN order_statuses s ON s.id = o.status_id
-             LEFT JOIN tables t ON t.id = o.table_id
-             WHERE o.tenant_id = ? AND o.branch_id = ? AND s.category IN ({$placeholders})
-             ORDER BY o.created_at"
-        );
-        $stmt->execute([$tenantId, $branchId, ...array_values($categories)]);
 
-        $rows = $stmt->fetchAll();
+        // Con ventana de tiempo para lo ya despachado: los completados del
+        // dia se acumulan y el tablero solo quiere los de hace un rato. Mira
+        // updated_at, que es cuando cambio de estado, no cuando se creo.
+        $reciente = $sinceMinutes !== null
+            ? ' AND o.updated_at > now() - make_interval(mins => ?)'
+            : '';
+
+        $stmt = $this->pdo->prepare(
+            self::SELECT_ORDER
+            . " WHERE o.tenant_id = ? AND o.branch_id = ? AND s.category IN ({$placeholders})"
+            . $reciente
+            . ' ORDER BY o.created_at'
+        );
+
+        $params = [$tenantId, $branchId, ...array_values($categories)];
+        if ($sinceMinutes !== null) {
+            $params[] = $sinceMinutes;
+        }
+        $stmt->execute($params);
+
+        return $this->hydrateAll($stmt->fetchAll());
+    }
+
+    /**
+     * Filas de SELECT_ORDER a pedidos, con sus lineas en una sola consulta
+     * mas (y los modificadores en otra): tres consultas para la lista
+     * entera, no tres por pedido.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return Order[]
+     */
+    private function hydrateAll(array $rows): array
+    {
         $itemsByOrder = $this->itemsForOrders(array_column($rows, 'id'));
 
         return array_map(
@@ -153,11 +245,17 @@ final class OrderRepository
             return [];
         }
 
-        $modifiersByItem = $this->modifiersForItems(array_column($itemRows, 'id'));
+        $itemIds = array_column($itemRows, 'id');
+        $modifiersByItem = $this->modifiersForItems($itemIds);
+        $componentsByItem = $this->componentsForItems($itemIds);
 
         $result = [];
         foreach ($itemRows as $row) {
-            $result[$row['order_id']][] = OrderItem::fromRow($row, $modifiersByItem[$row['id']] ?? []);
+            $result[$row['order_id']][] = OrderItem::fromRow(
+                $row,
+                $modifiersByItem[$row['id']] ?? [],
+                $componentsByItem[$row['id']] ?? [],
+            );
         }
         return $result;
     }
@@ -175,6 +273,27 @@ final class OrderRepository
         $result = [];
         foreach ($stmt->fetchAll() as $row) {
             $result[$row['order_item_id']][] = OrderItemModifier::fromRow($row);
+        }
+        return $result;
+    }
+
+    /**
+     * Lo que llevaba cada combo vendido, en el orden en que se guardo.
+     *
+     * @param string[] $itemIds
+     * @return array<string, OrderItemComponent[]>
+     */
+    private function componentsForItems(array $itemIds): array
+    {
+        $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM order_item_components WHERE order_item_id IN ({$placeholders}) ORDER BY sort_order"
+        );
+        $stmt->execute(array_values($itemIds));
+
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['order_item_id']][] = OrderItemComponent::fromRow($row);
         }
         return $result;
     }
@@ -260,6 +379,29 @@ final class OrderRepository
         return (string) $stmt->fetchColumn();
     }
 
+    /**
+     * Congela lo que lleva un combo en la linea recien creada.
+     *
+     * @param array<int, array{item_id: string, name: string, quantity: int}> $componentes
+     *        ya expandidos por la cantidad pedida
+     */
+    public function addItemComponents(string $orderItemId, array $componentes): void
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO order_item_components (order_item_id, menu_item_id, name_snapshot, quantity, sort_order)
+             VALUES (:order_item_id, :menu_item_id, :name_snapshot, :quantity, :sort_order)'
+        );
+        foreach (array_values($componentes) as $posicion => $componente) {
+            $stmt->execute([
+                'order_item_id' => $orderItemId,
+                'menu_item_id' => $componente['item_id'],
+                'name_snapshot' => $componente['name'],
+                'quantity' => $componente['quantity'],
+                'sort_order' => $posicion,
+            ]);
+        }
+    }
+
     public function addItemModifier(
         string $orderItemId,
         string $modifierId,
@@ -276,6 +418,33 @@ final class OrderRepository
             'name_snapshot' => $nameSnapshot,
             'price_delta' => Money::toDecimalString($priceDeltaCents),
         ]);
+    }
+
+    /**
+     * La bitacora del pedido, del primer estado al ultimo.
+     *
+     * Se escribia desde siempre y solo la leia el reporte de tiempos: nadie
+     * podia ver quien movio que. El nombre del usuario se resuelve con LEFT
+     * JOIN porque changed_by es ON DELETE SET NULL —un empleado que ya no
+     * esta no debe borrar la historia del pedido.
+     *
+     * @return OrderStatusEvent[]
+     */
+    public function statusHistory(string $orderId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT h.id, h.note, h.changed_at, u.name AS changed_by_name,
+                    s.id AS s_id, s.code AS s_code, s.name AS s_name, s.category AS s_category,
+                    s.color AS s_color, s.sort_order AS s_sort_order,
+                    s.is_initial AS s_is_initial, s.is_final AS s_is_final
+               FROM order_status_history h
+               JOIN order_statuses s ON s.id = h.status_id
+               LEFT JOIN users u ON u.id = h.changed_by
+              WHERE h.order_id = :order_id
+              ORDER BY h.changed_at, h.id'
+        );
+        $stmt->execute(['order_id' => $orderId]);
+        return array_map(OrderStatusEvent::fromRow(...), $stmt->fetchAll());
     }
 
     public function addStatusHistory(string $orderId, string $statusId, ?string $changedBy, ?string $note): void

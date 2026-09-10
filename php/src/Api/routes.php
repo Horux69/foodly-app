@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use App\Api\Routes\AdminRoutes;
 use App\Api\Routes\AuthRoutes;
+use App\Api\Routes\CashRoutes;
 use App\Api\Routes\CustomerRoutes;
 use App\Api\Routes\DeliveryRoutes;
 use App\Api\Routes\MenuRoutes;
@@ -21,6 +22,7 @@ AuthRoutes::register($router);
 AdminRoutes::register($router);
 MenuRoutes::register($router);
 OrderRoutes::register($router);
+CashRoutes::register($router);
 DeliveryRoutes::register($router);
 CustomerRoutes::register($router);
 ReportRoutes::register($router);

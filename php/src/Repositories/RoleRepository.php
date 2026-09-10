@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Core\Row;
-use App\Models\Permission;
 use App\Models\Role;
 use PDO;
 
@@ -80,28 +79,17 @@ final class RoleRepository
         );
         foreach ($permissionCodes as $code) {
             $stmt->execute(['role_id' => $roleId, 'code' => $code]);
-        }
-    }
 
-    /** @return Permission[] */
-    public function listPermissions(): array
-    {
-        $stmt = $this->pdo->query('SELECT * FROM permissions ORDER BY code');
-        return array_map(Permission::fromRow(...), $stmt->fetchAll());
-    }
-
-    /**
-     * @param string[] $codes
-     * @return Permission[]
-     */
-    public function permissionsByCodes(array $codes): array
-    {
-        if ($codes === []) {
-            return [];
+            // El INSERT ... SELECT no falla si el codigo no tiene fila: inserta
+            // cero. El permiso quedaria concedido en la pantalla y ausente en
+            // la base, que es la peor forma de fallar. Solo pasa si el catalogo
+            // de Core\Permissions se adelanto a la migracion que siembra la
+            // tabla, y entonces hay que enterarse.
+            if ($stmt->rowCount() === 0) {
+                throw new \RuntimeException(
+                    "El permiso '{$code}' esta en el catalogo pero no en la tabla permissions: falta la migracion que lo siembra"
+                );
+            }
         }
-        $placeholders = implode(',', array_fill(0, count($codes), '?'));
-        $stmt = $this->pdo->prepare("SELECT * FROM permissions WHERE code IN ({$placeholders})");
-        $stmt->execute(array_values($codes));
-        return array_map(Permission::fromRow(...), $stmt->fetchAll());
     }
 }

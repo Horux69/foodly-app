@@ -25,6 +25,25 @@ export function moneyExact(value) {
   }).format(Number(value));
 }
 
+/**
+ * Los importes viajan como cadena decimal ("18000.00") y aquí se suman en
+ * centavos enteros, igual que hace `Core\Money` en el backend: convertir en
+ * los bordes y no arrastrar un float por el medio, que es de donde salen los
+ * 0.30000000000000004.
+ *
+ * Sumar no es calcular un total: la cifra que manda sigue siendo la que
+ * devuelve el backend. Esto solo sirve para proponer un importe que el
+ * cajero todavía puede corregir. Dividir, que es la operación que sí pierde
+ * centavos, se hace en `Domain\BillSplit` y no aquí.
+ */
+export function aCentavos(valor) {
+  return Math.round(Number(valor) * 100);
+}
+
+export function desdeCentavos(centavos) {
+  return (centavos / 100).toFixed(2);
+}
+
 export function number(value) {
   return new Intl.NumberFormat('es-CO').format(Number(value));
 }

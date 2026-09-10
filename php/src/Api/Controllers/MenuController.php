@@ -9,6 +9,7 @@ use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
 use App\Core\Money;
+use App\Domain\ModifierGroupRules;
 use App\Models\MenuItem;
 use App\Models\ModifierGroup;
 use App\Services\MenuCategoryView;
@@ -31,6 +32,9 @@ final class MenuController
             'min_select' => $g->minSelect,
             'max_select' => $g->maxSelect,
             'is_required' => $g->isRequired,
+            // La misma frase que ve quien configura el grupo: la escribe el
+            // dominio, no cada pantalla.
+            'rule' => ModifierGroupRules::describe($g->minSelect, $g->maxSelect, $g->isRequired),
             'modifiers' => array_map(static fn ($m) => [
                 'id' => $m->id,
                 'name' => $m->name,
@@ -42,8 +46,12 @@ final class MenuController
 
     public static function getMenu(): array
     {
-        $ctx = Deps::require(Deps::getContext(), 'menu.view');
-        $categories = MenuService::getMenu($ctx->tenantId, $ctx->branchId);
+        // Tambien con orders.create: no se puede tomar un pedido sin ver la
+        // carta. Exigir 'menu.view' aparte convierte cada rol de cajero mal
+        // armado en una pantalla de venta rota, y el sintoma es un 403 donde
+        // deberian estar los productos.
+        $ctx = Deps::requireAny(Deps::getContext(), 'menu.view', 'orders.create');
+        $categories = MenuService::getMenu($ctx->tenantId, Deps::activeBranchIdOrNull($ctx));
 
         return array_map(static fn (MenuCategoryView $c) => [
             'id' => $c->id,
@@ -55,6 +63,7 @@ final class MenuController
                 'price' => Money::toDecimalString($i->priceCents),
                 'is_available' => $i->isAvailable,
                 'modifier_groups' => self::modifierGroupsOut($i->modifierGroups),
+                'components' => $i->components,
             ], $c->items),
         ], $categories);
     }
@@ -63,9 +72,14 @@ final class MenuController
     public static function getCatalog(): array
     {
         $ctx = Deps::require(Deps::getContext(), 'menu.view');
-        [$categories, $items] = MenuService::getCatalog($ctx->tenantId);
+        $branchId = Deps::activeBranchIdOrNull($ctx);
+        [$categories, $items, $overrides, $groupsByItem, $componentsByItem] =
+            MenuService::getCatalog($ctx->tenantId, $branchId);
 
         return [
+            // Cual sucursal se esta mirando, para que la pantalla pueda decir
+            // "precio en Sede Norte" y no solo "override".
+            'branch_id' => $branchId,
             'categories' => array_map(static fn ($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
@@ -83,6 +97,21 @@ final class MenuController
                 'is_available' => $i->isAvailable,
                 'is_archived' => $i->isArchived,
                 'sort_order' => $i->sortOrder,
+                'branch_override' => isset($overrides[$i->id])
+                    ? [
+                        'price' => $overrides[$i->id]->priceCents === null
+                            ? null
+                            : Money::toDecimalString($overrides[$i->id]->priceCents),
+                        'is_available' => $overrides[$i->id]->isAvailable,
+                    ]
+                    : null,
+                // Solo los ids y en orden: la pantalla ya tiene los grupos
+                // enteros de /menu/modifier-groups y no hace falta repetirlos
+                // en cada producto.
+                'modifier_group_ids' => $groupsByItem[$i->id] ?? [],
+                // Vacio en todos los productos menos en los combos, que son
+                // pocos: no vale la pena una consulta aparte por producto.
+                'components' => $componentsByItem[$i->id] ?? [],
             ], $items),
         ];
     }
@@ -213,9 +242,58 @@ final class MenuController
         return ['id' => $item->id, 'is_available' => $item->isAvailable];
     }
 
+    /**
+     * Define que lleva un combo.
+     *
+     * Se manda la lista entera y reemplaza a la anterior, como los grupos de
+     * modificadores de un producto: un PUT y no un POST por componente,
+     * porque lo que se edita es la composicion completa y no cada pieza.
+     * Una lista vacia lo devuelve a producto suelto.
+     */
+    public static function setComponents(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'menu.edit');
+        $body = Request::json();
+
+        $raw = $body['components'] ?? null;
+        if (!is_array($raw) || array_is_list($raw) === false) {
+            throw new ApiException(422, "'components' tiene que ser una lista");
+        }
+
+        $componentes = [];
+        foreach ($raw as $entrada) {
+            if (!is_array($entrada)) {
+                throw new ApiException(422, 'Cada componente es un objeto con item_id y quantity');
+            }
+            $componentes[] = [
+                'item_id' => Request::uuid($entrada, 'item_id'),
+                'quantity' => array_key_exists('quantity', $entrada) ? Request::int($entrada, 'quantity', min: 1) : 1,
+            ];
+        }
+
+        try {
+            $guardados = MenuService::setComponents($ctx->tenantId, $params['item_id'], $componentes);
+        } catch (MenuError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return ['item_id' => $params['item_id'], 'components' => $guardados];
+    }
+
+    /**
+     * Precio y disponibilidad de un producto en la sucursal activa.
+     *
+     * La sucursal sale de Deps::activeBranchId y ya no del cuerpo: es el
+     * mismo punto unico que usan pedidos, cocina y reportes, y asi no hay dos
+     * formas de decir sobre que sucursal se esta operando.
+     *
+     * Mandar `price: null` no es omitirlo: es quitar el ajuste y devolver el
+     * producto a su precio base.
+     */
     public static function setBranchOverride(array $params): array
     {
         $ctx = Deps::require(Deps::getContext(), 'menu.edit');
+        $branchId = Deps::activeBranchId($ctx);
         $body = Request::json();
 
         $price = array_key_exists('price', $body) && $body['price'] !== null
@@ -228,7 +306,7 @@ final class MenuController
         try {
             $override = MenuService::setBranchOverride(
                 $ctx->tenantId,
-                Request::uuid($body, 'branch_id'),
+                $branchId,
                 $params['item_id'],
                 $price,
                 $isAvailable,

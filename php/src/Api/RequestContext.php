@@ -14,6 +14,8 @@ final class RequestContext
         public readonly ?string $branchId,
         public readonly string $roleCode,
         public readonly array $permissions,
+        /** Cuando la persona escribio su contrasena: acota cuanto puede vivir la sesion. */
+        public readonly int $authTime = 0,
     ) {
     }
 
