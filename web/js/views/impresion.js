@@ -18,7 +18,7 @@ import { date, money, time } from '../format.js';
 import { activeBranch, activeBranchId, branchQuery, me } from '../session.js';
 import { h, render } from '../ui.js';
 import { canal } from './cocina.js';
-import { metodoPago } from './pedido-detalle.js';
+import { metodoPago, propinaSugerida } from './pedido-detalle.js';
 
 /**
  * Manda un nodo a la impresora.
@@ -33,7 +33,7 @@ import { metodoPago } from './pedido-detalle.js';
  * está oculto fuera de `@media print`. Lo único que se arriesga es que un
  * Ctrl+P posterior saque el documento anterior, y para eso está el respaldo.
  */
-function imprimirDocumento(nodo, documento = 'ticket') {
+function imprimirDocumento(nodo, documento = 'ticket', { copias = null } = {}) {
   const host = document.getElementById('impresion');
   if (!host) return;
 
@@ -44,7 +44,8 @@ function imprimirDocumento(nodo, documento = 'ticket') {
   const hojas = [nodo];
   // Las copias son hojas idénticas, no una repetición dentro de la misma:
   // `@media print` ya corta entre `.doc` hermanos.
-  for (let i = 1; i < perfil.copies; i += 1) {
+  const veces = copias ?? perfil.copies;
+  for (let i = 1; i < veces; i += 1) {
     hojas.push(...[nodo].flat().map((n) => n.cloneNode(true)));
   }
 
@@ -217,10 +218,22 @@ export function imprimirComanda(pedido, { reimpresion = false, curso = null } = 
  * Los importes salen del pedido tal como los calculó el backend. Aquí no se
  * suma nada: un ticket que dijera un total distinto al del pedido sería peor
  * que no imprimir ninguno.
+ *
+ * Con `precuenta` sale el mismo documento marcado como lo que es: el papel
+ * que se lleva a la mesa antes de cobrar. Es el mismo y no otro a propósito
+ * —dos documentos con la misma cuenta terminan diciendo cifras distintas—,
+ * y no cierra ni cambia nada: hasta ahora la única forma de mostrarle el
+ * total a la mesa era cobrar.
+ *
+ * @param {{precuenta?: boolean}} opciones
  */
-export function imprimirTicket(pedido, pagos = []) {
+export function imprimirTicket(pedido, pagos = [], { precuenta = false } = {}) {
   const sede = activeBranch();
   const saldo = pedido.balance;
+  // Lo que el restaurante sugiere, y que es voluntario: decirlo en el papel
+  // es la forma de que el cliente lo decida antes de que el cajero
+  // pregunte. Solo si todavía no hay propina puesta.
+  const sugerida = precuenta && me()?.asks_tip && !Number(pedido.tip) ? propinaSugerida(pedido) : 0;
 
   const fila = (etiqueta, valor) =>
     h('div', { class: 'doc-fila' }, h('span', {}, etiqueta), h('span', {}, valor));
@@ -229,6 +242,10 @@ export function imprimirTicket(pedido, pagos = []) {
     h(
       'div',
       { class: 'doc' },
+      // Marcada en grande: un papel con el total que no diga que no es la
+      // factura se entrega como si lo fuera.
+      precuenta ? h('div', { class: 'doc-reimpresion' }, 'PRE-CUENTA — NO ES FACTURA DE VENTA') : null,
+
       h(
         'div',
         { class: 'doc-cabeza' },
@@ -239,10 +256,12 @@ export function imprimirTicket(pedido, pagos = []) {
         h('div', { class: 'doc-numero' }, pedido.order_number),
         // El número autorizado, cuando el restaurante emite documento: es lo
         // que hace del papel un comprobante y no un recibo cualquiera.
-        pedido.fiscal
+        // El número autorizado nunca va en una pre-cuenta: con él encima,
+        // el papel se lee como el comprobante que todavía no es.
+        pedido.fiscal && !precuenta
           ? h('div', { class: 'doc-fiscal' }, pedido.fiscal.full_number)
           : null,
-        pedido.fiscal?.external_id
+        pedido.fiscal?.external_id && !precuenta
           ? h('div', { class: 'doc-detalle' }, pedido.fiscal.external_id)
           : null,
         h(
@@ -284,7 +303,9 @@ export function imprimirTicket(pedido, pagos = []) {
         Number(pedido.discount) ? fila('Descuento', `- ${money(pedido.discount)}`) : null,
         Number(pedido.tip) ? fila('Propina', money(pedido.tip)) : null,
         fila('TOTAL', money(pedido.total)),
-        Number(pedido.tax_total) ? fila('Impuesto incluido', money(pedido.tax_total)) : null
+        Number(pedido.tax_total) ? fila('Impuesto incluido', money(pedido.tax_total)) : null,
+        sugerida ? fila('Propina sugerida (voluntaria)', money(sugerida)) : null,
+        sugerida ? fila('Total con propina', money(Number(pedido.total) + sugerida)) : null
       ),
 
       pagos.length
@@ -301,7 +322,16 @@ export function imprimirTicket(pedido, pagos = []) {
           )
         : null,
 
-      h('div', { class: 'doc-pie' }, '¡Gracias por su compra!')
-    )
+      h(
+        'div',
+        { class: 'doc-pie' },
+        precuenta ? 'Este documento no es un comprobante de pago.' : '¡Gracias por su compra!'
+      )
+    ),
+    'ticket',
+    // Mismo papel que el ticket —el ancho del rollo es del rollo— pero una
+    // sola hoja: la segunda copia del ticket es para archivar la venta, y
+    // una pre-cuenta no es una venta.
+    { copias: precuenta ? 1 : null }
   );
 }

@@ -31,6 +31,16 @@ const METODOS = {
 
 export const metodoPago = (code) => METODOS[code] ?? code;
 
+/**
+ * Lo que el restaurante sugiere de propina, sobre el subtotal.
+ *
+ * Vive aquí y no en cada pantalla porque lo usan dos —la fila de propina al
+ * cobrar y la pre-cuenta que se lleva a la mesa— y decir dos cifras
+ * distintas por la misma venta es una discusión con el cliente.
+ */
+export const propinaSugerida = (pedido) =>
+  Math.floor((Number(pedido.subtotal) * (me()?.tip_percent ?? 10)) / 100);
+
 /** Tono del badge según la categoría del estado, nunca según su código. */
 const TONO_CATEGORIA = {
   new: 'neutral',
@@ -176,7 +186,17 @@ function bloqueImpresion(pedido, pagos) {
       variant: 'secondary',
       iconName: 'etiqueta',
       onClick: () => imprimirTicket(pedido, pagos),
-    })
+    }),
+    // La pre-cuenta se ofrece mientras quede saldo: con el pedido saldado
+    // el documento que va a la mesa es el ticket, y dar a elegir entre los
+    // dos ahí solo invita a entregar el que no es.
+    pedido.balance?.is_settled
+      ? null
+      : button('Pre-cuenta', {
+          variant: 'secondary',
+          iconName: 'pedidos',
+          onClick: () => imprimirTicket(pedido, pagos, { precuenta: true }),
+        })
   );
 }
 
@@ -952,7 +972,7 @@ function filaPropina(pedido, recargar) {
   const contexto = me();
   if (!contexto.asks_tip) return null;
 
-  const sugerida = Math.floor((Number(pedido.subtotal) * (contexto.tip_percent ?? 10)) / 100);
+  const sugerida = propinaSugerida(pedido);
   const puesta = Number(pedido.tip);
 
   const fijar = async (cents, boton) => {

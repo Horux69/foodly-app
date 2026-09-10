@@ -258,10 +258,13 @@ describe('marchar un tiempo desde el detalle', () => {
     boton('Marchar', panel()).click();
     await reposar(6);
 
-    expect(llamada(fetch, 'POST')).toEqual({
-      url: '/api/v1/orders/o1/fire',
-      cuerpo: { course: 3 },
-    });
+    // Se busca la llamada al marchado y no "el último POST": la pantalla de
+    // venta de la prueba anterior deja programada su previsualización, y
+    // esa carrera haría fallar esto un día sí y otro no.
+    const marchado = fetch.mock.calls.find(
+      ([url, o]) => o?.method === 'POST' && String(url).endsWith('/orders/o1/fire')
+    );
+    expect(JSON.parse(marchado[1].body)).toEqual({ course: 3 });
     expect(window.print).toHaveBeenCalledTimes(1);
     // La comanda impresa es la de los postres, no la del pedido entero.
     const impreso = document.getElementById('impresion').textContent;

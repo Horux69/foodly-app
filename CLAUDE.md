@@ -632,7 +632,7 @@ componentes no llevan cifra propia porque no la tienen.
 - **Fase 4 (servicio en mesa)**, en curso: modificar un pedido abierto
   (F4.0) —la pieza pesada que le faltaba al backend—, el estado de cada mesa
   (F4.1), el mapa del salón (F4.2), mover o unir cuentas (F4.3), el mesero
-  a cargo (F4.4) y los tiempos de la cuenta (F4.5).
+  a cargo (F4.4), los tiempos de la cuenta (F4.5) y la pre-cuenta (F4.6).
 
 Sobre editar un pedido, cuatro decisiones que conviene no deshacer:
 
@@ -771,6 +771,22 @@ después a un tiempo ya marchado sale de una vez —si esperara, esperaría a
 que alguien marche algo que ya se marchó, o sea para siempre— y volver a
 marchar un tiempo se rechaza en vez de reescribir su hora, que es lo que la
 cocina lee para saber qué es nuevo.
+
+Sobre la pre-cuenta (F4.6), tres cosas:
+
+- **Es el ticket, no otro documento.** El papel que se lleva a la mesa antes
+  de cobrar sale de la misma función con una marca: dos documentos distintos
+  para la misma cuenta terminan diciendo cifras distintas. Hasta ahora la
+  única forma de mostrarle el total a la mesa era cobrar.
+- **No escribe nada.** No cierra la cuenta, no cobra y no toca el pedido; no
+  hay endpoint. Y va marcada en grande como que no es factura y sin el
+  número autorizado —con él encima, el papel se lee como el comprobante que
+  todavía no es—.
+- **La propina se sugiere ahí, y se dice que es voluntaria.** Es donde el
+  cliente la decide, antes de que el cajero pregunte. Sale del mismo
+  porcentaje configurado que ofrece la caja (`propinaSugerida`, una sola
+  función para las dos pantallas): dos cifras distintas por la misma venta
+  son una discusión en la mesa.
 
 El reporte por mesero (`GET /reports/sales-by-server`) va aparte del que ya
 existía por usuario, y **separa la venta de la propina**: sumadas, quien
@@ -927,9 +943,14 @@ Un pedido tiene un documento y solo uno, y lo impone la clave única: volver a
 emitirlo devuelve el que ya existe, como una llave de idempotencia. Se emite
 sobre una venta saldada, porque el documento dice cuánto se cobró.
 
-**Siguiente**: el resto de la fase 4 (la pre-cuenta) y las fases 7 a 12 del
-segundo plan de obra: caja completa, impresión por estaciones, domicilios,
-costos, promociones y cumplimiento.
+**Siguiente**: lo que queda de las fases 7 a 12 del segundo plan de obra
+—el resto de la caja (varias cajas, corte X, vueltas y redondeo), el agente
+ESC/POS opcional y la identidad del ticket, los domicilios (liquidación del
+repartidor, seguimiento público, zonas en mapa, canales de agregador,
+promesa de entrega), inventario y costos, precios por canal y promociones, y
+lo que falta de cumplimiento (bitácora de auditoría, límite de intentos de
+ingreso, alcance por sucursal, exportación contable)—. La fase 4 quedó
+completa.
 
 Pendientes conocidos:
 

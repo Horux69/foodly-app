@@ -252,3 +252,145 @@ describe('el ciclo de impresión', () => {
     expect(document.getElementById('impresion').childElementCount).toBe(0);
   });
 });
+
+/**
+ * La pre-cuenta (F4.6): el papel que se lleva a la mesa antes de cobrar.
+ *
+ * Es el mismo documento que el ticket a propósito —dos documentos con la
+ * misma cuenta terminan diciendo cifras distintas— pero marcado como lo que
+ * es. Lo que se protege aquí es justamente eso: que no se pueda confundir
+ * con la factura, y que no cierre ni cambie nada.
+ */
+describe('pre-cuenta', () => {
+  it('sale marcada como que no es factura', async () => {
+    await abrirPanel();
+    pulsarEnPanel('Pre-cuenta');
+    await reposar();
+
+    const d = documento();
+    expect(d).toContain('NO ES FACTURA DE VENTA');
+    expect(d).toContain('no es un comprobante de pago');
+    expect(d).not.toContain('Gracias por su compra');
+  });
+
+  it('lleva la misma cuenta que el ticket y lo que falta por pagar', async () => {
+    await abrirPanel();
+    pulsarEnPanel('Pre-cuenta');
+    await reposar();
+
+    const d = documento();
+    expect(d).toContain('Pizza margarita');
+    expect(d).toContain('TOTAL');
+    expect(d).toContain('44.000');
+    expect(d).toContain('Falta por pagar');
+  });
+
+  /**
+   * Imprimirla no escribe nada: no cierra la cuenta, no cobra y no cambia
+   * el pedido. Se mira que no salga ninguna escritura y no que no salga
+   * ninguna petición: la primera impresión de la sesión pide los perfiles
+   * de la sucursal, que es una lectura.
+   */
+  it('no escribe nada en el servidor', async () => {
+    const { fetch } = await abrirPanel();
+    const escrituras = () =>
+      fetch.mock.calls.filter(([, o]) => o?.method && o.method !== 'GET').length;
+    const antes = escrituras();
+
+    pulsarEnPanel('Pre-cuenta');
+    await reposar();
+
+    expect(escrituras()).toBe(antes);
+    expect(window.print).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Con el número autorizado encima, el papel se lee como el comprobante
+   * que todavía no es.
+   */
+  it('nunca lleva el número fiscal', async () => {
+    await montarApp({
+      token: 'un-token',
+      hash: '#/pedidos',
+      respuestas: {
+        ...respuestas(),
+        // El número autorizado llega por su propia petición, como en la
+        // aplicación real.
+        '/orders/o1/fiscal-document': { document: { full_number: 'POS1000', external_id: 'CUFE-123' } },
+      },
+    });
+    document.querySelectorAll('#vista button').forEach((b) => {
+      if (b.textContent === 'Pedidos del día') b.click();
+    });
+    await reposar();
+    [...document.querySelectorAll('#vista button')].find((b) => b.textContent === 'SUR-00004').click();
+    await reposar(6);
+
+    pulsarEnPanel('Pre-cuenta');
+    await reposar();
+    expect(documento()).not.toContain('POS1000');
+
+    pulsarEnPanel('Ticket');
+    await reposar();
+    expect(documento()).toContain('POS1000');
+  });
+
+  /**
+   * La propina se sugiere en el papel y se dice que es voluntaria: es donde
+   * el cliente la decide, antes de que el cajero pregunte.
+   */
+  it('sugiere la propina cuando el restaurante la pide', async () => {
+    await montarApp({
+      token: 'un-token',
+      hash: '#/pedidos',
+      respuestas: {
+        ...respuestas(),
+        '/auth/me': sesion({
+          permissions: ['orders.view', 'orders.create'],
+          tenant_name: 'Pizza Rápida',
+          asks_tip: true,
+          tip_percent: 10,
+        }),
+      },
+    });
+    document.querySelectorAll('#vista button').forEach((b) => {
+      if (b.textContent === 'Pedidos del día') b.click();
+    });
+    await reposar();
+    [...document.querySelectorAll('#vista button')].find((b) => b.textContent === 'SUR-00004').click();
+    await reposar(6);
+
+    pulsarEnPanel('Pre-cuenta');
+    await reposar();
+
+    const d = documento();
+    // El 10% de 39.000 de subtotal.
+    expect(d).toContain('3.900');
+    expect(d).toContain('voluntaria');
+  });
+
+  /** Con la cuenta saldada el documento que va a la mesa es el ticket. */
+  it('no se ofrece cuando ya está pagado', async () => {
+    await montarApp({
+      token: 'un-token',
+      hash: '#/pedidos',
+      respuestas: {
+        ...respuestas(),
+        '/orders/o1': {
+          ...PEDIDO,
+          balance: { ...PEDIDO.balance, paid: '44000.00', net_paid: '44000.00', pending: '0.00', is_settled: true },
+        },
+      },
+    });
+    document.querySelectorAll('#vista button').forEach((b) => {
+      if (b.textContent === 'Pedidos del día') b.click();
+    });
+    await reposar();
+    [...document.querySelectorAll('#vista button')].find((b) => b.textContent === 'SUR-00004').click();
+    await reposar(6);
+
+    const botones = [...document.querySelector('[role="dialog"]').querySelectorAll('button')];
+    expect(botones.find((b) => b.textContent.trim() === 'Pre-cuenta')).toBeUndefined();
+    expect(botones.find((b) => b.textContent.trim() === 'Ticket')).toBeDefined();
+  });
+});
