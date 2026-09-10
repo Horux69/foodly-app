@@ -122,6 +122,9 @@ final class AuthController
             'payment_methods' => PaymentProviders::availableMethods(),
             'uses_tables' => $settings->usesTables,
             'asks_tip' => $settings->asksTip,
+            // Cuanto sugerir al cobrar. Es una sugerencia: la propina se
+            // puede quitar de un toque.
+            'tip_percent' => $settings->tipPercent,
         ];
     }
 }

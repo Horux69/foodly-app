@@ -479,6 +479,34 @@ final class OrderController
         ];
     }
 
+    /**
+     * Fija la propina del pedido, que es lo que se decide al cobrar.
+     *
+     * Pide `payments.register` y no un permiso propio: es parte de cobrar.
+     * Cero la quita, y no hace falta justificarlo — la propina es
+     * voluntaria.
+     */
+    public static function setTip(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'payments.register');
+        $body = Request::json();
+
+        try {
+            $order = OrderService::applyTip(
+                $ctx->tenantId,
+                $params['order_id'],
+                Money::fromDecimalString(Request::decimalString($body, 'amount')),
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+        ];
+    }
+
     /** Los motivos que el restaurante configuro, para el desplegable de la caja. */
     public static function discountReasons(): array
     {

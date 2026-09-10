@@ -22,6 +22,14 @@ final class TenantSettings
     /** Claves de DEFAULTS_BY_BUSINESS_TYPE, expuestas para validar entrada (p.ej. --business-type de bin/create_tenant.php). */
     public const BUSINESS_TYPES = ['fast_food', 'table_service', 'delivery'];
 
+    /**
+     * Cuanto se sugiere de propina, en porcentaje del subtotal.
+     *
+     * Es una sugerencia y no una regla: en Colombia la propina es voluntaria
+     * y hay que poder quitarla sin discutir. El 10% es la costumbre.
+     */
+    public const TIP_PERCENT_DEFAULT = 10.0;
+
     private const DEFAULTS_BY_BUSINESS_TYPE = [
         'fast_food' => ['channels' => ['counter', 'delivery'], 'uses_tables' => false, 'asks_tip' => false],
         'table_service' => ['channels' => ['table'], 'uses_tables' => true, 'asks_tip' => true],
@@ -35,6 +43,8 @@ final class TenantSettings
         public readonly array $channels,
         public readonly bool $usesTables,
         public readonly bool $asksTip,
+        /** Porcentaje sugerido de propina. La propina sigue siendo opcional. */
+        public readonly float $tipPercent = self::TIP_PERCENT_DEFAULT,
     ) {
     }
 
@@ -75,6 +85,16 @@ final class TenantSettings
             }
         }
 
+        if (array_key_exists('tip_percent', $raw)) {
+            $percent = $raw['tip_percent'];
+            if (!is_int($percent) && !is_float($percent)) {
+                throw new SettingsError("'tip_percent' debe ser un numero");
+            }
+            if ($percent < 0 || $percent > 100) {
+                throw new SettingsError("'tip_percent' va entre 0 y 100");
+            }
+        }
+
         // Coherencia: vender por mesa exige manejar mesas. Sin esto quedaria
         // un tenant que acepta pedidos de mesa pero declara que no tiene mesas.
         if (
@@ -93,6 +113,7 @@ final class TenantSettings
             array_values($data['channels']),
             (bool) $data['uses_tables'],
             (bool) $data['asks_tip'],
+            (float) ($data['tip_percent'] ?? self::TIP_PERCENT_DEFAULT),
         );
     }
 }

@@ -103,7 +103,12 @@ final class AdminService
         if ($businessType !== $tenant->businessType) {
             $vigente = TenantSettings::parse($tenant->settings, $tenant->businessType);
             $merged = array_merge(
-                ['channels' => $vigente->channels, 'uses_tables' => $vigente->usesTables, 'asks_tip' => $vigente->asksTip],
+                [
+                    'channels' => $vigente->channels,
+                    'uses_tables' => $vigente->usesTables,
+                    'asks_tip' => $vigente->asksTip,
+                    'tip_percent' => $vigente->tipPercent,
+                ],
                 $merged
             );
         }

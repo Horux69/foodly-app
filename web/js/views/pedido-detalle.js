@@ -581,7 +581,11 @@ function formularioCobro(pedido, recargar) {
 
   return h(
     'div',
-    { class: 'flex flex-wrap items-center gap-2 pt-3 mt-1 border-t border-[--linea]' },
+    { class: 'space-y-2 pt-3 mt-1 border-t border-[--linea]' },
+    filaPropina(pedido, recargar),
+    h(
+    'div',
+    { class: 'flex flex-wrap items-center gap-2' },
     monto,
     metodo,
     cobrar,
@@ -592,6 +596,67 @@ function formularioCobro(pedido, recargar) {
       iconName: 'clientes',
       onClick: () => abrirDivision(pedido, recargar),
     })
+    )
+  );
+}
+
+/**
+ * La propina, que se decide al pagar y no al pedir.
+ *
+ * Se ofrece el porcentaje que el restaurante configuró y se puede quitar de
+ * un toque: en Colombia es voluntaria, y una propina que cuesta discutir es
+ * la forma más rápida de perder un cliente. Al fijarla sube el total, así
+ * que el saldo por cobrar la incluye — el cajero cobra una sola vez.
+ */
+function filaPropina(pedido, recargar) {
+  const contexto = me();
+  if (!contexto.asks_tip) return null;
+
+  const sugerida = Math.floor((Number(pedido.subtotal) * (contexto.tip_percent ?? 10)) / 100);
+  const puesta = Number(pedido.tip);
+
+  const fijar = async (cents, boton) => {
+    boton.disabled = true;
+    try {
+      await api.put(`/orders/${pedido.id}/tip`, { amount: cents });
+      await recargar();
+    } catch (error) {
+      toast(error.message);
+      boton.disabled = false;
+    }
+  };
+
+  const otra = input({
+    type: 'number',
+    min: '0',
+    placeholder: 'Otra',
+    class: 'campo w-24 tabular-nums',
+    'aria-label': 'Otra propina',
+  });
+
+  return h(
+    'div',
+    { class: 'flex flex-wrap items-center gap-2 text-[13px]' },
+    h('span', { class: 'text-stone-500' }, puesta ? `Propina ${money(puesta)}` : 'Propina'),
+    sugerida && puesta !== sugerida
+      ? button(`${contexto.tip_percent ?? 10}% · ${money(sugerida)}`, {
+          variant: 'secondary',
+          'aria-label': 'Propina sugerida',
+          onClick: (e) => fijar(sugerida, e.currentTarget),
+        })
+      : null,
+    otra,
+    button('Poner', {
+      variant: 'secondary',
+      'aria-label': 'Poner otra propina',
+      onClick: (e) => fijar(Number(otra.value || 0), e.currentTarget),
+    }),
+    puesta
+      ? button('Sin propina', {
+          variant: 'subtle',
+          onClick: (e) => fijar(0, e.currentTarget),
+        })
+      : null
   );
 }
 

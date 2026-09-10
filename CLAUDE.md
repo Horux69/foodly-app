@@ -568,7 +568,7 @@ y de ahí en adelante habla por la conexión `app()`, bajo RLS.
 Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
 obligatorio, cobro por partes, reembolso, las tres reglas de
 `StatusChangeRules` contra el saldo real), la edición de un pedido abierto,
-los movimientos del cajón, los descuentos con su tope por rol, los combos —el precio del paquete,
+los movimientos del cajón, los descuentos con su tope por rol, la propina, los combos —el precio del paquete,
 la composición congelada y el bloqueo al archivar— y el aislamiento entre
 empresas,
 que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
@@ -662,7 +662,8 @@ porque ahora lo abren dos pantallas; importarlo desde `pedidos.js` habría
 creado un ciclo entre módulos.
 
 - **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
-  (F7.1) y descuentos con motivo, autor y tope (F7.2).
+  (F7.1), descuentos con motivo, autor y tope (F7.2) y la propina al cobrar
+  (F7.3).
 
 Sobre los movimientos del cajón, tres cosas:
 
@@ -711,6 +712,22 @@ código los comprobara — una promesa falsa se ve igual que una cumplida desde
 fuera. Los tres que no pasan por `Deps` van en una lista explícita: los exige
 la máquina de estados contra el `required_permission` de cada transición.
 
+Sobre la propina (F7.3), dos cosas:
+
+- **Se decide al cobrar, no al pedir.** Antes viajaba en el cuerpo de
+  `POST /orders` y no se podía tocar después: había que adivinarla antes de
+  que el cliente pagara. Ahora `PUT /orders/{id}/tip` la fija sobre una
+  cuenta abierta, sube el total y con él el saldo, así que el cajero cobra
+  una sola vez. El porcentaje sugerido es configuración del restaurante
+  (`tenants.settings.tip_percent`, 10 por defecto) y no una constante.
+- **Es voluntaria y quitarla es un toque.** `Domain\TipRules` acepta el cero
+  sin justificación y frena lo que casi seguro es un cero de más —una
+  propina mayor que la venta—, que es mejor descubrir en el mostrador que en
+  el arqueo. Quitar una propina ya cobrada choca con la misma regla que
+  cualquier edición: primero se reembolsa.
+
+Falta repartirla por mesero, que depende de F4.4 (`orders.server_id`).
+
 **Siguiente**: el resto de la fase 4 (estado de las mesas, mapa del salón,
 mover y juntar, mesero a cargo, tiempos y pre-cuenta) y las fases 7 a 12 del
 segundo plan de obra: caja completa, impresión por estaciones, domicilios,
@@ -736,7 +753,8 @@ Pendientes conocidos:
   diálogos, la renovación del token y el cambio de contraseña, la comparación
   entre períodos con su descarga en CSV, los combos en la pantalla del menú,
   la edición de un pedido abierto, los movimientos del cajón, el descuento
-  con motivo y permiso, y que un botón que falla vuelva a servir.
+  con motivo y permiso, la propina al cobrar, y que un botón que falla
+  vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

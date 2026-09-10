@@ -486,6 +486,13 @@ final class OrderRepository
         ]);
     }
 
+    /** Fija la propina del pedido. Los totales se guardan aparte, con updateTotals. */
+    public function setTip(string $orderId, int $tipCents): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE orders SET tip = :tip, updated_at = now() WHERE id = :id');
+        $stmt->execute(['tip' => Money::toDecimalString($tipCents), 'id' => $orderId]);
+    }
+
     /** Los totales del pedido despues de una edicion. Los ajustes no se tocan aqui. */
     public function updateTotals(string $orderId, int $subtotalCents, int $taxTotalCents, int $totalCents): void
     {

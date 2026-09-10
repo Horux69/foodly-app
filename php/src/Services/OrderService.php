@@ -26,6 +26,8 @@ use App\Domain\OrderTotalsError;
 use App\Domain\PaymentBalance;
 use App\Domain\ScheduleWindow;
 use App\Domain\TenantSettings;
+use App\Domain\TipError;
+use App\Domain\TipRules;
 use App\Models\Branch;
 use App\Models\MenuItem;
 use App\Models\Modifier;
@@ -414,14 +416,15 @@ final class OrderService
         string $nota,
         ?string $userId,
         ?int $descuentoCents = null,
+        ?int $propinaCents = null,
     ): Order {
         $totals = OrderTotalsCalculator::totalsFromLines(
             $resultados,
             $order->deliveryFeeCents,
-            // El descuento recien aplicado todavia no esta en $order, que se
+            // El ajuste recien aplicado todavia no esta en $order, que se
             // leyo antes de escribirlo.
             $descuentoCents ?? $order->discountCents,
-            $order->tipCents,
+            $propinaCents ?? $order->tipCents,
         );
 
         try {
@@ -514,6 +517,49 @@ final class OrderService
             DiscountRules::describe($discountCents, $order->subtotalCents, $motivo),
             $userId,
             descuentoCents: $discountCents,
+        );
+    }
+
+    /**
+     * Fija la propina de un pedido, que es lo que se decide al cobrar.
+     *
+     * A diferencia del descuento no pide permiso propio ni motivo: la
+     * propina no sale de la venta, entra. Lo que sí exige es que el
+     * restaurante la reciba —`asks_tip`— y que el pedido siga abierto.
+     */
+    public static function applyTip(
+        string $tenantId,
+        string $orderId,
+        int $tipCents,
+        ?string $userId = null,
+    ): Order {
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+        $order = self::abrirParaEditar($orders, $tenantId, $orderId);
+
+        $tenant = (new TenantRepository($pdo))->get($tenantId);
+        $settings = TenantSettings::parse($tenant?->settings, $tenant?->businessType ?? 'fast_food');
+        if ($tipCents !== 0 && !$settings->asksTip) {
+            throw new OrderError('Este restaurante no recibe propina');
+        }
+
+        try {
+            TipRules::validate($tipCents, $order->subtotalCents);
+        } catch (TipError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $orders->setTip($order->id, $tipCents);
+
+        return self::cerrarEdicion(
+            $orders,
+            $order,
+            self::resultadosCongelados($order->items),
+            $tipCents === 0
+                ? 'Quito la propina'
+                : 'Propina de ' . \App\Core\Money::toDecimalString($tipCents),
+            $userId,
+            propinaCents: $tipCents,
         );
     }
 

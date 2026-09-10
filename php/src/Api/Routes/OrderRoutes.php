@@ -33,6 +33,8 @@ final class OrderRoutes
         // tampoco lo comprobaba nadie.
         $router->get('/discount-reasons', fn () => OrderController::discountReasons());
         $router->put('/orders/{order_id:uuid}/discount', fn ($p) => OrderController::setDiscount($p));
+        // La propina se decide al cobrar, no al pedir (F7.3).
+        $router->put('/orders/{order_id:uuid}/tip', fn ($p) => OrderController::setTip($p));
 
         $router->post('/orders/{order_id:uuid}/status', fn ($p) => OrderController::changeStatus($p));
 

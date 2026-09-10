@@ -92,6 +92,7 @@ final class AdminController
             'channels' => $settings->channels,
             'uses_tables' => $settings->usesTables,
             'asks_tip' => $settings->asksTip,
+            'tip_percent' => $settings->tipPercent,
         ];
     }
 
@@ -108,6 +109,11 @@ final class AdminController
         }
         if (array_key_exists('asks_tip', $body) && $body['asks_tip'] !== null) {
             $changes['asks_tip'] = Request::bool($body, 'asks_tip');
+        }
+        if (array_key_exists('tip_percent', $body) && $body['tip_percent'] !== null) {
+            // Es la sugerencia que ve el cajero, no un cargo: la propina se
+            // sigue pudiendo quitar.
+            $changes['tip_percent'] = (float) Request::decimalString($body, 'tip_percent');
         }
 
         // Identidad del restaurante: van aparte porque son columnas de
@@ -135,6 +141,7 @@ final class AdminController
             'channels' => $settings->channels,
             'uses_tables' => $settings->usesTables,
             'asks_tip' => $settings->asksTip,
+            'tip_percent' => $settings->tipPercent,
         ];
     }
 
