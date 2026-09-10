@@ -172,7 +172,7 @@ final class ReportService
                         'Reembolso', $r['order_number'], $r['amount'], $r['at'], $r['reason'], $r['by_name'],
                     ], $repo->refunds($tenantId, $branchId, $start, $end)),
                     ...array_map(static fn (array $r) => [
-                        'Descuento', $r['order_number'], $r['discount'], $r['at'], null, $r['by_name'],
+                        'Descuento', $r['order_number'], $r['discount'], $r['at'], $r['reason'], $r['by_name'],
                     ], $repo->discounts($tenantId, $branchId, $start, $end)),
                 ],
                 $nombre,

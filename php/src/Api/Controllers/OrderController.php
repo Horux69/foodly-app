@@ -13,6 +13,7 @@ use App\Core\Money;
 use App\Domain\OrderEditRules;
 use App\Domain\PaymentBalance;
 use App\Models\Order;
+use App\Repositories\DiscountReasonRepository;
 use App\Models\OrderStatusRow;
 use App\Services\DeliveryInput;
 use App\Services\OrderError;
@@ -159,6 +160,11 @@ final class OrderController
         $branchId = Deps::activeBranchId($ctx);
         $body = Request::json();
         [$deliveryFee, $discount, $tip] = self::adjustments($body);
+        // El descuento sale de la venta sin dejar cobro ni reembolso detras:
+        // es el unico ajuste que necesita su propio permiso.
+        if ($discount > 0) {
+            Deps::require($ctx, 'orders.discount');
+        }
 
         try {
             $order = OrderService::createOrder(
@@ -176,6 +182,7 @@ final class OrderController
                 $discount,
                 $tip,
                 self::deliveryFrom($body),
+                Request::optionalUuid($body, 'discount_reason_id'),
             );
         } catch (OrderError $e) {
             throw new ApiException(422, $e->getMessage());
@@ -441,5 +448,43 @@ final class OrderController
         return self::orderOut($order) + [
             'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
         ];
+    }
+
+    /**
+     * Aplica o quita el descuento de un pedido abierto.
+     *
+     * Cero lo quita, y entonces no hace falta motivo: dejar de regalar plata
+     * no necesita justificacion. Lo demas —el tope del rol, que el motivo
+     * exista— lo decide el dominio.
+     */
+    public static function setDiscount(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.discount');
+        $body = Request::json();
+
+        try {
+            $order = OrderService::applyDiscount(
+                $ctx->tenantId,
+                $params['order_id'],
+                Money::fromDecimalString(Request::decimalString($body, 'amount')),
+                Request::optionalUuid($body, 'reason_id'),
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+        ];
+    }
+
+    /** Los motivos que el restaurante configuro, para el desplegable de la caja. */
+    public static function discountReasons(): array
+    {
+        $ctx = Deps::requireAny(Deps::getContext(), 'orders.discount', 'settings.view');
+
+        return (new DiscountReasonRepository(Database::app()))
+            ->listForTenant($ctx->tenantId, soloActivos: !$ctx->has('settings.view'));
     }
 }

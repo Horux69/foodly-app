@@ -69,8 +69,14 @@ async function vistaNuevo(host) {
   render(host, skeleton({ rows: 2 }));
 
   let menu;
+  let motivos = [];
   try {
-    menu = await api.get(`/menu${branchQuery()}`);
+    // Los motivos solo si se van a poder usar: sin el permiso, el campo no
+    // existe y la petición sería por nada.
+    [menu, motivos] = await Promise.all([
+      api.get(`/menu${branchQuery()}`),
+      can('orders.discount') ? api.get('/discount-reasons') : [],
+    ]);
   } catch (error) {
     return render(host, errorBox(error.message, () => vistaNuevo(host)));
   }
@@ -128,7 +134,16 @@ async function vistaNuevo(host) {
   const mesa = input({ placeholder: 'Ej. M1' });
   const nombre = input({ placeholder: 'Nombre del cliente' });
   const domicilio = input({ type: 'number', min: '0', value: '0' });
+  // El descuento es el único ajuste que saca plata de la venta sin dejar
+  // cobro ni reembolso detrás: pide su propio permiso y un motivo. Quien no
+  // lo tiene, no ve el campo — antes era una casilla libre para cualquiera
+  // con caja.
+  const puedeDescontar = can('orders.discount');
   const descuento = input({ type: 'number', min: '0', value: '0' });
+  const motivoDescuento = select(
+    [{ value: '', label: 'Motivo…' }, ...motivos.map((m) => ({ value: m.id, label: m.name }))],
+    { 'aria-label': 'Motivo del descuento' }
+  );
   const propina = input({ type: 'number', min: '0', value: '0' });
   const notas = h('textarea', { rows: '2', placeholder: 'Notas para la cocina', class: 'campo' });
 
@@ -454,7 +469,8 @@ async function vistaNuevo(host) {
       // Con zona, la tarifa la pone la zona y el backend ignora esto: por eso
       // el campo se deshabilita en pantalla en vez de mentir con una cifra.
       delivery_fee: Number(domicilio.value || 0),
-      discount: Number(descuento.value || 0),
+      discount: puedeDescontar ? Number(descuento.value || 0) : 0,
+      discount_reason_id: motivoDescuento.value || null,
       tip: contexto.asks_tip ? Number(propina.value || 0) : 0,
       delivery: entrega,
       items: carrito.map((l) => ({
@@ -589,7 +605,8 @@ async function vistaNuevo(host) {
               'div',
               { class: 'grid grid-cols-2 gap-2' },
               campoNumero('Domicilio', domicilio),
-              campoNumero('Descuento', descuento),
+              puedeDescontar ? campoNumero('Descuento', descuento) : null,
+              puedeDescontar ? campoNumero('Motivo', motivoDescuento) : null,
               contexto.asks_tip ? campoNumero('Propina', propina) : null
             ),
             notas

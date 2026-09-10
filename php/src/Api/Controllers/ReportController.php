@@ -253,7 +253,9 @@ final class ReportController
                 'amount' => self::money($r['discount']),
                 'order_total' => self::money($r['total']),
                 'at' => $r['at'],
-                'reason' => null,
+                // Desde F7.2 un descuento no se puede aplicar sin motivo; los
+                // de antes de la migracion siguen sin tenerlo.
+                'reason' => $r['reason'],
                 'by_name' => $r['by_name'],
             ]),
         ];

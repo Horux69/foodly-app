@@ -10,6 +10,7 @@ use App\Domain\SettingsError;
 use App\Domain\Slug;
 use App\Domain\TenantSettings;
 use App\Models\Tenant;
+use App\Repositories\DiscountReasonRepository;
 use App\Repositories\OrderStatusRepository;
 use App\Repositories\RoleRepository;
 use App\Repositories\TaxRateRepository;
@@ -82,6 +83,9 @@ final class TenantProvisioning
     ];
 
     /** Siembra estados, rol admin e impuesto por defecto para un tenant recien creado. */
+    /** Los motivos con los que arranca cualquier restaurante; despues los edita. */
+    private const MOTIVOS_DESCUENTO = ['Cortesía', 'Reclamo del cliente', 'Empleado', 'Convenio'];
+
     public static function provisionTenant(PDO $pdo, string $tenantId, string $businessType): void
     {
         $preset = self::STATUS_PRESETS[$businessType] ?? self::STATUS_PRESETS['fast_food'];
@@ -97,6 +101,14 @@ final class TenantProvisioning
         }
 
         (new TaxRateRepository($pdo))->create($tenantId, 'Impuesto general', '0', true, true);
+
+        // Los motivos de descuento que aparecen en cualquier restaurante. Sin
+        // ninguno, el primer descuento seria imposible de aplicar: el dominio
+        // exige motivo y la lista estaria vacia.
+        $reasons = new DiscountReasonRepository($pdo);
+        foreach (self::MOTIVOS_DESCUENTO as $orden => $motivo) {
+            $reasons->create($tenantId, $motivo, $orden);
+        }
 
         $roles = new RoleRepository($pdo);
         // is_system=true: es la salida de emergencia del tenant (ver

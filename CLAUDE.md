@@ -568,7 +568,7 @@ y de ahí en adelante habla por la conexión `app()`, bajo RLS.
 Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
 obligatorio, cobro por partes, reembolso, las tres reglas de
 `StatusChangeRules` contra el saldo real), la edición de un pedido abierto,
-los movimientos del cajón, los combos —el precio del paquete,
+los movimientos del cajón, los descuentos con su tope por rol, los combos —el precio del paquete,
 la composición congelada y el bloqueo al archivar— y el aislamiento entre
 empresas,
 que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
@@ -662,7 +662,7 @@ porque ahora lo abren dos pantallas; importarlo desde `pedidos.js` habría
 creado un ciclo entre módulos.
 
 - **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
-  (F7.1).
+  (F7.1) y descuentos con motivo, autor y tope (F7.2).
 
 Sobre los movimientos del cajón, tres cosas:
 
@@ -688,6 +688,29 @@ De paso apareció un fallo de antes: **la pantalla de caja nunca mandaba
 y cuadraba el turno de la sucursal del token. Con una sola sede no se nota;
 con dos, el cajero de una cuadra el cajón de la otra.
 
+Sobre los descuentos (F7.2), tres decisiones:
+
+- **Un descuento necesita motivo, y el motivo sale de un catálogo por
+  empresa** (`discount_reasons`, sembrado con cuatro al dar de alta). Era la
+  única forma de que salga plata de una venta sin dejar cobro ni reembolso
+  detrás, y el reporte de ajustes lo listaba sin poder decir por qué.
+- **`orders.discount` por fin se comprueba**, tanto al crear el pedido como
+  al aplicarlo sobre uno abierto, y el tope vive en el rol
+  (`roles.max_discount_percent`, null = sin tope): un cajero resuelve un
+  reclamo de 5.000 sin llamar a nadie y el 100% lo autoriza otra persona. El
+  tope es un porcentaje del subtotal, porque lo que se perdona es una
+  proporción de la venta.
+- **Un motivo usado no se borra, se apaga.** Igual que una opción vendida o
+  un estado con pedidos encima: borrarlo dejaría descuentos históricos sin
+  explicación.
+
+Y la prueba que faltaba: **`PermissionsTest` comprueba ahora que todo permiso
+del catálogo lo exija alguien.** `orders.edit` y `orders.discount` estaban
+ahí desde el principio, ofrecidos en el editor de roles, sin que ningún
+código los comprobara — una promesa falsa se ve igual que una cumplida desde
+fuera. Los tres que no pasan por `Deps` van en una lista explícita: los exige
+la máquina de estados contra el `required_permission` de cada transición.
+
 **Siguiente**: el resto de la fase 4 (estado de las mesas, mapa del salón,
 mover y juntar, mesero a cargo, tiempos y pre-cuenta) y las fases 7 a 12 del
 segundo plan de obra: caja completa, impresión por estaciones, domicilios,
@@ -712,8 +735,8 @@ Pendientes conocidos:
   el cobro por partes hasta saldar, los atajos de teclado y el foco de los
   diálogos, la renovación del token y el cambio de contraseña, la comparación
   entre períodos con su descarga en CSV, los combos en la pantalla del menú,
-  la edición de un pedido abierto, los movimientos del cajón, y que un botón
-  que falla vuelva a servir.
+  la edición de un pedido abierto, los movimientos del cajón, el descuento
+  con motivo y permiso, y que un botón que falla vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

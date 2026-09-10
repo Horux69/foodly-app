@@ -29,6 +29,11 @@ final class OrderRoutes
         $router->patch('/orders/{order_id:uuid}/items/{item_id:uuid}', fn ($p) => OrderController::setItemQuantity($p));
         $router->delete('/orders/{order_id:uuid}/items/{item_id:uuid}', fn ($p) => OrderController::removeItem($p));
 
+        // Descuento con motivo y tope (F7.2): el permiso orders.discount
+        // tampoco lo comprobaba nadie.
+        $router->get('/discount-reasons', fn () => OrderController::discountReasons());
+        $router->put('/orders/{order_id:uuid}/discount', fn ($p) => OrderController::setDiscount($p));
+
         $router->post('/orders/{order_id:uuid}/status', fn ($p) => OrderController::changeStatus($p));
 
         $router->post('/orders/{order_id:uuid}/payments', fn ($p) => PaymentController::register($p));

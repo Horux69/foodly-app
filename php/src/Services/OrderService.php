@@ -8,6 +8,8 @@ use App\Core\Database;
 use App\Domain\BranchSchedule;
 use App\Domain\ComboRules;
 use App\Domain\DeliveryError;
+use App\Domain\DiscountError;
+use App\Domain\DiscountRules;
 use App\Domain\DeliveryRules;
 use App\Domain\DeliveryZoneRules;
 use App\Domain\LineInput;
@@ -32,6 +34,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Repositories\BranchRepository;
 use App\Repositories\CustomerRepository;
+use App\Repositories\DiscountReasonRepository;
 use App\Repositories\DeliveryRepository;
 use App\Repositories\MenuRepository;
 use App\Repositories\OrderRepository;
@@ -180,6 +183,7 @@ final class OrderService
         int $discountCents = 0,
         int $tipCents = 0,
         ?DeliveryInput $delivery = null,
+        ?string $discountReasonId = null,
     ): Order {
         $pdo = Database::app();
         $orders = new OrderRepository($pdo);
@@ -263,6 +267,13 @@ final class OrderService
             throw new OrderError($e->getMessage());
         }
 
+        // El descuento no es un numero mas del cuerpo: necesita motivo y cabe
+        // en el tope del rol de quien lo aplica (F7.2). El permiso lo exige
+        // el controlador; esto es lo que no depende de la pantalla.
+        if ($discountCents > 0) {
+            self::validarDescuento($tenantId, $createdBy, $discountCents, $discountReasonId, $totals->subtotalCents);
+        }
+
         // Se valida con los totales ya calculados y antes de escribir nada: el
         // minimo mira el subtotal, no el total (ver Domain\DeliveryRules).
         if ($zone !== null) {
@@ -293,6 +304,8 @@ final class OrderService
             $totals->discountCents,
             $totals->tipCents,
             $totals->totalCents,
+            $discountCents > 0 ? $discountReasonId : null,
+            $discountCents > 0 ? $createdBy : null,
         );
 
         foreach ($resolvedLines as $index => $resolved) {
@@ -400,11 +413,14 @@ final class OrderService
         array $resultados,
         string $nota,
         ?string $userId,
+        ?int $descuentoCents = null,
     ): Order {
         $totals = OrderTotalsCalculator::totalsFromLines(
             $resultados,
             $order->deliveryFeeCents,
-            $order->discountCents,
+            // El descuento recien aplicado todavia no esta en $order, que se
+            // leyo antes de escribirlo.
+            $descuentoCents ?? $order->discountCents,
             $order->tipCents,
         );
 
@@ -425,6 +441,80 @@ final class OrderService
         $orders->addStatusHistory($order->id, $order->statusId, $userId, mb_substr($nota, 0, 255));
 
         return $orders->getById($order->tenantId, $order->id);
+    }
+
+    /**
+     * Comprueba un descuento contra el motivo, la venta y el tope del rol.
+     *
+     * @return string el nombre del motivo, para la bitacora
+     */
+    private static function validarDescuento(
+        string $tenantId,
+        ?string $userId,
+        int $discountCents,
+        ?string $reasonId,
+        int $subtotalCents,
+    ): string {
+        $reasons = new DiscountReasonRepository(Database::app());
+
+        // Sin usuario no hay rol y no hay tope: es el caso de un cliente de
+        // la API sin sesion, y ahi el control es el permiso, no el rol.
+        $tope = $userId === null ? null : $reasons->maxPercentForUser($tenantId, $userId);
+
+        try {
+            DiscountRules::validate($discountCents, $subtotalCents, $reasonId, $tope);
+        } catch (DiscountError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $nombre = $reasons->nameOf($tenantId, (string) $reasonId);
+        if ($nombre === null) {
+            throw new OrderError('Ese motivo de descuento no existe o esta desactivado');
+        }
+        return $nombre;
+    }
+
+    /**
+     * Aplica —o quita— el descuento de un pedido abierto.
+     *
+     * Un importe de cero lo quita, y entonces no hace falta motivo: dejar de
+     * regalar plata no necesita justificacion. El total se rehace con el
+     * mismo camino que cualquier otra edicion.
+     */
+    public static function applyDiscount(
+        string $tenantId,
+        string $orderId,
+        int $discountCents,
+        ?string $reasonId,
+        ?string $userId = null,
+    ): Order {
+        $orders = new OrderRepository(Database::app());
+        $order = self::abrirParaEditar($orders, $tenantId, $orderId);
+
+        if ($discountCents === 0) {
+            $orders->setDiscount($order->id, 0, null, null);
+            return self::cerrarEdicion(
+                $orders,
+                $order,
+                self::resultadosCongelados($order->items),
+                'Quito el descuento',
+                $userId,
+                descuentoCents: 0,
+            );
+        }
+
+        $motivo = self::validarDescuento($tenantId, $userId, $discountCents, $reasonId, $order->subtotalCents);
+
+        $orders->setDiscount($order->id, $discountCents, $reasonId, $userId);
+
+        return self::cerrarEdicion(
+            $orders,
+            $order,
+            self::resultadosCongelados($order->items),
+            DiscountRules::describe($discountCents, $order->subtotalCents, $motivo),
+            $userId,
+            descuentoCents: $discountCents,
+        );
     }
 
     /**

@@ -367,13 +367,17 @@ final class ReportRepository
                     o.discount,
                     o.total,
                     o.created_at AS at,
-                    u.name AS by_name,
+                    dr.name AS reason,
+                    -- Quien lo autorizo, y si no consta, quien tomo el pedido.
+                    coalesce(aut.name, u.name) AS by_name,
                     count(*) OVER () AS total_count,
                     sum(o.discount) OVER () AS total_amount
              FROM orders o
              JOIN order_statuses s ON s.id = o.status_id
              JOIN branches b ON b.id = o.branch_id
              LEFT JOIN users u ON u.id = o.created_by
+             LEFT JOIN users aut ON aut.id = o.discount_by
+             LEFT JOIN discount_reasons dr ON dr.id = o.discount_reason_id
              WHERE o.tenant_id = :tenant_id
                AND o.discount > 0
                AND s.category <> 'cancelled'

@@ -315,14 +315,18 @@ final class OrderRepository
         int $discountCents,
         int $tipCents,
         int $totalCents,
+        ?string $discountReasonId = null,
+        ?string $discountBy = null,
     ): string {
         $stmt = $this->pdo->prepare(
             'INSERT INTO orders (
                 tenant_id, branch_id, status_id, order_number, channel, customer_id, table_id,
-                created_by, idempotency_key, notes, subtotal, tax_total, delivery_fee, discount, tip, total
+                created_by, idempotency_key, notes, subtotal, tax_total, delivery_fee, discount, tip, total,
+                discount_reason_id, discount_by
              ) VALUES (
                 :tenant_id, :branch_id, :status_id, :order_number, :channel, :customer_id, :table_id,
-                :created_by, :idempotency_key, :notes, :subtotal, :tax_total, :delivery_fee, :discount, :tip, :total
+                :created_by, :idempotency_key, :notes, :subtotal, :tax_total, :delivery_fee, :discount, :tip, :total,
+                :discount_reason_id, :discount_by
              ) RETURNING id'
         );
         $stmt->execute([
@@ -342,6 +346,8 @@ final class OrderRepository
             'discount' => Money::toDecimalString($discountCents),
             'tip' => Money::toDecimalString($tipCents),
             'total' => Money::toDecimalString($totalCents),
+            'discount_reason_id' => $discountReasonId,
+            'discount_by' => $discountBy,
         ]);
         return (string) $stmt->fetchColumn();
     }
@@ -457,6 +463,27 @@ final class OrderRepository
               WHERE order_item_id = :id'
         );
         $stmt->execute(['anterior' => $anterior, 'nueva' => $nueva, 'id' => $orderItemId]);
+    }
+
+    /**
+     * Fija el descuento del pedido, con su motivo y quien lo autorizo.
+     *
+     * Los totales se guardan aparte, con updateTotals: aqui solo va el
+     * ajuste, para que la aritmetica siga saliendo del dominio.
+     */
+    public function setDiscount(string $orderId, int $discountCents, ?string $reasonId, ?string $by): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE orders
+                SET discount = :discount, discount_reason_id = :reason, discount_by = :by, updated_at = now()
+              WHERE id = :id'
+        );
+        $stmt->execute([
+            'discount' => Money::toDecimalString($discountCents),
+            'reason' => $reasonId,
+            'by' => $by,
+            'id' => $orderId,
+        ]);
     }
 
     /** Los totales del pedido despues de una edicion. Los ajustes no se tocan aqui. */

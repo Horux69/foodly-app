@@ -14,7 +14,7 @@ import { date, money, time } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery, can, me } from '../session.js';
 import {
-  badge, button, empty, errorBox, h, input, loading, montarDialogo, render, section, select,
+  badge, button, empty, errorBox, field, h, input, loading, montarDialogo, render, section, select,
   toast,
 } from '../ui.js';
 import { abrirCancelacion } from './cancelar-pedido.js';
@@ -108,7 +108,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
       bloqueImpresion(pedido, pagos),
       pedido.delivery ? bloqueEntrega(pedido.delivery) : null,
       bloqueLineas(pedido, recargarTrasCambio),
-      bloqueTotales(pedido),
+      bloqueTotales(pedido, recargarTrasCambio),
       bloquePagos(pedido, pagos, recargarTrasCambio),
       bloqueAvance(pedido, siguientes, recargarTrasCambio),
       bloqueBitacora(bitacora)
@@ -386,7 +386,7 @@ function abrirAgregar(pedido, recargar) {
     .catch((error) => render(lista, errorBox(error.message)));
 }
 
-function bloqueTotales(pedido) {
+function bloqueTotales(pedido, recargar) {
   const linea = (etiqueta, valor, fuerte) =>
     h(
       'div',
@@ -407,7 +407,118 @@ function bloqueTotales(pedido) {
       linea('Total', money(pedido.total), true),
       pedido.notes ? h('p', { class: 'text-[12.5px] text-stone-500 pt-2' }, pedido.notes) : null
     ),
+    actions:
+      pedido.is_editable && can('orders.discount')
+        ? button(Number(pedido.discount) ? 'Cambiar descuento' : 'Descuento', {
+            variant: 'secondary',
+            onClick: () => abrirDescuento(pedido, recargar),
+          })
+        : null,
   });
+}
+
+/**
+ * Aplicar o quitar el descuento de una cuenta abierta.
+ *
+ * El motivo sale del catálogo del restaurante y es obligatorio: es lo que
+ * hace que el reporte de ajustes pueda responder en qué se fue la plata. El
+ * tope por rol lo impone `Domain\DiscountRules`; aquí solo se muestra su
+ * mensaje cuando lo rechaza.
+ */
+function abrirDescuento(pedido, recargar) {
+  const cuerpo = h('div', { class: 'p-5 space-y-4' });
+  let desmontar;
+  const cerrar = () => desmontar();
+
+  const overlay = h(
+    'div',
+    {
+      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      onClick: (e) => e.target === overlay && cerrar(),
+    },
+    h(
+      'div',
+      {
+        class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea]',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': 'Descuento del pedido',
+      },
+      cuerpo
+    )
+  );
+
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  render(cuerpo, loading('Cargando motivos…'));
+
+  api
+    .get('/discount-reasons')
+    .then((motivos) => {
+      const importe = input({
+        type: 'number',
+        min: '0',
+        value: Number(pedido.discount) || '',
+        class: 'campo w-full tabular-nums',
+        'aria-label': 'Importe del descuento',
+      });
+      const motivo = select(
+        [{ value: '', label: 'Elige el motivo' }, ...motivos.map((m) => ({ value: m.id, label: m.name }))],
+        { class: 'campo w-full', 'aria-label': 'Motivo del descuento' }
+      );
+      const aviso = h('div');
+
+      const guardar = button('Aplicar', {
+        onClick: async () => {
+          render(aviso);
+          guardar.disabled = true;
+          try {
+            await api.put(`/orders/${pedido.id}/discount`, {
+              amount: Number(importe.value || 0),
+              reason_id: motivo.value || null,
+            });
+            cerrar();
+            toast('Descuento aplicado', 'ok');
+            await recargar();
+          } catch (error) {
+            render(aviso, errorBox(error.message));
+            guardar.disabled = false;
+          }
+        },
+      });
+
+      render(
+        cuerpo,
+        h('h3', { class: 'text-[15px] font-semibold' }, `Descuento de ${pedido.order_number}`),
+        h(
+          'p',
+          { class: 'text-[13px] text-stone-500' },
+          `Sobre un subtotal de ${money(pedido.subtotal)}. Queda en la bitácora con tu nombre.`
+        ),
+        field('Importe', importe),
+        field('Motivo', motivo),
+        aviso,
+        h(
+          'div',
+          { class: 'flex justify-between gap-2 pt-1' },
+          Number(pedido.discount)
+            ? button('Quitarlo', {
+                variant: 'subtle',
+                onClick: async () => {
+                  try {
+                    await api.put(`/orders/${pedido.id}/discount`, { amount: 0, reason_id: null });
+                    cerrar();
+                    await recargar();
+                  } catch (error) {
+                    render(aviso, errorBox(error.message));
+                  }
+                },
+              })
+            : h('span'),
+          h('div', { class: 'flex gap-2' }, button('Cancelar', { variant: 'secondary', onClick: cerrar }), guardar)
+        )
+      );
+    })
+    .catch((error) => render(cuerpo, errorBox(error.message)));
 }
 
 /**
