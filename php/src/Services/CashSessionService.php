@@ -6,6 +6,8 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Domain\CashSessionTotals;
+use App\Domain\DrawerError;
+use App\Domain\DrawerRules;
 use App\Models\CashSession;
 use App\Repositories\BranchRepository;
 use App\Repositories\CashSessionRepository;
@@ -104,12 +106,68 @@ final class CashSessionService
     /** El turno con su cuadre. */
     public static function view(CashSession $session): CashSessionView
     {
-        $movements = self::repo()->movementsForSessions([$session->id])[$session->id] ?? [];
+        $repo = self::repo();
+        $movements = $repo->movementsForSessions([$session->id])[$session->id] ?? [];
+        $drawer = $repo->drawerForSessions([$session->id])[$session->id] ?? [];
 
         return new CashSessionView(
             $session,
-            CashSessionTotals::compute($session->openingFloatCents, $movements, $session->countedCashCents),
+            CashSessionTotals::compute(
+                $session->openingFloatCents,
+                $movements,
+                $session->countedCashCents,
+                CashSessionTotals::CASH_METHOD,
+                $drawer,
+            ),
         );
+    }
+
+    /**
+     * Registra plata que entra o sale del cajon sin ser una venta.
+     *
+     * Exige un turno abierto: fuera de un turno no hay cajon que cuadrar, y
+     * un movimiento suelto no entraria en ningun arqueo — que es justo lo que
+     * esto viene a arreglar.
+     *
+     * @return array{0: CashSessionView, 1: string} el turno recalculado y el id del movimiento
+     */
+    public static function registerDrawerMovement(
+        string $tenantId,
+        string $branchId,
+        string $kind,
+        int $amountCents,
+        string $reason,
+        ?string $userId,
+    ): array {
+        $repo = self::repo();
+        $session = $repo->currentForBranch($tenantId, $branchId);
+        if ($session === null) {
+            throw new CashSessionError('No hay un turno de caja abierto en esta sucursal');
+        }
+
+        // Contra lo que hay ahora mismo en el cajon, no contra lo cobrado:
+        // sacar mas de lo que hay dejaria el arqueo en una cifra que nadie
+        // puede explicar.
+        try {
+            DrawerRules::validate($kind, $amountCents, $reason, self::view($session)->totals->expectedCashCents);
+        } catch (DrawerError $e) {
+            throw new CashSessionError($e->getMessage());
+        }
+
+        $id = $repo->addDrawerMovement($session->id, $kind, $amountCents, trim($reason), $userId);
+
+        return [self::view($session), $id];
+    }
+
+    /**
+     * Los movimientos del turno abierto, para listarlos.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function drawerMovements(string $tenantId, string $branchId): array
+    {
+        $session = self::repo()->currentForBranch($tenantId, $branchId);
+        return $session === null ? [] : self::repo()->drawerDetail($session->id);
     }
 
     /**
@@ -124,12 +182,20 @@ final class CashSessionService
     {
         $repo = self::repo();
         $sessions = $repo->listForBranch($tenantId, $branchId, $limit);
-        $movements = $repo->movementsForSessions(array_map(static fn ($s) => $s->id, $sessions));
+        $ids = array_map(static fn ($s) => $s->id, $sessions);
+        $movements = $repo->movementsForSessions($ids);
+        $drawer = $repo->drawerForSessions($ids);
 
         return array_map(
             static fn (CashSession $s) => new CashSessionView(
                 $s,
-                CashSessionTotals::compute($s->openingFloatCents, $movements[$s->id] ?? [], $s->countedCashCents),
+                CashSessionTotals::compute(
+                    $s->openingFloatCents,
+                    $movements[$s->id] ?? [],
+                    $s->countedCashCents,
+                    CashSessionTotals::CASH_METHOD,
+                    $drawer[$s->id] ?? [],
+                ),
             ),
             $sessions,
         );

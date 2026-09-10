@@ -21,6 +21,7 @@ INSERT INTO permissions (code, description) VALUES
   ('payments.register',       'Registrar pagos'),
   ('payments.refund',         'Anular o reembolsar pagos'),
   ('cash.close',              'Cerrar turno y arqueo'),
+  ('cash.movements',          'Registrar entradas y salidas de efectivo'),
   ('delivery.assign',         'Asignar repartidores'),
   ('delivery.complete',       'Confirmar entregas'),
   ('customers.view',          'Ver la base de clientes y su historial'),

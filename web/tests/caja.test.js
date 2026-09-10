@@ -102,8 +102,11 @@ describe('caja sin turno abierto', () => {
     [...vista.querySelectorAll('button')].find((b) => b.textContent.includes('Abrir turno')).click();
     await reposar();
 
-    const llamada = fetch.mock.calls.find(([url, o]) => String(url).endsWith('/cash/session') && o?.method === 'POST');
+    const llamada = fetch.mock.calls.find(([url, o]) => String(url).includes('/cash/session') && o?.method === 'POST');
     expect(JSON.parse(llamada[1].body).opening_float).toBe(40000);
+    // La sucursal activa viaja en la petición: sin ella la pantalla decía el
+    // nombre de una sede y abría el turno de otra —la del token—.
+    expect(String(llamada[0])).toContain('branch_id=22222222-2222-4222-8222-222222222222');
   });
 });
 

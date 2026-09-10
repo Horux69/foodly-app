@@ -11,6 +11,7 @@ use App\Api\Request;
 use App\Api\RequestContext;
 use App\Core\Money;
 use App\Domain\CashSessionTotals;
+use App\Domain\DrawerRules;
 use App\Models\CashSession;
 use App\Services\CashSessionError;
 use App\Services\CashSessionService;
@@ -26,6 +27,9 @@ use App\Services\CashSessionView;
  *   * Ver el cuadre y cerrar piden `cash.close`. Asi, en un restaurante que
  *     separe los dos roles, quien cuenta el cajon no ve antes cuanto
  *     "deberia" haber — que es justamente el control que hace util un arqueo.
+ *   * Sacar o meter plata del cajon pide `cash.movements`. Cobrar es recibir
+ *     lo de una venta; sacar 200.000 para pagar el gas es otra cosa, y en
+ *     muchos restaurantes la autoriza otra persona.
  */
 final class CashController
 {
@@ -57,6 +61,8 @@ final class CashController
             'charged' => Money::toDecimalString($t->chargedCents),
             'refunded' => Money::toDecimalString($t->refundedCents),
             'net_collected' => Money::toDecimalString($t->netCollectedCents()),
+            'cash_in' => Money::toDecimalString($t->cashInCents),
+            'cash_out' => Money::toDecimalString($t->cashOutCents),
             'expected_cash' => Money::toDecimalString($t->expectedCashCents),
             'counted_cash' => $t->countedCashCents === null
                 ? null
@@ -138,5 +144,55 @@ final class CashController
         );
 
         return array_map(static fn (CashSessionView $v) => self::viewOut($ctx, $v), $views);
+    }
+
+    /**
+     * Registra plata que entra o sale del cajon sin ser una venta.
+     *
+     * Devuelve el turno con su cuadre ya recalculado —para quien pueda
+     * verlo— porque quien acaba de sacar plata necesita saber con que queda
+     * el cajon, y pedirlo aparte seria una segunda vuelta.
+     */
+    public static function addMovement(): JsonResponse
+    {
+        $ctx = Deps::require(Deps::getContext(), 'cash.movements');
+        $branchId = Deps::activeBranchId($ctx);
+        $body = Request::json();
+
+        try {
+            [$view, $id] = CashSessionService::registerDrawerMovement(
+                $ctx->tenantId,
+                $branchId,
+                Request::string($body, 'kind', 2, 3),
+                Money::fromDecimalString(Request::decimalString($body, 'amount')),
+                Request::string($body, 'reason', 1, DrawerRules::MOTIVO_MAX),
+                $ctx->userId,
+            );
+        } catch (CashSessionError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return new JsonResponse(['id' => $id] + self::viewOut($ctx, $view), 201);
+    }
+
+    /**
+     * Los movimientos del turno abierto.
+     *
+     * Los pide `cash.movements` y no `cash.close`: la lista dice lo que salio
+     * y por que, no cuanto deberia haber en el cajon, asi que no arruina el
+     * conteo a ciegas.
+     */
+    public static function movements(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'cash.movements');
+
+        return array_map(static fn (array $m) => [
+            'id' => $m['id'],
+            'kind' => $m['kind'],
+            'reason' => $m['reason'],
+            'amount' => Money::toDecimalString($m['amount']),
+            'created_at' => $m['created_at'],
+            'by_name' => $m['by_name'],
+        ], CashSessionService::drawerMovements($ctx->tenantId, Deps::activeBranchId($ctx)));
     }
 }

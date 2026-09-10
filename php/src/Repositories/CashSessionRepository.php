@@ -7,6 +7,7 @@ namespace App\Repositories;
 use App\Core\Money;
 use App\Core\Row;
 use App\Domain\CashMovement;
+use App\Domain\DrawerMovement;
 use App\Models\CashSession;
 use PDO;
 
@@ -144,5 +145,89 @@ final class CashSessionRepository
             );
         }
         return $result;
+    }
+
+    /**
+     * Las entradas y salidas de efectivo de cada turno.
+     *
+     * Aparte de movementsForSessions —que lee `payments`— porque son otra
+     * cosa: aquellos son ventas, estos son plata que entra o sale del cajon
+     * sin pedido detras.
+     *
+     * @param string[] $sessionIds
+     * @return array<string, DrawerMovement[]>
+     */
+    public function drawerForSessions(array $sessionIds): array
+    {
+        if ($sessionIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($sessionIds), '?'));
+        $stmt = $this->pdo->prepare(
+            "SELECT cash_session_id, kind, amount, reason
+               FROM cash_movements
+              WHERE cash_session_id IN ({$placeholders})
+              ORDER BY created_at"
+        );
+        $stmt->execute(array_values($sessionIds));
+
+        $result = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $result[$row['cash_session_id']][] = new DrawerMovement(
+                $row['kind'],
+                Money::fromDecimalString((string) $row['amount']),
+                $row['reason'],
+            );
+        }
+        return $result;
+    }
+
+    /**
+     * El detalle de los movimientos de un turno, para mostrarlos en pantalla.
+     *
+     * @return array<int, array{id: string, kind: string, reason: string, amount: int, created_at: string, by_name: ?string}>
+     */
+    public function drawerDetail(string $sessionId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT m.id, m.kind, m.reason, m.amount, m.created_at, u.name AS by_name
+               FROM cash_movements m
+               LEFT JOIN users u ON u.id = m.created_by
+              WHERE m.cash_session_id = :id
+           ORDER BY m.created_at'
+        );
+        $stmt->execute(['id' => $sessionId]);
+
+        return array_map(static fn (array $row) => [
+            'id' => $row['id'],
+            'kind' => $row['kind'],
+            'reason' => $row['reason'],
+            'amount' => Money::fromDecimalString((string) $row['amount']),
+            'created_at' => $row['created_at'],
+            'by_name' => $row['by_name'],
+        ], $stmt->fetchAll());
+    }
+
+    public function addDrawerMovement(
+        string $sessionId,
+        string $kind,
+        int $amountCents,
+        string $reason,
+        ?string $createdBy,
+    ): string {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO cash_movements (cash_session_id, kind, amount, reason, created_by)
+             VALUES (:session, :kind, :amount, :reason, :by)
+             RETURNING id'
+        );
+        $stmt->execute([
+            'session' => $sessionId,
+            'kind' => $kind,
+            'amount' => Money::toDecimalString($amountCents),
+            'reason' => $reason,
+            'by' => $createdBy,
+        ]);
+        return (string) $stmt->fetchColumn();
     }
 }

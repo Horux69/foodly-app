@@ -568,7 +568,7 @@ y de ahí en adelante habla por la conexión `app()`, bajo RLS.
 Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
 obligatorio, cobro por partes, reembolso, las tres reglas de
 `StatusChangeRules` contra el saldo real), la edición de un pedido abierto,
-los combos —el precio del paquete,
+los movimientos del cajón, los combos —el precio del paquete,
 la composición congelada y el bloqueo al archivar— y el aislamiento entre
 empresas,
 que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
@@ -661,6 +661,33 @@ El diálogo de modificadores se mudó a `web/js/views/modificadores-dialogo.js`
 porque ahora lo abren dos pantallas; importarlo desde `pedidos.js` habría
 creado un ciclo entre módulos.
 
+- **Fase 7 (la caja completa)**, en curso: entradas y salidas de efectivo
+  (F7.1).
+
+Sobre los movimientos del cajón, tres cosas:
+
+- **El arqueo solo conocía ventas.** Un cajón real recibe y entrega plata
+  todo el día por fuera de ellas: la sangría al llegar al tope, el pago al
+  domiciliario, la compra de emergencia. Sin registrarlas el arqueo declara
+  un faltante que no lo es, y un control que "siempre da mal" deja de usarse.
+  Entran a `Domain\CashSessionTotals` como un movimiento más, así que el
+  esperado sigue siendo un cálculo y no un dato guardado.
+- **Del cajón no sale más de lo que hay** (`Domain\DrawerRules`), y el motivo
+  es obligatorio. Lo primero porque un cajón en negativo no existe; lo
+  segundo porque la lista existe para responder, al cerrar, en qué se fue la
+  plata. Un movimiento equivocado se corrige con el contrario, como un
+  reembolso corrige un cobro: no se editan ni se borran.
+- **Registrar un movimiento pide `cash.movements`, no `cash.close`.** Cobrar
+  es recibir lo de una venta; sacar 200.000 para el gas es otra cosa y en
+  muchos restaurantes la autoriza otra persona. Y quien los registra sigue
+  sin ver el cuadre: eso es `cash.close`, para que contar el cajón a ciegas
+  siga siendo posible.
+
+De paso apareció un fallo de antes: **la pantalla de caja nunca mandaba
+`branch_id`**. Decía "Turno de Sede Norte" en el encabezado y abría, cobraba
+y cuadraba el turno de la sucursal del token. Con una sola sede no se nota;
+con dos, el cajero de una cuadra el cajón de la otra.
+
 **Siguiente**: el resto de la fase 4 (estado de las mesas, mapa del salón,
 mover y juntar, mesero a cargo, tiempos y pre-cuenta) y las fases 7 a 12 del
 segundo plan de obra: caja completa, impresión por estaciones, domicilios,
@@ -685,7 +712,8 @@ Pendientes conocidos:
   el cobro por partes hasta saldar, los atajos de teclado y el foco de los
   diálogos, la renovación del token y el cambio de contraseña, la comparación
   entre períodos con su descarga en CSV, los combos en la pantalla del menú,
-  la edición de un pedido abierto, y que un botón que falla vuelva a servir.
+  la edición de un pedido abierto, los movimientos del cajón, y que un botón
+  que falla vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

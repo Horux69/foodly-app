@@ -17,9 +17,9 @@
 import { api } from '../api.js';
 import { date, money, time } from '../format.js';
 import { icon } from '../icons.js';
-import { activeBranch, can } from '../session.js';
+import { activeBranch, branchQuery, can } from '../session.js';
 import {
-  badge, button, empty, errorBox, field, h, input, pageHeader, render, section, skeleton, toast,
+  badge, button, empty, errorBox, field, h, input, pageHeader, render, section, select, skeleton, toast,
 } from '../ui.js';
 import { metodoPago } from './pedido-detalle.js';
 
@@ -30,6 +30,9 @@ export async function caja(outlet) {
   render(
     outlet,
     pageHeader('Caja', {
+      // La sucursal viaja en la petición: sin ella la pantalla decía el
+      // nombre de una sede y cuadraba la caja de otra —la del token—, que
+      // con dos sedes es un descuadre garantizado.
       hint: `Turno de ${activeBranch()?.name ?? 'la sucursal'}. Cada cobro y cada reembolso queda en el turno que esté abierto.`,
     }),
     panel,
@@ -39,20 +42,24 @@ export async function caja(outlet) {
 
   async function cargar() {
     let actual;
+    let movimientos = [];
     try {
-      actual = await api.get('/cash/session');
+      actual = await api.get(`/cash/session${branchQuery()}`);
+      // Solo si hay turno: sin él la lista siempre está vacía y sería una
+      // petición por nada cada vez que se entra a la pantalla.
+      if (actual.session && can('cash.movements')) movimientos = await api.get(`/cash/movements${branchQuery()}`);
     } catch (error) {
       return render(panel, errorBox(error.message, cargar));
     }
 
-    render(panel, actual.session ? turnoAbierto(actual, cargar) : sinTurno(cargar));
+    render(panel, actual.session ? turnoAbierto(actual, movimientos, cargar) : sinTurno(cargar));
     if (can('cash.close')) await cargarHistorial();
   }
 
   async function cargarHistorial() {
     let turnos;
     try {
-      turnos = await api.get('/cash/sessions');
+      turnos = await api.get(`/cash/sessions${branchQuery()}`);
     } catch {
       return render(historial);
     }
@@ -83,7 +90,7 @@ function sinTurno(recargar) {
     onClick: async () => {
       abrir.disabled = true;
       try {
-        await api.post('/cash/session', { opening_float: Number(base.value || 0) });
+        await api.post(`/cash/session${branchQuery()}`, { opening_float: Number(base.value || 0) });
         toast('Turno abierto', 'ok');
         await recargar();
       } catch (error) {
@@ -107,7 +114,7 @@ function sinTurno(recargar) {
 
 // ---------- turno abierto ----------
 
-function turnoAbierto({ session, totals }, recargar) {
+function turnoAbierto({ session, totals }, movimientos, recargar) {
   const bloques = [
     section('Turno abierto', {
       body: h(
@@ -119,6 +126,8 @@ function turnoAbierto({ session, totals }, recargar) {
       ),
     }),
   ];
+
+  if (can('cash.movements')) bloques.push(bloqueMovimientos(movimientos, recargar));
 
   if (totals) {
     bloques.push(cuadre(totals), formularioCierre(session, totals, recargar));
@@ -138,6 +147,78 @@ function turnoAbierto({ session, totals }, recargar) {
   }
 
   return bloques;
+}
+
+/**
+ * Entradas y salidas de efectivo del turno.
+ *
+ * Un cajón real recibe y entrega plata todo el día por fuera de las ventas:
+ * la sangría, el pago al domiciliario, la compra de emergencia. Sin
+ * registrarlas el arqueo declara un faltante que no lo es, y un control que
+ * "siempre da mal" deja de usarse.
+ *
+ * El motivo es obligatorio porque esta lista existe para responder, al
+ * cerrar, en qué se fue la plata. Quien la ve no ve el cuadre: son permisos
+ * distintos a propósito.
+ */
+function bloqueMovimientos(movimientos, recargar) {
+  const tipo = select(
+    [
+      { value: 'out', label: 'Sale del cajón' },
+      { value: 'in', label: 'Entra al cajón' },
+    ],
+    { class: 'campo', 'aria-label': 'Tipo de movimiento' }
+  );
+  const importe = input({ type: 'number', min: '1', placeholder: '0', class: 'campo w-32 tabular-nums', 'aria-label': 'Importe' });
+  const motivo = input({ placeholder: 'Pago del gas, sangría, domiciliario…', class: 'campo flex-1 min-w-[180px]', 'aria-label': 'Motivo' });
+  const aviso = h('div');
+
+  const registrar = button('Registrar', {
+    onClick: async () => {
+      render(aviso);
+      registrar.disabled = true;
+      try {
+        await api.post(`/cash/movements${branchQuery()}`, {
+          kind: tipo.value,
+          amount: Number(importe.value || 0),
+          reason: motivo.value.trim(),
+        });
+        toast('Movimiento registrado', 'ok');
+        await recargar();
+      } catch (error) {
+        render(aviso, errorBox(error.message));
+        registrar.disabled = false;
+      }
+    },
+  });
+
+  const signo = (m) => (m.kind === 'out' ? '−' : '+');
+
+  return section('Movimientos del cajón', {
+    hint: 'Plata que entra o sale sin ser una venta. Entra al arqueo como un movimiento más.',
+    body: h(
+      'div',
+      { class: 'space-y-2' },
+      h('div', { class: 'flex flex-wrap items-center gap-2' }, tipo, importe, motivo, registrar),
+      aviso
+    ),
+    list: movimientos.length
+      ? movimientos.map((m) =>
+          h(
+            'div',
+            { class: 'fila' },
+            h('span', { class: `text-[13.5px] tabular-nums font-medium ${m.kind === 'out' ? 'text-rose-700' : 'text-emerald-700'}` },
+              `${signo(m)} ${money(m.amount)}`),
+            h(
+              'div',
+              { class: 'flex-1 min-w-0' },
+              h('div', { class: 'text-[13.5px] text-stone-900' }, m.reason),
+              h('div', { class: 'text-[12px] text-stone-500' }, `${time(m.created_at)} · ${m.by_name ?? 'alguien que ya no está'}`)
+            )
+          )
+        )
+      : [h('p', { class: 'text-[13px] text-stone-500' }, 'Nada ha entrado ni salido del cajón en este turno.')],
+  });
 }
 
 function cuadre(totals) {
@@ -162,6 +243,14 @@ function cuadre(totals) {
           )
         : h('p', { class: 'text-stone-500' }, 'Todavía no se ha cobrado nada en este turno.'),
 
+      Number(totals.cash_in) || Number(totals.cash_out)
+        ? h(
+            'div',
+            { class: 'flex justify-between text-[13px] text-stone-500' },
+            h('span', {}, `Entró al cajón ${money(totals.cash_in)}, salió ${money(totals.cash_out)}`),
+            h('span', { class: 'tabular-nums' }, `neto ${money(Number(totals.cash_in) - Number(totals.cash_out))}`)
+          )
+        : null,
       Number(totals.refunded)
         ? h(
             'div',
@@ -178,7 +267,7 @@ function cuadre(totals) {
           'span',
           { class: 'font-medium text-stone-700' },
           'Debería haber en el cajón',
-          h('span', { class: 'block text-[12px] font-normal text-stone-500' }, `Base ${money(totals.opening_float)} más el efectivo del turno`)
+          h('span', { class: 'block text-[12px] font-normal text-stone-500' }, `Base ${money(totals.opening_float)}, el efectivo del turno y lo que entró o salió del cajón`)
         ),
         h('span', { class: 'text-xl font-bold tabular-nums' }, money(totals.expected_cash))
       )

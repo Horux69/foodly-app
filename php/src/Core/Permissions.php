@@ -47,6 +47,9 @@ final class Permissions
         'payments.register' => 'Registrar cobros',
         'payments.refund' => 'Reembolsar cobros',
         'cash.close' => 'Cerrar turno y hacer el arqueo',
+        // Aparte de payments.register: cobrar es recibir plata de una venta,
+        // sacarla del cajon es otra cosa y suele autorizarla otra persona.
+        'cash.movements' => 'Registrar entradas y salidas de efectivo',
         // Domicilios
         'delivery.assign' => 'Asignar repartidores',
         'delivery.complete' => 'Confirmar entregas',

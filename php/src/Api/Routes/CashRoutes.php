@@ -16,5 +16,9 @@ final class CashRoutes
         $router->post('/cash/session', fn () => CashController::open());
         $router->post('/cash/sessions/{session_id:uuid}/close', fn ($p) => CashController::close($p));
         $router->get('/cash/sessions', fn () => CashController::history());
+
+        // Entradas y salidas del cajon (F7.1): el arqueo solo conocia ventas.
+        $router->get('/cash/movements', fn () => CashController::movements());
+        $router->post('/cash/movements', fn () => CashController::addMovement());
     }
 }
