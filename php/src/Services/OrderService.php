@@ -7,6 +7,8 @@ namespace App\Services;
 use App\Core\Database;
 use App\Domain\BranchSchedule;
 use App\Domain\ComboRules;
+use App\Domain\CourseError;
+use App\Domain\Courses;
 use App\Domain\DeliveryError;
 use App\Domain\DiscountError;
 use App\Domain\DiscountRules;
@@ -262,6 +264,20 @@ final class OrderService
             $deliveryFeeCents = $zone->feeCents;
         }
 
+        // Los tiempos son configuracion del restaurante: una linea de un
+        // tiempo que no existe se rechaza al tomar el pedido y no al
+        // marcharlo, que seria enterarse con la mesa esperando.
+        foreach ($items as $linea) {
+            try {
+                Courses::ensureValid($linea->course, $settings->courses);
+            } catch (CourseError $e) {
+                throw new OrderError($e->getMessage());
+            }
+        }
+        // Solo el primero sale ya a la cocina; los demas esperan a que
+        // alguien los marche, que es para lo que existen.
+        $primerTiempo = Courses::primero(array_map(static fn ($l) => $l->course, $items));
+
         $resolvedLines = self::resolveLines($tenantId, $branchId, $items);
 
         try {
@@ -327,7 +343,13 @@ final class OrderService
         );
 
         foreach ($resolvedLines as $index => $resolved) {
-            self::guardarLinea($orders, $orderId, $resolved, $totals->lines[$index]);
+            self::guardarLinea(
+                $orders,
+                $orderId,
+                $resolved,
+                $totals->lines[$index],
+                marchada: $resolved->line->course === $primerTiempo,
+            );
         }
 
         if ($delivery !== null) {
@@ -355,6 +377,7 @@ final class OrderService
         string $orderId,
         ResolvedLine $resolved,
         LineResult $lineResult,
+        bool $marchada = true,
     ): string {
         $orderItemId = $orders->addItem(
             $orderId,
@@ -366,6 +389,8 @@ final class OrderService
             $lineResult->taxAmountCents,
             $lineResult->lineTotalCents,
             $resolved->line->notes,
+            $resolved->line->course,
+            $marchada,
         );
         foreach ($resolved->modifiers as $modifier) {
             $orders->addItemModifier($orderItemId, $modifier->id, $modifier->name, $modifier->priceDeltaCents);
@@ -577,6 +602,76 @@ final class OrderService
             $userId,
             propinaCents: $tipCents,
         );
+    }
+
+    /**
+     * Marcha un tiempo: manda a la cocina las lineas que lo esperaban.
+     *
+     * No toca el estado del pedido. El estado es de la cuenta —donde va la
+     * mesa en su ciclo— y el tiempo es de la comanda; moverlo hacia atras al
+     * marchar exigiria un camino de vuelta que el restaurante quiza no
+     * configuro, y la maquina de estados es suya. El tablero muestra las
+     * lineas recien marchadas con su hora, que es lo que la cocina necesita.
+     *
+     * @return array{0: Order, 1: int} el pedido y cuantas lineas salieron
+     */
+    public static function fireCourse(
+        string $tenantId,
+        string $orderId,
+        int $course,
+        ?string $userId = null,
+    ): array {
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+
+        $order = $orders->getByIdForUpdate($tenantId, $orderId);
+        if ($order === null) {
+            throw new OrderError('Pedido no encontrado');
+        }
+        if ($order->status === null) {
+            throw new OrderError('El pedido no tiene estado');
+        }
+        try {
+            Courses::ensureMarchable($order->status->category);
+        } catch (CourseError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $nombres = self::tiemposDe($tenantId);
+        try {
+            Courses::ensureValid($course, $nombres);
+        } catch (CourseError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $cuantas = $orders->fireCourse($order->id, $course);
+        if ($cuantas === 0) {
+            // Distinto de un error de red o de permiso: o no hay nada de ese
+            // tiempo, o ya salio. Las dos se responden igual porque las dos
+            // significan que la cocina ya tiene todo lo de ese tiempo.
+            throw new OrderError(
+                'Ese tiempo no tiene nada por marchar: o ya salio a la cocina, o no hay lineas suyas'
+            );
+        }
+
+        $etiqueta = Courses::label($course, $nombres);
+        $orders->addStatusHistory($order->id, $order->statusId, $userId, "Marchado: {$etiqueta}");
+
+        return [$orders->getById($tenantId, $order->id), $cuantas];
+    }
+
+    /**
+     * Como llama este restaurante a sus tiempos.
+     *
+     * @return string[]
+     */
+    public static function tiemposDe(string $tenantId): array
+    {
+        $tenant = (new TenantRepository(Database::app()))->get($tenantId);
+        if ($tenant === null) {
+            throw new OrderError('El tenant no existe');
+        }
+        return TenantSettings::parse($tenant->settings, $tenant->businessType)->courses;
     }
 
     /**
@@ -811,8 +906,25 @@ final class OrderService
             $resueltas,
         );
 
+        // Una linea que llega a un tiempo ya marchado sale a la cocina de
+        // una vez: el postre que se pide cuando los postres ya salieron no
+        // puede quedarse esperando a que alguien marche un tiempo que ya
+        // se marcho. Si su tiempo todavia no salio, espera con los demas.
+        $yaMarchados = [];
+        foreach ($order->items as $linea) {
+            if ($linea->firedAt !== null) {
+                $yaMarchados[$linea->course] = true;
+            }
+        }
+
         foreach ($resueltas as $index => $resuelta) {
-            self::guardarLinea($orders, $order->id, $resuelta, $nuevas[$index]);
+            self::guardarLinea(
+                $orders,
+                $order->id,
+                $resuelta,
+                $nuevas[$index],
+                marchada: isset($yaMarchados[$resuelta->line->course]),
+            );
         }
 
         $agregado = implode(', ', array_map(

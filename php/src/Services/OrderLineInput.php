@@ -37,6 +37,8 @@ final class OrderLineInput
         public readonly int $quantity,
         public readonly array $modifierIds = [],
         public readonly ?string $notes = null,
+        /** El tiempo al que va la linea. 1 cuando el restaurante no usa tiempos. */
+        public readonly int $course = 1,
     ) {
     }
 }

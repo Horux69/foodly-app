@@ -85,7 +85,7 @@ describe('cola de pedidos sin red', () => {
     const enCola = cola.pendientes();
     expect(enCola).toHaveLength(1);
     expect(enCola[0].descripcion).toContain('1 producto');
-    expect(enCola[0].cuerpo.items).toEqual([{ menu_item_id: 'i1', quantity: 1, modifier_ids: [] }]);
+    expect(enCola[0].cuerpo.items).toEqual([{ menu_item_id: 'i1', quantity: 1, modifier_ids: [], course: 1 }]);
 
     // El carrito se vacía como si el pedido hubiera salido: quien está en el
     // mostrador tiene que poder atender al siguiente, no quedarse mirando el

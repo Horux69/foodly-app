@@ -30,9 +30,24 @@ final class TenantSettings
      */
     public const TIP_PERCENT_DEFAULT = 10.0;
 
+    /**
+     * Los tiempos de una cuenta de mesa, en orden.
+     *
+     * Configuracion y no constante: hay restaurantes de tres tiempos, de dos
+     * y de cinco, y el nombre cambia con la carta. Lista vacia —lo normal en
+     * un mostrador— significa que no hay tiempos: todo se manda junto y la
+     * pantalla ni los menciona.
+     */
+    public const COURSES_MAX = 9;
+
     private const DEFAULTS_BY_BUSINESS_TYPE = [
         'fast_food' => ['channels' => ['counter', 'delivery'], 'uses_tables' => false, 'asks_tip' => false],
-        'table_service' => ['channels' => ['table'], 'uses_tables' => true, 'asks_tip' => true],
+        'table_service' => [
+            'channels' => ['table'],
+            'uses_tables' => true,
+            'asks_tip' => true,
+            'courses' => ['Entradas', 'Fuertes', 'Postres'],
+        ],
         'delivery' => ['channels' => ['delivery', 'whatsapp'], 'uses_tables' => false, 'asks_tip' => false],
     ];
 
@@ -45,6 +60,8 @@ final class TenantSettings
         public readonly bool $asksTip,
         /** Porcentaje sugerido de propina. La propina sigue siendo opcional. */
         public readonly float $tipPercent = self::TIP_PERCENT_DEFAULT,
+        /** @var string[] los tiempos, en orden; vacio si el restaurante no los usa */
+        public readonly array $courses = [],
     ) {
     }
 
@@ -85,6 +102,18 @@ final class TenantSettings
             }
         }
 
+        if (array_key_exists('courses', $raw)) {
+            $courses = $raw['courses'];
+            if (!is_array($courses) || count($courses) > self::COURSES_MAX) {
+                throw new SettingsError("'courses' debe ser una lista de hasta " . self::COURSES_MAX . ' tiempos');
+            }
+            foreach ($courses as $nombre) {
+                if (!is_string($nombre) || trim($nombre) === '' || mb_strlen($nombre) > 40) {
+                    throw new SettingsError('Cada tiempo necesita un nombre de hasta 40 caracteres');
+                }
+            }
+        }
+
         if (array_key_exists('tip_percent', $raw)) {
             $percent = $raw['tip_percent'];
             if (!is_int($percent) && !is_float($percent)) {
@@ -114,6 +143,7 @@ final class TenantSettings
             (bool) $data['uses_tables'],
             (bool) $data['asks_tip'],
             (float) ($data['tip_percent'] ?? self::TIP_PERCENT_DEFAULT),
+            array_values(array_map('strval', $data['courses'] ?? [])),
         );
     }
 }

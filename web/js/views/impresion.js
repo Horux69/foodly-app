@@ -149,10 +149,17 @@ const cabecera = (pedido, titulo) =>
 const comandasDe = (pedido) =>
   pedido.kitchen_tickets?.length
     ? pedido.kitchen_tickets
-    : [{ station_id: null, station_name: null, lines: pedido.items }];
+    : [{ station_id: null, station_name: null, course: 1, course_name: null, lines: pedido.items }];
 
-export function imprimirComanda(pedido, { reimpresion = false } = {}) {
-  const grupos = comandasDe(pedido);
+/**
+ * @param {object} pedido
+ * @param {{reimpresion?: boolean, curso?: number}} opciones `curso` imprime
+ *   solo ese tiempo, que es lo que se manda al marcharlo: la cocina no
+ *   necesita otra vez el papel de las entradas que ya preparó.
+ */
+export function imprimirComanda(pedido, { reimpresion = false, curso = null } = {}) {
+  const grupos = comandasDe(pedido).filter((g) => curso === null || (g.course ?? 1) === curso);
+  if (!grupos.length) return;
 
   // Una hoja por estación: la barra no necesita saber qué lleva la plancha,
   // y con una sola hoja alguien termina recortándola con tijeras.
@@ -169,6 +176,10 @@ export function imprimirComanda(pedido, { reimpresion = false } = {}) {
       grupos.length > 1 && grupo.station_name
         ? h('div', { class: 'doc-estacion' }, grupo.station_name.toUpperCase())
         : null,
+
+      // El tiempo, cuando el restaurante los usa: una comanda de postres
+      // que no dice que es de postres se prepara con lo demás.
+      grupo.course_name ? h('div', { class: 'doc-estacion' }, grupo.course_name.toUpperCase()) : null,
 
       h(
         'div',

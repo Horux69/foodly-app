@@ -41,6 +41,9 @@ final class OrderRoutes
         $router->put('/orders/{order_id:uuid}/table', fn ($p) => OrderController::moveToTable($p));
         $router->post('/orders/{order_id:uuid}/merge', fn ($p) => OrderController::merge($p));
 
+        // Marchar un tiempo a la cocina (F4.5).
+        $router->post('/orders/{order_id:uuid}/fire', fn ($p) => OrderController::fireCourse($p));
+
         // El mesero a cargo de la cuenta (F4.4).
         $router->get('/servers', fn () => OrderController::listServers());
         $router->put('/orders/{order_id:uuid}/server', fn ($p) => OrderController::assignServer($p));

@@ -31,6 +31,10 @@ final class OrderItem
         public readonly array $components = [],
         /** La categoria a la que pertenece hoy el producto: decide su estacion. */
         public readonly ?string $categoryId = null,
+        /** El tiempo de la cuenta al que pertenece la linea (F4.5). */
+        public readonly int $course = 1,
+        /** Cuando se mando a la cocina; null es "todavia no se marcho". */
+        public readonly ?string $firedAt = null,
     ) {
     }
 
@@ -54,6 +58,8 @@ final class OrderItem
             modifiers: $modifiers,
             components: $components,
             categoryId: $row['category_id'] ?? null,
+            course: (int) ($row['course'] ?? 1),
+            firedAt: $row['fired_at'] ?? null,
         );
     }
 }

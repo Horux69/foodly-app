@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Controllers;
 
 use App\Api\Deps;
-use App\Domain\StationRouting;
+use App\Domain\KitchenTickets;
 use App\Services\KitchenOrder;
 use App\Services\KitchenService;
 
@@ -18,6 +18,7 @@ final class KitchenController
         $board = KitchenService::getBoard($ctx->tenantId, Deps::activeBranchId($ctx));
         self::$routing = $board->routing;
         self::$nombresEstacion = array_column($board->stations, 'name', 'id');
+        self::$tiempos = $board->courses;
 
         return [
             // Que columnas mostrar lo decide la configuracion del
@@ -40,8 +41,11 @@ final class KitchenController
     /** @var array<string, string> id de estacion => como se llama */
     private static array $nombresEstacion = [];
 
+    /** @var string[] los tiempos del restaurante, en orden */
+    private static array $tiempos = [];
+
     /**
-     * Las lineas de un pedido, ya repartidas en una comanda por estacion.
+     * Las lineas de un pedido, repartidas en comandas por tiempo y estacion.
      *
      * Quien reparte es Domain\StationRouting y no la pantalla: la comanda
      * impresa y el tablero tienen que decir lo mismo, y un cliente nuevo
@@ -51,7 +55,7 @@ final class KitchenController
      */
     public static function ticketsOut(array $lineas): array
     {
-        return StationRouting::split($lineas, self::$routing, self::$nombresEstacion);
+        return KitchenTickets::build($lineas, self::$routing, self::$nombresEstacion, self::$tiempos);
     }
 
     private static function orderOut(KitchenOrder $entry): array
@@ -73,6 +77,8 @@ final class KitchenController
             ], $item->components),
             'station_id' => self::$routing[$item->categoryId ?? ''] ?? null,
             'station_name' => self::$nombresEstacion[self::$routing[$item->categoryId ?? ''] ?? ''] ?? null,
+            'course' => $item->course,
+            'fired_at' => $item->firedAt,
         ], $entry->order->items);
 
         return [
@@ -82,9 +88,16 @@ final class KitchenController
             'table_code' => $entry->order->tableCode,
             'created_at' => $entry->order->createdAt,
             'status' => OrderController::statusOut($entry->order->status),
-            'items' => $lineas,
-            // Una comanda por estacion, ya repartida por el dominio.
+            // Solo lo marchado: una linea que el mesero todavia no mando no
+            // es trabajo de la cocina, y verla ahi la haria preparar el
+            // postre con las entradas.
+            'items' => array_values(array_filter($lineas, static fn ($l) => $l['fired_at'] !== null)),
+            // Una comanda por tiempo y estacion, ya repartida por el dominio.
             'kitchen_tickets' => self::ticketsOut($lineas),
+            // Lo que falta por marchar: un pedido al que le falta el postre
+            // no esta terminado, y sin decirlo la cocina lo da por
+            // despachado.
+            'pending_courses' => KitchenTickets::pending($lineas, self::$tiempos),
             'next_statuses' => array_map(OrderController::statusOut(...), $entry->nextStatuses),
         ];
     }

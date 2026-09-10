@@ -60,6 +60,9 @@ final class KitchenService
             ),
             $stations->listForTenant($tenantId, soloActivas: true),
             $stations->categoryRouting($tenantId),
+            // Como llama el restaurante a sus tiempos: la comanda del
+            // tablero los nombra igual que la impresa.
+            OrderService::tiemposDe($tenantId),
         );
     }
 

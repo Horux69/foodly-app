@@ -343,6 +343,25 @@ function linea(item, listas) {
 
 /** La demora se señala con color y con el grosor del borde izquierdo, para
  *  que se distinga desde lejos y no dependa solo del color. */
+/**
+ * Las líneas de la tarjeta, con su tiempo cuando hay más de uno.
+ *
+ * Con un solo tiempo —lo normal, y siempre en un mostrador— no se nombra:
+ * una etiqueta que sale en todas las tarjetas no distingue ninguna.
+ */
+function lineasPorTiempo(pedido, listas) {
+  const numeros = [...new Set(pedido.items.map((i) => i.course ?? 1))].sort((a, b) => a - b);
+  if (numeros.length < 2) return pedido.items.map((item) => linea(item, listas));
+
+  const nombre = (n) =>
+    pedido.kitchen_tickets?.find((t) => (t.course ?? 1) === n)?.course_name ?? `Tiempo ${n}`;
+
+  return numeros.flatMap((n) => [
+    h('li', { class: 'text-[11px] font-semibold uppercase tracking-wide text-stone-500 pt-1' }, nombre(n)),
+    ...pedido.items.filter((i) => (i.course ?? 1) === n).map((item) => linea(item, listas)),
+  ]);
+}
+
 function urgencia(minutos) {
   if (minutos >= TARDE_MINUTOS) return { clase: 'ticket-tarde', texto: 'text-red-700 font-semibold' };
   if (minutos >= ATENTO_MINUTOS) return { clase: 'ticket-atento', texto: 'text-amber-700 font-medium' };
@@ -389,7 +408,17 @@ function ticket(pedido, refrescar, listas) {
       )
     ),
 
-    h('ul', { class: 'space-y-2' }, pedido.items.map((item) => linea(item, listas))),
+    h('ul', { class: 'space-y-2' }, lineasPorTiempo(pedido, listas)),
+
+    // Lo que el mesero todavía no ha marchado. Sin decirlo, la cocina da
+    // por despachado un pedido al que le falta el postre.
+    pedido.pending_courses?.length
+      ? h(
+          'div',
+          { class: 'text-xs text-amber-800 bg-amber-50 rounded px-1.5 py-1' },
+          `Falta por marchar: ${pedido.pending_courses.map((c) => c.name).join(', ')}`
+        )
+      : null,
 
     h(
       'div',

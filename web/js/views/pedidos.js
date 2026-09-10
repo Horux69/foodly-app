@@ -100,6 +100,12 @@ async function vistaNuevo(host) {
   const carrito = [];
   let filtro = '';
 
+  // El tiempo al que se están agregando los productos. Los nombres los pone
+  // el restaurante (`tenants.settings.courses`); sin ninguno configurado no
+  // hay tiempos y la pantalla ni los menciona.
+  const tiempos = contexto.courses ?? [];
+  let tiempoActivo = 1;
+
   // Llave de idempotencia del intento en curso. Vive mientras el pedido no
   // se confirme: si la respuesta se pierde por red lenta y el cajero vuelve
   // a tocar, el backend reconoce la llave y devuelve el pedido que ya creó
@@ -137,6 +143,7 @@ async function vistaNuevo(host) {
             onClick: () => {
               canalActivo = c;
               pintarCanal();
+  pintarTiempos();
               recalcular();
             },
           },
@@ -346,10 +353,12 @@ async function vistaNuevo(host) {
   function agregar(item, modificadores) {
     // La clave agrupa líneas idénticas: el mismo producto con la misma
     // selección suma cantidad en vez de duplicarse.
-    const clave = `${item.id}|${modificadores.map((m) => m.id).sort().join(',')}`;
+    // La clave lleva el tiempo: la misma hamburguesa de entrada y de fuerte
+    // son dos líneas, porque salen a la cocina en momentos distintos.
+    const clave = `${item.id}|${modificadores.map((m) => m.id).sort().join(',')}|t${tiempoActivo}`;
     const existente = carrito.find((l) => l.clave === clave);
     if (existente) existente.cantidad += 1;
-    else carrito.push({ clave, item, modificadores, cantidad: 1 });
+    else carrito.push({ clave, item, modificadores, cantidad: 1, tiempo: tiempoActivo });
     pintarCarrito();
   }
 
@@ -411,6 +420,11 @@ async function vistaNuevo(host) {
             'div',
             { class: 'flex-1 min-w-0' },
             h('div', { class: 'text-sm font-medium text-stone-900' }, linea.item.name),
+            // Solo cuando hay tiempos: en un mostrador sería una etiqueta
+            // repetida en todas las líneas que no significa nada.
+            tiempos.length
+              ? h('div', { class: 'text-[11px] text-stone-400' }, tiempos[linea.tiempo - 1] ?? `Tiempo ${linea.tiempo}`)
+              : null,
             linea.modificadores.length
               ? h('div', { class: 'text-xs text-stone-500' }, linea.modificadores.map((m) => m.name).join(', '))
               : null
@@ -426,6 +440,38 @@ async function vistaNuevo(host) {
       )
     );
     recalcular();
+  }
+
+  /**
+   * A qué tiempo se está agregando.
+   *
+   * Botones y no un desplegable, como el canal: es una decisión que se toma
+   * varias veces mientras se toma el pedido y en un desplegable se olvida.
+   */
+  const selectorTiempo = h('div', { class: 'flex flex-wrap gap-1.5' });
+  function pintarTiempos() {
+    if (!tiempos.length) return;
+    render(
+      selectorTiempo,
+      tiempos.map((nombre, indice) =>
+        h(
+          'button',
+          {
+            class: `px-2.5 py-1 rounded-full text-[12.5px] border transition ${
+              indice + 1 === tiempoActivo
+                ? 'bg-stone-900 text-white border-stone-900'
+                : 'bg-white text-stone-600 border-stone-300 hover:border-stone-900'
+            }`,
+            'aria-pressed': String(indice + 1 === tiempoActivo),
+            onClick: () => {
+              tiempoActivo = indice + 1;
+              pintarTiempos();
+            },
+          },
+          nombre
+        )
+      )
+    );
   }
 
   const paso = (ico, onClick) =>
@@ -507,6 +553,9 @@ async function vistaNuevo(host) {
         menu_item_id: l.item.id,
         quantity: l.cantidad,
         modifier_ids: l.modificadores.map((m) => m.id),
+        // Solo el primer tiempo con líneas sale a la cocina al crear el
+        // pedido; los demás esperan a que alguien los marche.
+        course: l.tiempo ?? 1,
       })),
     };
   }
@@ -613,6 +662,14 @@ async function vistaNuevo(host) {
                 mesero
               )
             : null,
+          tiempos.length
+            ? h(
+                'div',
+                { class: 'mt-3' },
+                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Agregando a'),
+                selectorTiempo
+              )
+            : null,
           h('div', { class: 'mt-3' }, lineas),
           totales,
           h('div', { class: 'mt-3' }, crear)
@@ -662,6 +719,7 @@ async function vistaNuevo(host) {
   );
 
   pintarCanal();
+  pintarTiempos();
   pintarMenu();
   pintarCarrito();
   cargarZonas();

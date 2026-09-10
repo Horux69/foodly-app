@@ -631,8 +631,8 @@ componentes no llevan cifra propia porque no la tienen.
 
 - **Fase 4 (servicio en mesa)**, en curso: modificar un pedido abierto
   (F4.0) —la pieza pesada que le faltaba al backend—, el estado de cada mesa
-  (F4.1), el mapa del salón (F4.2), mover o unir cuentas (F4.3) y el mesero
-  a cargo (F4.4).
+  (F4.1), el mapa del salón (F4.2), mover o unir cuentas (F4.3), el mesero
+  a cargo (F4.4) y los tiempos de la cuenta (F4.5).
 
 Sobre editar un pedido, cuatro decisiones que conviene no deshacer:
 
@@ -735,6 +735,42 @@ Sobre el mesero a cargo (F4.4), cuatro decisiones que conviene no deshacer:
   reparte, eso es mover plata y hay restaurantes donde lo autoriza el
   supervisor. Sin el permiso el campo no aparece y la cuenta queda a nombre
   de quien la tomó.
+
+Sobre los tiempos de la cuenta (F4.5), cuatro decisiones que conviene no
+deshacer:
+
+- **El tiempo es de la línea, no del pedido.** En una mesa se pide todo junto
+  y no se cocina todo junto. Sin tiempos, en una mesa de ocho los postres
+  salen con las entradas —o el mesero toma tres pedidos distintos para la
+  misma mesa, que después hay que cobrar juntos, que es peor—. La cuenta
+  sigue siendo una y se cobra una vez; lo que se reparte es la comanda.
+- **El primero se marcha solo al tomar el pedido, y es el primero *con
+  líneas*.** Si esperara a que alguien lo marchara, un mesero que no
+  conociera la función dejaría la comida sin pedir y el error se
+  descubriría cuando el cliente preguntara. Y si el pedido no lleva
+  entradas, los fuertes tienen que salir ya.
+- **Solo sale a la cocina lo marchado.** `Domain\KitchenTickets` filtra por
+  `fired_at` y agrupa por tiempo y por estación —las dos dimensiones de la
+  comanda— para la impresión y para el tablero a la vez: si cada uno
+  agrupara por su lado, tarde o temprano dirían cosas distintas. El tablero
+  además dice qué falta por marchar; sin eso, la cocina da por despachado un
+  pedido al que le falta el postre.
+- **Marchar no cambia el estado del pedido.** El estado es de la cuenta y el
+  tiempo es de la comanda: devolver el pedido a "en preparación" al marchar
+  exigiría un camino de vuelta que el restaurante quizá no configuró, y la
+  máquina de estados es suya. La comanda del tiempo sale impresa al
+  marcharlo —marchar sin que salga el papel dejaría el pedido "mandado" para
+  el sistema y sin nada en la cocina—.
+
+Los nombres de los tiempos son configuración (`tenants.settings.courses`,
+"Entradas/Fuertes/Postres" por defecto en un restaurante de mesa) y se editan
+en Administración; la línea guarda el **número**, así que renombrar un tiempo
+no reescribe lo ya vendido. Lista vacía significa que el restaurante no los
+usa: todo sale junto y ninguna pantalla los menciona. Lo que se le agrega
+después a un tiempo ya marchado sale de una vez —si esperara, esperaría a
+que alguien marche algo que ya se marchó, o sea para siempre— y volver a
+marchar un tiempo se rechaza en vez de reescribir su hora, que es lo que la
+cocina lee para saber qué es nuevo.
 
 El reporte por mesero (`GET /reports/sales-by-server`) va aparte del que ya
 existía por usuario, y **separa la venta de la propina**: sumadas, quien
@@ -891,7 +927,7 @@ Un pedido tiene un documento y solo uno, y lo impone la clave única: volver a
 emitirlo devuelve el que ya existe, como una llave de idempotencia. Se emite
 sobre una venta saldada, porque el documento dice cuánto se cobró.
 
-**Siguiente**: el resto de la fase 4 (tiempos y pre-cuenta) y las fases 7 a 12 del
+**Siguiente**: el resto de la fase 4 (la pre-cuenta) y las fases 7 a 12 del
 segundo plan de obra: caja completa, impresión por estaciones, domicilios,
 costos, promociones y cumplimiento.
 

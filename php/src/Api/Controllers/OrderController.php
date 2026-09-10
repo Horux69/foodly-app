@@ -12,6 +12,7 @@ use App\Core\Database;
 use App\Core\Money;
 use App\Domain\OrderEditRules;
 use App\Domain\ServerAssignment;
+use App\Domain\KitchenTickets;
 use App\Domain\StationRouting;
 use App\Domain\PaymentBalance;
 use App\Models\Order;
@@ -67,6 +68,10 @@ final class OrderController
                 'tax_amount' => Money::toDecimalString($i->taxAmountCents),
                 'line_total' => Money::toDecimalString($i->lineTotalCents),
                 'notes' => $i->notes,
+                // El tiempo de la linea y cuando salio a la cocina: null es
+                // "todavia no se marcho".
+                'course' => $i->course,
+                'fired_at' => $i->firedAt,
                 'modifiers' => array_map(static fn ($m) => [
                     'modifier_id' => $m->modifierId,
                     'name_snapshot' => $m->nameSnapshot,
@@ -114,6 +119,9 @@ final class OrderController
                 quantity: Request::int($raw, 'quantity', min: 1),
                 modifierIds: $modifierIds,
                 notes: Request::optionalString($raw, 'notes'),
+                // El tiempo al que va. Sin tiempos configurados el dominio
+                // rechaza cualquier cosa distinta de 1.
+                course: Request::int($raw, 'course', default: 1, min: 1),
             );
         }, $items);
     }
@@ -286,10 +294,17 @@ final class OrderController
             ];
         }, $salida['items'], $order->items);
 
+        $tiempos = OrderService::tiemposDe($ctx->tenantId);
+
         return $salida + [
-            // La misma comanda repartida que ve la cocina: quien reparte es
-            // Domain\StationRouting, no cada pantalla.
-            'kitchen_tickets' => StationRouting::split($salida['items'], $ruteo, $nombres),
+            // La misma comanda repartida que ve la cocina —por tiempo y por
+            // estacion—: quien reparte es Domain\KitchenTickets, no cada
+            // pantalla.
+            'kitchen_tickets' => KitchenTickets::build($salida['items'], $ruteo, $nombres, $tiempos),
+            // Como llama este restaurante a sus tiempos, y cuales esperan
+            // todavia: el detalle los agrupa y ofrece marcharlos.
+            'courses' => $tiempos,
+            'pending_courses' => KitchenTickets::pending($salida['items'], $tiempos),
             'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
             // Solo los domicilios tienen entrega; su presencia es lo que
             // convierte al pedido en uno.
@@ -592,6 +607,32 @@ final class OrderController
         return self::orderOut($order) + [
             'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
         ];
+    }
+
+    /**
+     * Marcha un tiempo: lo manda a la cocina (F4.5).
+     *
+     * Bajo 'orders.edit' y no bajo un permiso nuevo: marchar cambia lo que
+     * la cocina tiene que preparar de una cuenta abierta, que es lo mismo
+     * que hace agregarle o quitarle una linea.
+     */
+    public static function fireCourse(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.edit');
+        $body = Request::json();
+
+        try {
+            [$order, $cuantas] = OrderService::fireCourse(
+                $ctx->tenantId,
+                $params['order_id'],
+                Request::int($body, 'course', min: 1),
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return self::orderOut($order) + ['fired_lines' => $cuantas];
     }
 
     /**

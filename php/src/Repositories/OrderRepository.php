@@ -376,13 +376,20 @@ final class OrderRepository
         int $taxAmountCents,
         int $lineTotalCents,
         ?string $notes,
+        int $course = 1,
+        bool $fired = true,
     ): string {
+        // La hora de salida se interpola porque es now() o NULL, no un
+        // valor: sale de un booleano de PHP y no de la peticion.
+        $salida = $fired ? 'now()' : 'NULL';
         $stmt = $this->pdo->prepare(
-            'INSERT INTO order_items (
-                order_id, menu_item_id, name_snapshot, quantity, unit_price, tax_rate, tax_amount, line_total, notes
+            "INSERT INTO order_items (
+                order_id, menu_item_id, name_snapshot, quantity, unit_price, tax_rate, tax_amount, line_total, notes,
+                course, fired_at
              ) VALUES (
-                :order_id, :menu_item_id, :name_snapshot, :quantity, :unit_price, :tax_rate, :tax_amount, :line_total, :notes
-             ) RETURNING id'
+                :order_id, :menu_item_id, :name_snapshot, :quantity, :unit_price, :tax_rate, :tax_amount, :line_total, :notes,
+                :course, {$salida}
+             ) RETURNING id"
         );
         $stmt->execute([
             'order_id' => $orderId,
@@ -394,6 +401,7 @@ final class OrderRepository
             'tax_amount' => Money::toDecimalString($taxAmountCents),
             'line_total' => Money::toDecimalString($lineTotalCents),
             'notes' => $notes,
+            'course' => $course,
         ]);
         return (string) $stmt->fetchColumn();
     }
@@ -497,6 +505,25 @@ final class OrderRepository
             'by' => $by,
             'id' => $orderId,
         ]);
+    }
+
+    /**
+     * Manda a la cocina las lineas de un tiempo que todavia no han salido.
+     *
+     * Solo las que estan sin marchar: volver a marchar un tiempo ya
+     * marchado no puede reescribir su hora, que es lo que la cocina lee
+     * para saber que es nuevo.
+     *
+     * @return int cuantas lineas salieron
+     */
+    public function fireCourse(string $orderId, int $course): int
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE order_items SET fired_at = now()
+              WHERE order_id = :order_id AND course = :course AND fired_at IS NULL'
+        );
+        $stmt->execute(['order_id' => $orderId, 'course' => $course]);
+        return $stmt->rowCount();
     }
 
     /** Quien atiende la cuenta. Nulo la deja sin mesero a cargo. */

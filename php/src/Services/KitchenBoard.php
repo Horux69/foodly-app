@@ -19,6 +19,7 @@ final class KitchenBoard
      * @param KitchenOrder[] $dispatched lo despachado hace poco, para recuperarlo
      * @param array<int, array{id: string, name: string}> $stations las estaciones activas
      * @param array<string, string> $routing id de categoria del menu => id de estacion
+     * @param string[] $courses los tiempos del restaurante, en orden; vacio si no los usa
      */
     public function __construct(
         public readonly array $columns,
@@ -26,6 +27,7 @@ final class KitchenBoard
         public readonly array $dispatched,
         public readonly array $stations = [],
         public readonly array $routing = [],
+        public readonly array $courses = [],
     ) {
     }
 }

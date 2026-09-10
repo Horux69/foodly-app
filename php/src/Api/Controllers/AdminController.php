@@ -95,6 +95,9 @@ final class AdminController
             'uses_tables' => $settings->usesTables,
             'asks_tip' => $settings->asksTip,
             'tip_percent' => $settings->tipPercent,
+            // Los tiempos de la cuenta, en orden. Vacio = el restaurante no
+            // los usa y la pantalla ni los menciona.
+            'courses' => $settings->courses,
         ];
     }
 
@@ -111,6 +114,9 @@ final class AdminController
         }
         if (array_key_exists('asks_tip', $body) && $body['asks_tip'] !== null) {
             $changes['asks_tip'] = Request::bool($body, 'asks_tip');
+        }
+        if (array_key_exists('courses', $body) && $body['courses'] !== null) {
+            $changes['courses'] = Request::stringList($body, 'courses');
         }
         if (array_key_exists('tip_percent', $body) && $body['tip_percent'] !== null) {
             // Es la sugerencia que ve el cajero, no un cargo: la propina se
@@ -144,6 +150,9 @@ final class AdminController
             'uses_tables' => $settings->usesTables,
             'asks_tip' => $settings->asksTip,
             'tip_percent' => $settings->tipPercent,
+            // Los tiempos de la cuenta, en orden. Vacio = el restaurante no
+            // los usa y la pantalla ni los menciona.
+            'courses' => $settings->courses,
         ];
     }
 

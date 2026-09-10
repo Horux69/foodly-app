@@ -151,7 +151,7 @@ describe('producto con modificadores', () => {
 
     const creado = fetch.mock.calls.find(([url, o]) => String(url).includes('/orders?') && o?.method === 'POST');
     expect(JSON.parse(creado[1].body).items).toEqual([
-      { menu_item_id: 'i1', quantity: 1, modifier_ids: ['m2', 'm3'] },
+      { menu_item_id: 'i1', quantity: 1, modifier_ids: ['m2', 'm3'], course: 1 },
     ]);
   });
 

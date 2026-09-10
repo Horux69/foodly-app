@@ -338,6 +338,45 @@ function seccionConfig({ ajustes }) {
   const mesas = h('input', { type: 'checkbox', class: 'w-4 h-4 rounded', checked: ajustes.uses_tables, disabled: !editable });
   const propina = h('input', { type: 'checkbox', class: 'w-4 h-4 rounded', checked: ajustes.asks_tip, disabled: !editable });
 
+  // Los tiempos de la cuenta: entradas, fuertes, postres. Se escriben aquí
+  // porque el nombre y cuántos son cambian con la carta; sin ninguno, el
+  // pedido entero sale junto y la pantalla de venta ni los menciona.
+  let tiempos = [...(ajustes.courses ?? [])];
+  const listaTiempos = h('div', { class: 'space-y-2 mb-2' });
+
+  function pintarTiempos() {
+    render(
+      listaTiempos,
+      tiempos.map((nombre, indice) =>
+        h(
+          'div',
+          { class: 'flex items-center gap-2' },
+          h('span', { class: 'text-xs text-stone-400 w-4 tabular-nums' }, `${indice + 1}`),
+          input({
+            value: nombre,
+            maxlength: '40',
+            disabled: !editable,
+            'aria-label': `Nombre del tiempo ${indice + 1}`,
+            oninput: (e) => {
+              tiempos[indice] = e.target.value;
+            },
+          }),
+          editable
+            ? button('Quitar', {
+                variant: 'subtle',
+                'aria-label': `Quitar el tiempo ${indice + 1}`,
+                onClick: () => {
+                  tiempos.splice(indice, 1);
+                  pintarTiempos();
+                },
+              })
+            : null
+        )
+      )
+    );
+  }
+  pintarTiempos();
+
   return [
     titledCard(
       'Cómo opera el restaurante',
@@ -360,6 +399,26 @@ function seccionConfig({ ajustes }) {
         h('label', { class: 'flex items-center gap-2 text-sm' }, mesas, 'Maneja mesas'),
         h('label', { class: 'flex items-center gap-2 text-sm' }, propina, 'Pide propina')
       ),
+      h('div', { class: 'text-sm font-medium text-stone-700 mb-2' }, 'Tiempos de la cuenta'),
+      listaTiempos,
+      h(
+        'p',
+        { class: 'text-xs text-stone-500 mb-3' },
+        'Se toman todos juntos y salen a la cocina por partes: el primero al crear el pedido y los demás cuando el mesero los marcha. Sin ninguno, todo sale junto.'
+      ),
+      editable && tiempos.length < 9
+        ? h(
+            'div',
+            { class: 'mb-4' },
+            button('Agregar tiempo', {
+              variant: 'secondary',
+              onClick: () => {
+                tiempos.push('');
+                pintarTiempos();
+              },
+            })
+          )
+        : null,
       editable
         ? button('Guardar cambios', {
             onClick: async (e) => {
@@ -393,6 +452,9 @@ function seccionConfig({ ajustes }) {
                   channels: casillas.filter((c) => c.control.checked).map((c) => c.code),
                   uses_tables: mesas.checked,
                   asks_tip: propina.checked,
+                  // Se limpian los vacíos: un tiempo sin nombre no se puede
+                  // ofrecer, y el backend lo rechazaría entero.
+                  courses: tiempos.map((t) => t.trim()).filter(Boolean),
                 });
                 toast('Configuración guardada', 'ok');
                 // El nombre se lee en el rail y la moneda en cada cifra de la

@@ -125,6 +125,9 @@ final class AuthController
             // Cuanto sugerir al cobrar. Es una sugerencia: la propina se
             // puede quitar de un toque.
             'tip_percent' => $settings->tipPercent,
+            // Los tiempos de la cuenta: la pantalla de venta los ofrece y el
+            // detalle los agrupa. Vacio significa que no se usan.
+            'courses' => $settings->courses,
         ];
     }
 }

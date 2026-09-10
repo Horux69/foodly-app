@@ -269,7 +269,7 @@ function bloqueLineas(pedido, recargar) {
             'La cocina ya tiene este pedido: lo que cambies puede estar preparándose.'
           )
         : null,
-      ...pedido.items.map((i) =>
+      ...conTiempos(pedido, recargar, (i) =>
         h(
           'div',
           { class: 'fila items-start' },
@@ -300,6 +300,74 @@ function bloqueLineas(pedido, recargar) {
       ),
     ].filter(Boolean),
   });
+}
+
+/**
+ * Las líneas agrupadas por tiempo, con la cabecera de cada uno.
+ *
+ * Sin tiempos configurados devuelve las líneas tal cual: es el caso de casi
+ * todos los restaurantes y no tiene por qué costarles una etiqueta de más.
+ * Qué se puede marchar lo decide el backend —`pending_courses` sale de
+ * `Domain\KitchenTickets`—, aquí solo se pinta.
+ */
+function conTiempos(pedido, recargar, linea) {
+  const tiempos = pedido.courses ?? [];
+  if (!tiempos.length) return pedido.items.map(linea);
+
+  const puedeMarchar = can('orders.edit') && pedido.is_server_assignable !== false;
+  const numeros = [...new Set(pedido.items.map((i) => i.course ?? 1))].sort((a, b) => a - b);
+
+  return numeros.flatMap((numero) => {
+    const suyas = pedido.items.filter((i) => (i.course ?? 1) === numero);
+    const salida = suyas.find((i) => i.fired_at)?.fired_at ?? null;
+    const pendiente = suyas.some((i) => !i.fired_at);
+
+    return [
+      h(
+        'div',
+        { class: 'flex items-center justify-between gap-2 pt-1' },
+        h(
+          'span',
+          { class: 'text-[11.5px] font-semibold uppercase tracking-wide text-stone-500' },
+          tiempos[numero - 1] ?? `Tiempo ${numero}`
+        ),
+        pendiente
+          ? puedeMarchar
+            ? button('Marchar', {
+                variant: 'secondary',
+                onClick: (e) => marchar(pedido, numero, recargar, e.currentTarget),
+              })
+            : h('span', { class: 'text-[11px] text-amber-700' }, 'Sin marchar')
+          : h('span', { class: 'text-[11px] text-stone-400' }, `Marchado ${time(salida)}`)
+      ),
+      ...suyas.map(linea),
+    ];
+  });
+}
+
+/**
+ * Marchar un tiempo: lo manda a la cocina y saca su comanda.
+ *
+ * La comanda se imprime aquí y no en el backend porque se imprime con el
+ * navegador (ver `impresion.js`), y sale sola: marchar sin que la comanda
+ * salga dejaría el pedido "mandado" para el sistema y sin papel en la
+ * cocina, que es la peor de las dos mentiras.
+ */
+async function marchar(pedido, numero, recargar, boton) {
+  boton.disabled = true;
+  try {
+    await api.post(`/orders/${pedido.id}/fire`, { course: numero });
+    // Se relee para imprimir: la respuesta del marchado no trae las
+    // comandas repartidas por estación, y la comanda tiene que decir lo
+    // mismo que el tablero.
+    const fresco = await api.get(`/orders/${pedido.id}`);
+    imprimirComanda(fresco, { curso: numero });
+    toast('Marchado a la cocina', 'ok');
+    await recargar();
+  } catch (error) {
+    toast(error.message);
+    boton.disabled = false;
+  }
 }
 
 /**
