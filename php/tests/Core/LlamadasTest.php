@@ -92,11 +92,16 @@ final class LlamadasTest extends TestCase
     }
 
     /**
-     * Lo mismo para `$repo = new Algo(...)` seguido de `$repo->metodo(...)`.
+     * Lo mismo para las variables de tipo conocido: `$repo = new Algo(...)`
+     * y los parametros declarados `Algo $repo`, seguidos de `$repo->metodo()`.
      *
-     * Solo se miran las variables asignadas una unica vez en el archivo: con
-     * dos asignaciones no se puede saber cual esta viva en cada llamada, y una
-     * prueba que adivina es peor que ninguna.
+     * Los parametros cuentan porque el codigo pasa repositorios de un metodo
+     * a otro —`guardarLinea(OrderRepository $orders, ...)`— y sin mirarlos el
+     * analisis se queda ciego justo donde mas se encadenan llamadas.
+     *
+     * Solo se miran las variables con un unico tipo en el archivo: con dos no
+     * se puede saber cual esta viva en cada llamada, y una prueba que adivina
+     * es peor que ninguna.
      */
     public function testLasLlamadasSobreVariablesInstanciadasTambien(): void
     {
@@ -107,15 +112,22 @@ final class LlamadasTest extends TestCase
             $visibles = self::clasesVisibles($codigo);
 
             preg_match_all('/\$(\w+)\s*=\s*new\s+([A-Z]\w+)\s*\(/', $codigo, $altas, PREG_SET_ORDER);
+            // `Algo $var` en una firma: tipo declarado, sin `new` de por medio.
+            preg_match_all('/(?:[(,]|^\s*)\s*(?:readonly\s+)?\??([A-Z]\w+)\s+\$(\w+)\s*[,)=]/m', $codigo, $params, PREG_SET_ORDER);
+
             $tipos = [];
-            $asignaciones = [];
+            $vistos = [];
             foreach ($altas as [, $variable, $corto]) {
-                $asignaciones[$variable] = ($asignaciones[$variable] ?? 0) + 1;
                 $tipos[$variable] = $corto;
+                $vistos[$variable][$corto] = true;
+            }
+            foreach ($params as [, $corto, $variable]) {
+                $tipos[$variable] ??= $corto;
+                $vistos[$variable][$corto] = true;
             }
 
             foreach ($tipos as $variable => $corto) {
-                if ($asignaciones[$variable] > 1) {
+                if (count($vistos[$variable]) > 1) {
                     continue;
                 }
                 $clase = $visibles[$corto] ?? null;

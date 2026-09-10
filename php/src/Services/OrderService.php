@@ -11,10 +11,13 @@ use App\Domain\DeliveryError;
 use App\Domain\DeliveryRules;
 use App\Domain\DeliveryZoneRules;
 use App\Domain\LineInput;
+use App\Domain\LineResult;
 use App\Domain\MenuPricing;
 use App\Domain\ModifierGroupConstraint;
 use App\Domain\ModifierValidation;
 use App\Domain\ModifierValidationError;
+use App\Domain\OrderEditError;
+use App\Domain\OrderEditRules;
 use App\Domain\OrderTotals;
 use App\Domain\OrderTotalsCalculator;
 use App\Domain\OrderTotalsError;
@@ -26,6 +29,7 @@ use App\Models\MenuItem;
 use App\Models\Modifier;
 use App\Models\DeliveryZone;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Repositories\BranchRepository;
 use App\Repositories\CustomerRepository;
 use App\Repositories\DeliveryRepository;
@@ -292,29 +296,7 @@ final class OrderService
         );
 
         foreach ($resolvedLines as $index => $resolved) {
-            $lineResult = $totals->lines[$index];
-            $orderItemId = $orders->addItem(
-                $orderId,
-                $resolved->item->id,
-                $resolved->item->name,
-                $resolved->line->quantity,
-                $resolved->lineInput->unitPriceCents,
-                $resolved->item->taxRate ?? '0',
-                $lineResult->taxAmountCents,
-                $lineResult->lineTotalCents,
-                $resolved->line->notes,
-            );
-            foreach ($resolved->modifiers as $modifier) {
-                $orders->addItemModifier($orderItemId, $modifier->id, $modifier->name, $modifier->priceDeltaCents);
-            }
-            if ($resolved->components !== []) {
-                // Dos combos son dos de cada cosa: multiplica el dominio, no
-                // la pantalla ni la consulta.
-                $orders->addItemComponents(
-                    $orderItemId,
-                    ComboRules::expand($resolved->components, $resolved->line->quantity),
-                );
-            }
+            self::guardarLinea($orders, $orderId, $resolved, $totals->lines[$index]);
         }
 
         if ($delivery !== null) {
@@ -330,6 +312,282 @@ final class OrderService
         $orders->addStatusHistory($orderId, $initialStatus->id, $createdBy, 'Pedido creado');
 
         return $orders->getById($tenantId, $orderId);
+    }
+
+    /**
+     * Escribe una linea resuelta con su precio, sus modificadores y —si es
+     * un combo— lo que llevaba. Lo comparten crear un pedido y agregarle
+     * lineas despues: las dos congelan igual.
+     */
+    private static function guardarLinea(
+        OrderRepository $orders,
+        string $orderId,
+        ResolvedLine $resolved,
+        LineResult $lineResult,
+    ): string {
+        $orderItemId = $orders->addItem(
+            $orderId,
+            $resolved->item->id,
+            $resolved->item->name,
+            $resolved->line->quantity,
+            $resolved->lineInput->unitPriceCents,
+            $resolved->item->taxRate ?? '0',
+            $lineResult->taxAmountCents,
+            $lineResult->lineTotalCents,
+            $resolved->line->notes,
+        );
+        foreach ($resolved->modifiers as $modifier) {
+            $orders->addItemModifier($orderItemId, $modifier->id, $modifier->name, $modifier->priceDeltaCents);
+        }
+        if ($resolved->components !== []) {
+            // Dos combos son dos de cada cosa: multiplica el dominio, no la
+            // pantalla ni la consulta.
+            $orders->addItemComponents(
+                $orderItemId,
+                ComboRules::expand($resolved->components, $resolved->line->quantity),
+            );
+        }
+        return $orderItemId;
+    }
+
+    /**
+     * Lo que ya vale cada linea del pedido, tal como quedo congelada.
+     *
+     * @param OrderItem[] $items
+     * @return LineResult[]
+     */
+    private static function resultadosCongelados(array $items): array
+    {
+        return array_map(
+            static fn (OrderItem $i) => new LineResult($i->lineTotalCents, $i->taxAmountCents),
+            $items,
+        );
+    }
+
+    /**
+     * Abre la edicion de un pedido: lo bloquea, comprueba que todavia se
+     * pueda tocar y lo devuelve.
+     *
+     * El bloqueo es el mismo FOR UPDATE con el que se avanza un estado: dos
+     * cajeros editando la misma cuenta leerian el mismo total y el segundo
+     * pisaria al primero.
+     */
+    private static function abrirParaEditar(OrderRepository $orders, string $tenantId, string $orderId): Order
+    {
+        $order = $orders->getByIdForUpdate($tenantId, $orderId);
+        if ($order === null) {
+            throw new OrderError('Pedido no encontrado');
+        }
+        if ($order->status === null) {
+            throw new OrderError('El pedido no tiene estado');
+        }
+        try {
+            OrderEditRules::ensureEditable($order->status->category);
+        } catch (OrderEditError $e) {
+            throw new OrderError($e->getMessage());
+        }
+        return $order;
+    }
+
+    /**
+     * Guarda los totales que resultan de la edicion y deja el rastro.
+     *
+     * @param LineResult[] $resultados lo que vale cada linea que queda
+     */
+    private static function cerrarEdicion(
+        OrderRepository $orders,
+        Order $order,
+        array $resultados,
+        string $nota,
+        ?string $userId,
+    ): Order {
+        $totals = OrderTotalsCalculator::totalsFromLines(
+            $resultados,
+            $order->deliveryFeeCents,
+            $order->discountCents,
+            $order->tipCents,
+        );
+
+        try {
+            // El pedido no puede terminar valiendo menos de lo que ya se
+            // cobro: eso dejaria plata sin venta que la respalde.
+            OrderEditRules::ensureCubreLoCobrado(
+                $totals->totalCents,
+                PaymentService::getBalanceForOrder($order)->netPaidCents,
+            );
+        } catch (OrderEditError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $orders->updateTotals($order->id, $totals->subtotalCents, $totals->taxTotalCents, $totals->totalCents);
+        // La bitacora del pedido es la que ya se lee en el detalle: el cambio
+        // queda en la misma linea de tiempo que los estados, con su autor.
+        $orders->addStatusHistory($order->id, $order->statusId, $userId, mb_substr($nota, 0, 255));
+
+        return $orders->getById($order->tenantId, $order->id);
+    }
+
+    /**
+     * Agrega lineas a un pedido abierto.
+     *
+     * Las nuevas congelan el precio de hoy —el mismo camino que el alta, con
+     * su disponibilidad y sus modificadores validados—; las que ya estaban
+     * conservan el suyo. No se vuelve a comprobar el horario de la sucursal:
+     * el pedido ya se tomo, y cerrar la cocina no puede dejar una mesa sin
+     * poder pedir el postre.
+     *
+     * @param OrderLineInput[] $items
+     */
+    public static function addLines(string $tenantId, string $orderId, array $items, ?string $userId = null): Order
+    {
+        if ($items === []) {
+            throw new OrderError('No hay nada que agregar');
+        }
+
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+        $order = self::abrirParaEditar($orders, $tenantId, $orderId);
+
+        $resueltas = self::resolveLines($tenantId, $order->branchId, $items);
+        $nuevas = array_map(
+            static fn (ResolvedLine $r) => OrderTotalsCalculator::computeLine($r->lineInput),
+            $resueltas,
+        );
+
+        foreach ($resueltas as $index => $resuelta) {
+            self::guardarLinea($orders, $order->id, $resuelta, $nuevas[$index]);
+        }
+
+        $agregado = implode(', ', array_map(
+            static fn (ResolvedLine $r) => "{$r->line->quantity}x {$r->item->name}",
+            $resueltas,
+        ));
+
+        return self::cerrarEdicion(
+            $orders,
+            $order,
+            [...self::resultadosCongelados($order->items), ...$nuevas],
+            "Agrego {$agregado}",
+            $userId,
+        );
+    }
+
+    /** Quita una linea del pedido. */
+    public static function removeLine(
+        string $tenantId,
+        string $orderId,
+        string $orderItemId,
+        ?string $userId = null,
+    ): Order {
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+        $order = self::abrirParaEditar($orders, $tenantId, $orderId);
+
+        $quitada = null;
+        $quedan = [];
+        foreach ($order->items as $item) {
+            if ($item->id === $orderItemId) {
+                $quitada = $item;
+            } else {
+                $quedan[] = $item;
+            }
+        }
+        // Se busca dentro de las lineas del pedido y no por id suelto: una de
+        // otro pedido —o de otra empresa— no existe desde aqui.
+        if ($quitada === null) {
+            throw new OrderError('Esa linea no pertenece a este pedido');
+        }
+
+        try {
+            OrderEditRules::ensureQuedanLineas(count($quedan));
+        } catch (OrderEditError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $orders->removeItem($quitada->id);
+
+        return self::cerrarEdicion(
+            $orders,
+            $order,
+            self::resultadosCongelados($quedan),
+            "Quito {$quitada->quantity}x {$quitada->nameSnapshot}",
+            $userId,
+        );
+    }
+
+    /**
+     * Cambia cuantas unidades lleva una linea.
+     *
+     * El precio unitario congelado no se toca: se recalcula lo que depende de
+     * la cantidad —el impuesto y el total de la linea— con el mismo dominio
+     * que uso el alta.
+     */
+    public static function setLineQuantity(
+        string $tenantId,
+        string $orderId,
+        string $orderItemId,
+        int $quantity,
+        ?string $userId = null,
+    ): Order {
+        try {
+            OrderEditRules::ensureCantidad($quantity);
+        } catch (OrderEditError $e) {
+            throw new OrderError($e->getMessage());
+        }
+
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+        $order = self::abrirParaEditar($orders, $tenantId, $orderId);
+
+        $linea = null;
+        foreach ($order->items as $item) {
+            if ($item->id === $orderItemId) {
+                $linea = $item;
+            }
+        }
+        if ($linea === null) {
+            throw new OrderError('Esa linea no pertenece a este pedido');
+        }
+        if ($linea->quantity === $quantity) {
+            return $orders->getById($tenantId, $order->id);
+        }
+
+        // El impuesto se recalcula con la tarifa que quedo congelada en la
+        // linea, no con la de hoy: la tarifa del producto pudo cambiar
+        // despues de la venta y el pedido ya se emitio con la suya.
+        //
+        // Si el impuesto iba dentro del precio tampoco esta guardado, pero se
+        // deduce de la propia fila sin adivinar: el total de la linea es el
+        // bruto cuando va incluido, y el bruto mas el impuesto cuando se
+        // suma aparte.
+        $deltas = array_map(static fn ($m) => $m->priceDeltaCents, $linea->modifiers);
+        $bruto = ($linea->unitPriceCents + (int) array_sum($deltas)) * $linea->quantity;
+
+        $resultado = OrderTotalsCalculator::computeLine(new LineInput(
+            quantity: $quantity,
+            unitPriceCents: $linea->unitPriceCents,
+            taxRate: (float) $linea->taxRate,
+            taxIncludedInPrice: $linea->lineTotalCents === $bruto,
+            modifierDeltasCents: $deltas,
+        ));
+
+        $orders->setItemQuantity($linea->id, $quantity, $resultado->taxAmountCents, $resultado->lineTotalCents);
+        $orders->rescaleItemComponents($linea->id, $linea->quantity, $quantity);
+
+        $resultados = [];
+        foreach ($order->items as $item) {
+            $resultados[] = $item->id === $linea->id
+                ? $resultado
+                : new LineResult($item->lineTotalCents, $item->taxAmountCents);
+        }
+
+        return self::cerrarEdicion(
+            $orders,
+            $order,
+            $resultados,
+            "Cambio {$linea->nameSnapshot} de {$linea->quantity} a {$quantity}",
+            $userId,
+        );
     }
 
     /**

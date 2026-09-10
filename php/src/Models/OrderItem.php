@@ -22,6 +22,8 @@ final class OrderItem
         public readonly string $nameSnapshot,
         public readonly int $quantity,
         public readonly int $unitPriceCents,
+        /** La tarifa del momento de la venta, como fraccion decimal ("0.1900"). */
+        public readonly string $taxRate,
         public readonly int $taxAmountCents,
         public readonly int $lineTotalCents,
         public readonly ?string $notes,
@@ -43,6 +45,7 @@ final class OrderItem
             nameSnapshot: $row['name_snapshot'],
             quantity: (int) $row['quantity'],
             unitPriceCents: Money::fromDecimalString((string) $row['unit_price']),
+            taxRate: (string) $row['tax_rate'],
             taxAmountCents: Money::fromDecimalString((string) $row['tax_amount']),
             lineTotalCents: Money::fromDecimalString((string) $row['line_total']),
             notes: $row['notes'],

@@ -402,6 +402,79 @@ final class OrderRepository
         }
     }
 
+    /**
+     * Quita una linea del pedido.
+     *
+     * Sus modificadores y sus componentes se van con ella: las dos tablas
+     * cuelgan de order_items con ON DELETE CASCADE.
+     */
+    public function removeItem(string $orderItemId): void
+    {
+        $this->pdo->prepare('DELETE FROM order_items WHERE id = :id')->execute(['id' => $orderItemId]);
+    }
+
+    /**
+     * Cambia la cantidad de una linea ya congelada.
+     *
+     * El precio unitario no se toca —es el del momento de la venta— pero el
+     * impuesto y el total de la linea sí, porque dependen de cuantas son.
+     */
+    public function setItemQuantity(
+        string $orderItemId,
+        int $quantity,
+        int $taxAmountCents,
+        int $lineTotalCents,
+    ): void {
+        $stmt = $this->pdo->prepare(
+            'UPDATE order_items
+                SET quantity = :quantity, tax_amount = :tax_amount, line_total = :line_total
+              WHERE id = :id'
+        );
+        $stmt->execute([
+            'quantity' => $quantity,
+            'tax_amount' => Money::toDecimalString($taxAmountCents),
+            'line_total' => Money::toDecimalString($lineTotalCents),
+            'id' => $orderItemId,
+        ]);
+    }
+
+    /**
+     * Reescala lo que lleva un combo cuando cambia la cantidad de la linea.
+     *
+     * Los componentes se congelan ya multiplicados —dos combos son dos
+     * hamburguesas—, asi que al pasar de dos a tres hay que volver a
+     * multiplicar. Se hace sobre lo guardado y no releyendo el menu: la
+     * composicion de la venta no cambia porque el combo haya cambiado hoy.
+     */
+    public function rescaleItemComponents(string $orderItemId, int $anterior, int $nueva): void
+    {
+        if ($anterior === $nueva || $anterior < 1) {
+            return;
+        }
+        $stmt = $this->pdo->prepare(
+            'UPDATE order_item_components
+                SET quantity = GREATEST(1, (quantity / :anterior) * :nueva)
+              WHERE order_item_id = :id'
+        );
+        $stmt->execute(['anterior' => $anterior, 'nueva' => $nueva, 'id' => $orderItemId]);
+    }
+
+    /** Los totales del pedido despues de una edicion. Los ajustes no se tocan aqui. */
+    public function updateTotals(string $orderId, int $subtotalCents, int $taxTotalCents, int $totalCents): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE orders
+                SET subtotal = :subtotal, tax_total = :tax_total, total = :total, updated_at = now()
+              WHERE id = :id'
+        );
+        $stmt->execute([
+            'subtotal' => Money::toDecimalString($subtotalCents),
+            'tax_total' => Money::toDecimalString($taxTotalCents),
+            'total' => Money::toDecimalString($totalCents),
+            'id' => $orderId,
+        ]);
+    }
+
     public function addItemModifier(
         string $orderItemId,
         string $modifierId,

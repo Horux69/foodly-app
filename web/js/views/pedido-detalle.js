@@ -12,7 +12,7 @@
 import { api, uuid } from '../api.js';
 import { date, money, time } from '../format.js';
 import { icon } from '../icons.js';
-import { can, me } from '../session.js';
+import { branchQuery, can, me } from '../session.js';
 import {
   badge, button, empty, errorBox, h, input, loading, montarDialogo, render, section, select,
   toast,
@@ -21,6 +21,7 @@ import { abrirCancelacion } from './cancelar-pedido.js';
 import { canal } from './cocina.js';
 import { imprimirComanda, imprimirTicket } from './impresion.js';
 import { abrirDivision } from './dividir-cuenta.js';
+import { abrirModificadores } from './modificadores-dialogo.js';
 
 const METODOS = {
   cash: 'Efectivo',
@@ -106,7 +107,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
       encabezado(pedido, cerrar),
       bloqueImpresion(pedido, pagos),
       pedido.delivery ? bloqueEntrega(pedido.delivery) : null,
-      bloqueLineas(pedido),
+      bloqueLineas(pedido, recargarTrasCambio),
       bloqueTotales(pedido),
       bloquePagos(pedido, pagos, recargarTrasCambio),
       bloqueAvance(pedido, siguientes, recargarTrasCambio),
@@ -195,37 +196,194 @@ function bloqueEntrega(entrega) {
   });
 }
 
-function bloqueLineas(pedido) {
+/**
+ * Los productos del pedido, editables mientras siga en preparación (F4.0).
+ *
+ * Quién puede tocarlo lo dice el backend en `is_editable` —por categoría del
+ * estado, no por su código— y el permiso `orders.edit`, que hasta ahora
+ * estaba en el catálogo sin que nadie lo comprobara. Con la cocina ya
+ * cocinando se avisa, pero no se impide: hay que poder quitar el plato que el
+ * cliente canceló dos minutos después de pedirlo.
+ */
+function bloqueLineas(pedido, recargar) {
+  const editable = pedido.is_editable && can('orders.edit');
+
+  const cambiar = async (peticion, boton) => {
+    boton.disabled = true;
+    try {
+      await peticion();
+      await recargar();
+    } catch (error) {
+      toast(error.message);
+      boton.disabled = false;
+    }
+  };
+
+  const controles = (i) =>
+    h(
+      'div',
+      { class: 'flex items-center gap-1 shrink-0' },
+      button('−', {
+        variant: 'subtle',
+        title: `Quitar una unidad de ${i.name_snapshot}`,
+        'aria-label': `Quitar una unidad de ${i.name_snapshot}`,
+        disabled: i.quantity <= 1,
+        onClick: (e) =>
+          cambiar(
+            () => api.patch(`/orders/${pedido.id}/items/${i.id}`, { quantity: i.quantity - 1 }),
+            e.currentTarget
+          ),
+      }),
+      button('+', {
+        variant: 'subtle',
+        title: `Agregar una unidad de ${i.name_snapshot}`,
+        'aria-label': `Agregar una unidad de ${i.name_snapshot}`,
+        onClick: (e) =>
+          cambiar(
+            () => api.patch(`/orders/${pedido.id}/items/${i.id}`, { quantity: i.quantity + 1 }),
+            e.currentTarget
+          ),
+      }),
+      button('Quitar', {
+        variant: 'subtle',
+        'aria-label': `Quitar ${i.name_snapshot} del pedido`,
+        onClick: (e) => cambiar(() => api.delete(`/orders/${pedido.id}/items/${i.id}`), e.currentTarget),
+      })
+    );
+
   return section('Productos', {
-    list: pedido.items.map((i) =>
-      h(
-        'div',
-        { class: 'fila items-start' },
-        h(
-          'span',
-          { class: 'inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-md bg-stone-100 text-[12.5px] font-semibold tabular-nums shrink-0' },
-          i.quantity
-        ),
+    actions: editable
+      ? button('Agregar', { variant: 'secondary', onClick: () => abrirAgregar(pedido, recargar) })
+      : null,
+    list: [
+      editable && pedido.kitchen_has_it
+        ? h(
+            'div',
+            { class: 'text-[12px] text-amber-800 bg-amber-50 rounded px-2 py-1.5' },
+            'La cocina ya tiene este pedido: lo que cambies puede estar preparándose.'
+          )
+        : null,
+      ...pedido.items.map((i) =>
         h(
           'div',
-          { class: 'flex-1 min-w-0' },
-          h('div', { class: 'text-[13.5px] text-stone-900' }, i.name_snapshot),
-          i.components?.length
-            ? h(
-                'div',
-                { class: 'text-[12px] text-stone-500' },
-                i.components.map((c) => `${c.quantity}× ${c.name_snapshot}`).join(' · ')
-              )
-            : null,
-          i.modifiers.length
-            ? h('div', { class: 'text-[12px] text-stone-500' }, i.modifiers.map((m) => m.name_snapshot).join(' · '))
-            : null,
-          i.notes ? h('div', { class: 'text-[12px] text-amber-800' }, i.notes) : null
-        ),
-        h('span', { class: 'text-[13.5px] tabular-nums' }, money(i.line_total))
-      )
-    ),
+          { class: 'fila items-start' },
+          h(
+            'span',
+            { class: 'inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-md bg-stone-100 text-[12.5px] font-semibold tabular-nums shrink-0' },
+            i.quantity
+          ),
+          h(
+            'div',
+            { class: 'flex-1 min-w-0' },
+            h('div', { class: 'text-[13.5px] text-stone-900' }, i.name_snapshot),
+            i.components?.length
+              ? h(
+                  'div',
+                  { class: 'text-[12px] text-stone-500' },
+                  i.components.map((c) => `${c.quantity}× ${c.name_snapshot}`).join(' · ')
+                )
+              : null,
+            i.modifiers.length
+              ? h('div', { class: 'text-[12px] text-stone-500' }, i.modifiers.map((m) => m.name_snapshot).join(' · '))
+              : null,
+            i.notes ? h('div', { class: 'text-[12px] text-amber-800' }, i.notes) : null
+          ),
+          editable ? controles(i) : null,
+          h('span', { class: 'text-[13.5px] tabular-nums' }, money(i.line_total))
+        )
+      ),
+    ].filter(Boolean),
   });
+}
+
+/**
+ * Elegir qué agregarle a una cuenta abierta.
+ *
+ * Se pide `/menu` —el de vender, con el precio efectivo de la sucursal— y no
+ * el catálogo de administración: lo que se agrega entra al precio de hoy, que
+ * es el mismo que cobraría el mostrador.
+ */
+function abrirAgregar(pedido, recargar) {
+  const lista = h('div', { class: 'p-4 space-y-4' });
+  let desmontar;
+  const cerrar = () => desmontar();
+
+  const agregar = async (item, modifierIds) => {
+    try {
+      await api.post(`/orders/${pedido.id}/items`, {
+        items: [{ menu_item_id: item.id, quantity: 1, modifier_ids: modifierIds }],
+      });
+      cerrar();
+      toast(`${item.name} agregado`, 'ok');
+      await recargar();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+
+  const overlay = h(
+    'div',
+    {
+      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      onClick: (e) => e.target === overlay && cerrar(),
+    },
+    h(
+      'div',
+      {
+        class: 'aparece bg-white rounded-[--r-g] max-w-md w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': 'Agregar productos al pedido',
+      },
+      lista
+    )
+  );
+
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  render(lista, loading('Cargando la carta…'));
+
+  api
+    .get(`/menu${branchQuery()}`)
+    .then((categorias) => {
+      const productos = categorias.flatMap((c) => c.items.filter((i) => i.is_available));
+      render(
+        lista,
+        h('h3', { class: 'text-[15px] font-semibold' }, `Agregar a ${pedido.order_number}`),
+        productos.length
+          ? h(
+              'div',
+              { class: 'divide-y divide-stone-100' },
+              productos.map((item) =>
+                h(
+                  'button',
+                  {
+                    class: 'w-full text-left py-2.5 flex items-center gap-3 hover:bg-stone-50',
+                    onClick: () =>
+                      item.modifier_groups.length
+                        ? abrirModificadores(item, (seleccion) => agregar(item, seleccion))
+                        : agregar(item, []),
+                  },
+                  h(
+                    'span',
+                    { class: 'flex-1 min-w-0' },
+                    h('span', { class: 'text-sm text-stone-900' }, item.name),
+                    item.components?.length
+                      ? h(
+                          'span',
+                          { class: 'block text-[11px] text-stone-500' },
+                          item.components.map((c) => `${c.quantity}× ${c.name}`).join(' · ')
+                        )
+                      : null
+                  ),
+                  h('span', { class: 'text-sm tabular-nums text-amber-800' }, money(item.price))
+                )
+              )
+            )
+          : empty('No hay nada disponible', 'Todos los productos están agotados en esta sucursal.'),
+        h('div', { class: 'flex justify-end pt-2' }, button('Cerrar', { variant: 'secondary', onClick: cerrar }))
+      );
+    })
+    .catch((error) => render(lista, errorBox(error.message)));
 }
 
 function bloqueTotales(pedido) {

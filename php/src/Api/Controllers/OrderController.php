@@ -10,6 +10,7 @@ use App\Api\JsonResponse;
 use App\Api\Request;
 use App\Core\Database;
 use App\Core\Money;
+use App\Domain\OrderEditRules;
 use App\Domain\PaymentBalance;
 use App\Models\Order;
 use App\Models\OrderStatusRow;
@@ -42,6 +43,11 @@ final class OrderController
             'tip' => Money::toDecimalString($order->tipCents),
             'total' => Money::toDecimalString($order->totalCents),
             'notes' => $order->notes,
+            // Quien decide si todavia se puede tocar es el dominio, no la
+            // pantalla: asi el KDS, la caja y el agente de WhatsApp leen la
+            // misma respuesta.
+            'is_editable' => $order->status !== null && OrderEditRules::esEditable($order->status->category),
+            'kitchen_has_it' => $order->status !== null && OrderEditRules::laCocinaYaLoTiene($order->status->category),
             'items' => array_map(static fn ($i) => [
                 'id' => $i->id,
                 'menu_item_id' => $i->menuItemId,
@@ -366,5 +372,74 @@ final class OrderController
         }
 
         return self::orderOut($order);
+    }
+
+    /**
+     * Agrega productos a un pedido abierto.
+     *
+     * Mismo cuerpo que crear un pedido —`items` con sus modificadores— para
+     * que el cliente no tenga que aprender dos formas de decir lo mismo.
+     */
+    public static function addItems(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.edit');
+        try {
+            $order = OrderService::addLines(
+                $ctx->tenantId,
+                $params['order_id'],
+                self::linesFrom(Request::json()),
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+        ];
+    }
+
+    /** Cambia la cantidad de una linea. Cero no vale: para eso se quita. */
+    public static function setItemQuantity(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.edit');
+        try {
+            $order = OrderService::setLineQuantity(
+                $ctx->tenantId,
+                $params['order_id'],
+                $params['item_id'],
+                Request::int(Request::json(), 'quantity', min: 1),
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+        ];
+    }
+
+    /**
+     * Quita una linea.
+     *
+     * Devuelve el pedido y no un 204: quien la quito necesita ver el total
+     * nuevo, y pedirlo aparte seria una segunda vuelta con el cliente
+     * enfrente.
+     */
+    public static function removeItem(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.edit');
+        try {
+            $order = OrderService::removeLine(
+                $ctx->tenantId,
+                $params['order_id'],
+                $params['item_id'],
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+        ];
     }
 }

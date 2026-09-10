@@ -567,7 +567,8 @@ y de ahí en adelante habla por la conexión `app()`, bajo RLS.
 
 Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
 obligatorio, cobro por partes, reembolso, las tres reglas de
-`StatusChangeRules` contra el saldo real), los combos —el precio del paquete,
+`StatusChangeRules` contra el saldo real), la edición de un pedido abierto,
+los combos —el precio del paquete,
 la composición congelada y el bloqueo al archivar— y el aislamiento entre
 empresas,
 que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
@@ -627,9 +628,43 @@ muestran lo que lleva; el ticket también, porque el cliente compró un paquete
 y tiene derecho a ver qué era. Con precio solo la línea del combo: los
 componentes no llevan cifra propia porque no la tienen.
 
-**Siguiente**: solo queda la fase 4 (servicio en mesa), que el plan deja
-condicionada a que haya clientes de ese modelo y que arrastra la pieza más
-pesada que le falta al backend: modificar un pedido abierto.
+- **Fase 4 (servicio en mesa)**, en curso. La primera tarjeta es la pieza
+  pesada que le faltaba al backend: **modificar un pedido abierto** (F4.0).
+
+Sobre editar un pedido, cuatro decisiones que conviene no deshacer:
+
+- **Se edita mientras el pedido siga en la casa**, y eso lo dice la categoría
+  del estado (`new` y `kitchen`), nunca su código. Con el pedido listo, en
+  camino, entregado o anulado ya no hay nada que corregir editando la venta.
+  Con la cocina cocinando sí se puede, pero la pantalla avisa: hay que poder
+  quitar el plato que el cliente canceló dos minutos después de pedirlo.
+- **Lo que ya estaba conserva su precio; lo nuevo entra con el de hoy.** Es el
+  principio 8 aplicado a la edición: si se recalculara todo, subir la carta
+  reescribiría pedidos que el cliente ya vio. Por eso el total se rehace con
+  `OrderTotalsCalculator::totalsFromLines`, que suma resultados de línea ya
+  calculados en vez de reconstruir un `LineInput` desde una fila congelada
+  —cuya tarifa pudo cambiar de porcentaje desde entonces—. La aritmética
+  sigue viviendo en un solo lugar.
+- **El pedido no puede quedar valiendo menos de lo ya cobrado**, y no puede
+  quedarse sin líneas. Lo primero dejaría plata sin venta que la respalde
+  —el mismo descuadre que impide anular un pedido cobrado— y la salida es
+  reembolsar primero. Lo segundo sería anular por la puerta de atrás, sin
+  motivo y sin quedar en el reporte. Las dos viven en `Domain\OrderEditRules`.
+- **Cambiar la cantidad de un combo reescala lo que lleva.** Los componentes
+  se congelan ya multiplicados, así que pasar de uno a tres tiene que volver a
+  multiplicar; se hace sobre lo guardado y no releyendo el menú, porque la
+  composición de la venta no cambia porque el combo haya cambiado hoy.
+
+Cada cambio queda en la bitácora del pedido —la misma que ya lee el detalle—
+con su autor: "Agrego 2x Gaseosa", "Quito 1x Papas", "Cambio Combo de 1 a 3".
+El diálogo de modificadores se mudó a `web/js/views/modificadores-dialogo.js`
+porque ahora lo abren dos pantallas; importarlo desde `pedidos.js` habría
+creado un ciclo entre módulos.
+
+**Siguiente**: el resto de la fase 4 (estado de las mesas, mapa del salón,
+mover y juntar, mesero a cargo, tiempos y pre-cuenta) y las fases 7 a 12 del
+segundo plan de obra: caja completa, impresión por estaciones, domicilios,
+costos, promociones y cumplimiento.
 
 Pendientes conocidos:
 
@@ -649,8 +684,8 @@ Pendientes conocidos:
   la toma de pedido con un grupo obligatorio, el avance de estado en cocina,
   el cobro por partes hasta saldar, los atajos de teclado y el foco de los
   diálogos, la renovación del token y el cambio de contraseña, la comparación
-  entre períodos con su descarga en CSV, los combos en la pantalla del menú, y
-  que un botón que falla vuelva a servir.
+  entre períodos con su descarga en CSV, los combos en la pantalla del menú,
+  la edición de un pedido abierto, y que un botón que falla vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

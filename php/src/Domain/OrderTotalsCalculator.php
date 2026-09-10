@@ -44,8 +44,32 @@ final class OrderTotalsCalculator
         int $discountCents = 0,
         int $tipCents = 0,
     ): OrderTotals {
-        $results = array_map(self::computeLine(...), $lines);
+        return self::totalsFromLines(
+            array_map(self::computeLine(...), $lines),
+            $deliveryFeeCents,
+            $discountCents,
+            $tipCents,
+        );
+    }
 
+    /**
+     * Los totales a partir de lineas ya calculadas.
+     *
+     * Existe para editar un pedido. Sus lineas viejas tienen el precio y el
+     * impuesto congelados del momento de la venta (principio 8) y no se
+     * vuelven a calcular: se recalcula el total del pedido, que es la suma de
+     * lo que hay ahora. Asi la aritmetica sigue viviendo en un solo lugar sin
+     * tener que reconstruir un LineInput a partir de una fila congelada
+     * —cuyo impuesto pudo cambiar de tarifa desde entonces—.
+     *
+     * @param LineResult[] $results
+     */
+    public static function totalsFromLines(
+        array $results,
+        int $deliveryFeeCents = 0,
+        int $discountCents = 0,
+        int $tipCents = 0,
+    ): OrderTotals {
         $subtotal = (int) array_sum(array_map(static fn (LineResult $r) => $r->lineTotalCents, $results));
         $taxTotal = (int) array_sum(array_map(static fn (LineResult $r) => $r->taxAmountCents, $results));
         $total = $subtotal + $deliveryFeeCents - $discountCents + $tipCents;
