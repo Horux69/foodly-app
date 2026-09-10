@@ -129,4 +129,29 @@ final class AislamientoEntreEmpresasTest extends IntegrationTestCase
 
         $this->assertSame(0, (int) $stmt->fetchColumn(), 'La conexion de la aplicacion no debe ser duena de ninguna tabla');
     }
+
+    /**
+     * Toda tabla con datos de negocio tiene RLS encendida.
+     *
+     * Es la convencion del proyecto, y la unica forma de que se cumpla sin
+     * que alguien la recuerde: una migracion que cree una tabla y olvide su
+     * politica no da ningun sintoma —se lee y se escribe igual de bien— hasta
+     * que dos empresas comparten servidor. Las excepciones son las tres
+     * tablas de catalogo, que no tienen tenant_id porque son iguales para
+     * todos.
+     */
+    public function testTodaTablaDeNegocioTieneRlsEncendida(): void
+    {
+        $catalogo = ['permissions', 'schema_migrations'];
+
+        $stmt = Database::admin()->query(
+            "SELECT c.relname FROM pg_class c
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT c.relrowsecurity
+              ORDER BY c.relname"
+        );
+        $sinRls = array_diff($stmt->fetchAll(\PDO::FETCH_COLUMN), $catalogo);
+
+        $this->assertSame([], array_values($sinRls), 'Estas tablas no tienen RLS: ' . implode(', ', $sinRls));
+    }
 }

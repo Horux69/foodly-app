@@ -44,6 +44,38 @@ final class CsvTest extends TestCase
         $this->assertSame("Nota\r\n\"dos\nlineas\"\r\n", $csv);
     }
 
+    /**
+     * Lo que Excel evaluaria al abrir el archivo deja de ser formula.
+     *
+     * El motivo de una anulacion es texto libre: quien puede anular un
+     * pedido puede escribir ahi lo que quiera, y el CSV lo abre el dueno.
+     */
+    public function testDesactivaLoQueLaHojaDeCalculoTomariaPorFormula(): void
+    {
+        // Un '+1' a secas no esta: es un numero, y Excel lo muestra como
+        // tal. Lo que se desactiva es lo que no lo es.
+        foreach (['=1+1', '+SUM(A1)', '@SUM(A1)', '-2+3'] as $peligroso) {
+            $this->assertStringContainsString(
+                "'" . $peligroso,
+                Csv::render(['a'], [[$peligroso]]),
+                "No se desactivo: {$peligroso}",
+            );
+        }
+
+        // Y tambien cuando ademas hay que entrecomillar la celda: el
+        // apostrofo va dentro de las comillas, pegado al signo.
+        $this->assertStringContainsString(
+            '"\'=HYPERLINK(',
+            Csv::render(['a'], [['=HYPERLINK("http://x","clic")']]),
+        );
+    }
+
+    /** Un importe negativo sigue siendo un numero: si no, no se podria sumar. */
+    public function testUnNumeroNegativoNoSeToca(): void
+    {
+        $this->assertStringContainsString("\r\n-1500.00\r\n", Csv::render(['a'], [['-1500.00']]));
+    }
+
     public function testElNuloQuedaVacio(): void
     {
         $csv = $this->sinBom(Csv::render(['a', 'b'], [[null, 3]]));

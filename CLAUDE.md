@@ -534,7 +534,11 @@ Sobre los reportes y la baja de un restaurante, tres cosas:
   pantalla están recortadas a 200 filas, así que un CSV hecho con lo que se
   ve exportaría eso y nadie lo notaría. Va con punto y coma y con BOM
   (`Domain\Csv`): es lo que Excel en español abre bien de doble clic, aunque
-  `pandas.read_csv` necesite entonces `sep=';'`.
+  `pandas.read_csv` necesite entonces `sep=';'`. Y **una celda que empiece
+  por `=`, `+`, `-` o `@` sale desactivada con un apóstrofo**: la hoja de
+  cálculo la evaluaría como fórmula al abrir el archivo, y el motivo de una
+  anulación es texto libre que cualquiera con permiso para anular escribe.
+  Los números no lo llevan, o un descuento de -1500 dejaría de sumarse.
 - **Dar de baja un restaurante es un script, no una migración con
   `ON DELETE`.** Siete claves foráneas bloquean el borrado en cascada, y
   cinco de ellas son justo las protecciones sobre las que están construidas
@@ -630,7 +634,8 @@ pesada que le falta al backend: modificar un pedido abierto.
 Pendientes conocidos:
 
 - La suite `tests/` de Python cubre el backend retirado y no se corre.
-- **El frontend tiene arnés de pruebas, pero cubre poco todavía.**
+- **El frontend tiene arnés de pruebas, y ya cubre casi toda pantalla; lo que
+  falta es el detalle dentro de cada una.**
   `web/tests/` corre con Vitest sobre jsdom y monta la aplicación real —el
   esqueleto sale de `web/index.html`, no de una copia— sin introducir paso de
   compilación: `php/public/index.php` sigue sirviendo los mismos módulos ES.
@@ -657,6 +662,17 @@ Pendientes conocidos:
   se comprobó que falla al reintroducir el `forEach`.
 - El slug de empresa se escribe a mano cuando hace falta; con subdominio por
   empresa no haría falta nunca, pero eso es despliegue, no código.
+- **No hay límite de intentos de ingreso.** Nada frena a quien pruebe
+  contraseñas contra `/auth/login` salvo el costo del bcrypt. Corresponde
+  resolverlo donde se despliega (un límite por IP en el servidor web) o con
+  una tabla de intentos, que es una decisión de infraestructura y no de
+  modelo.
+- **Cualquier usuario de la empresa puede operar cualquier sucursal activa.**
+  El `?branch_id=` se valida contra el tenant, no contra la sucursal asignada
+  al usuario: es lo que hace posible el selector del dueño multi-sede, pero
+  también deja que un cajero de una sede cobre en la caja de otra. Acotarlo
+  pide un permiso nuevo ("puede cambiar de sucursal"), no un parche en
+  `Deps`.
 - Un combo no puede llevar modificadores propios de sus componentes: se
   eligen sobre la línea del combo, no "el término de la carne que va dentro".
   Para eso haría falta que cada componente fuese su propia línea, y entonces
