@@ -16,6 +16,8 @@ use App\Models\TaxRate;
 use App\Models\User;
 use App\Services\AdminError;
 use App\Services\AdminService;
+use App\Services\FloorError;
+use App\Services\FloorService;
 use App\Core\Permissions;
 use App\Domain\ScheduleRules;
 
@@ -318,6 +320,23 @@ final class AdminController
             throw new ApiException(404, $e->getMessage());
         }
         return array_map(self::tableOut(...), $tables);
+    }
+
+    /**
+     * El salon: cada mesa con el pedido que tenga encima.
+     *
+     * Pide `orders.view` y no un permiso de configuracion: lo mira quien
+     * atiende, no quien administra.
+     */
+    public static function tableStatus(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.view');
+
+        try {
+            return FloorService::tableStatus($ctx->tenantId, $params['branch_id']);
+        } catch (FloorError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
     }
 
     public static function createTable(array $params): JsonResponse

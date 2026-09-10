@@ -31,6 +31,62 @@ final class TableRepository
         return array_map(Table::fromRow(...), $stmt->fetchAll());
     }
 
+    /**
+     * Cada mesa con el pedido que tenga encima, si tiene.
+     *
+     * "Encima" es todo pedido cuyo estado no sea de categoria `completed` ni
+     * `cancelled` — por categoria y nunca por codigo (principio 6): cada
+     * restaurante bautiza sus estados como quiere, y una consulta que
+     * buscara 'pagado' se rompe en el primero que lo llame distinto.
+     *
+     * El join es LATERAL y con LIMIT 1: una mesa podria tener dos pedidos
+     * abiertos —se junta gente, se toma otra cuenta— y el salon muestra el
+     * mas antiguo, que es el que lleva mas rato ocupandola.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function statusForBranch(string $branchId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT t.id,
+                    t.code,
+                    t.capacity,
+                    t.is_active,
+                    o.id AS order_id,
+                    o.order_number,
+                    o.total,
+                    o.created_at AS occupied_since,
+                    s.name AS status_name,
+                    s.category AS status_category,
+                    abiertos.cuantos AS open_orders
+               FROM tables t
+               LEFT JOIN LATERAL (
+                    SELECT o.*
+                      FROM orders o
+                      JOIN order_statuses s ON s.id = o.status_id
+                     WHERE o.table_id = t.id
+                       AND s.category NOT IN ('completed', 'cancelled')
+                  -- El numero desempata: dos pedidos de la misma mesa
+                  -- creados en el mismo instante alternarian entre refrescos,
+                  -- y el salon se repinta solo.
+                  ORDER BY o.created_at, o.order_number
+                     LIMIT 1
+               ) o ON true
+               LEFT JOIN order_statuses s ON s.id = o.status_id
+               LEFT JOIN LATERAL (
+                    SELECT count(*) AS cuantos
+                      FROM orders o2
+                      JOIN order_statuses s2 ON s2.id = o2.status_id
+                     WHERE o2.table_id = t.id
+                       AND s2.category NOT IN ('completed', 'cancelled')
+               ) abiertos ON true
+              WHERE t.branch_id = :branch_id
+           ORDER BY t.code"
+        );
+        $stmt->execute(['branch_id' => $branchId]);
+        return $stmt->fetchAll();
+    }
+
     public function create(string $branchId, string $code, int $capacity): Table
     {
         $stmt = $this->pdo->prepare(
