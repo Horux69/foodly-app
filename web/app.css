@@ -340,8 +340,10 @@ textarea {
 }
 
 .doc {
-  /* 72mm entra en una térmica de 80mm y también en una hoja carta. */
-  width: 72mm;
+  /* El ancho útil del rollo, que fija el perfil de impresión de la sucursal
+     (F8.2): 72mm en una térmica de 80 y 48mm en una de 58. Por defecto, lo
+     de siempre. */
+  width: var(--doc-ancho, 72mm);
   max-width: 100%;
   margin: 0 auto;
   color: #000;

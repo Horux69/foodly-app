@@ -6,6 +6,7 @@ namespace App\Api\Routes;
 
 use App\Api\Controllers\AdminController;
 use App\Api\Controllers\OrderStatusController;
+use App\Api\Controllers\PrintProfileController;
 use App\Api\Router;
 
 /** Mismas rutas (y sin prefijo /admin) que app/api/v1/admin.py monta en router.py. */
@@ -13,6 +14,10 @@ final class AdminRoutes
 {
     public static function register(Router $router): void
     {
+        // Como imprime esta sucursal (F8.2): ancho del papel y copias.
+        $router->get('/print-profiles', fn () => PrintProfileController::index());
+        $router->put('/print-profiles/{document}', fn ($p) => PrintProfileController::save($p));
+
         $router->get('/settings', fn () => AdminController::getSettings());
         $router->patch('/settings', fn () => AdminController::updateSettings());
 

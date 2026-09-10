@@ -13,8 +13,9 @@
 // El DOM se arma con `h()`, así que un producto llamado `<img onerror=...>`
 // se imprime como ese texto en vez de ejecutarse.
 
+import { api } from '../api.js';
 import { date, money, time } from '../format.js';
-import { activeBranch, me } from '../session.js';
+import { activeBranch, activeBranchId, branchQuery, me } from '../session.js';
 import { h, render } from '../ui.js';
 import { canal } from './cocina.js';
 import { metodoPago } from './pedido-detalle.js';
@@ -32,11 +33,22 @@ import { metodoPago } from './pedido-detalle.js';
  * está oculto fuera de `@media print`. Lo único que se arriesga es que un
  * Ctrl+P posterior saque el documento anterior, y para eso está el respaldo.
  */
-function imprimir(nodo) {
+function imprimirDocumento(nodo, documento = 'ticket') {
   const host = document.getElementById('impresion');
   if (!host) return;
 
-  render(host, nodo);
+  const perfil = perfilDe(documento);
+  // El ancho útil del rollo: 72 mm en una térmica de 80, 48 en una de 58.
+  host.style.setProperty('--doc-ancho', `${perfil.content_width_mm}mm`);
+
+  const hojas = [nodo];
+  // Las copias son hojas idénticas, no una repetición dentro de la misma:
+  // `@media print` ya corta entre `.doc` hermanos.
+  for (let i = 1; i < perfil.copies; i += 1) {
+    hojas.push(...[nodo].flat().map((n) => n.cloneNode(true)));
+  }
+
+  render(host, hojas);
   document.body.classList.add('imprimiendo');
 
   let limpiado = false;
@@ -52,6 +64,43 @@ function imprimir(nodo) {
   // Después de print() para no atrapar el foco que el propio diálogo devuelve
   // al abrirse en algunos navegadores.
   window.addEventListener('focus', limpiar, { once: true });
+}
+
+/**
+ * Cómo imprime esta sucursal: ancho del papel y copias por documento.
+ *
+ * Se lee una vez y se guarda en memoria. Si la petición falla se usan los
+ * valores por defecto —80 mm y una copia, lo de siempre— porque imprimir no
+ * puede depender de que una configuración opcional esté disponible: con el
+ * cliente enfrente, un ticket con el ancho equivocado es mejor que ninguno.
+ */
+const PERFIL_POR_DEFECTO = { width_mm: 80, content_width_mm: 72, copies: 1 };
+
+// La caché lleva de qué sucursal es: cada sede tiene su impresora, y al
+// cambiar de sede hay que volver a preguntar.
+let cache = { sucursal: null, perfiles: null };
+
+export function cargarPerfilesDeImpresion() {
+  const sucursal = activeBranchId();
+  return api
+    .get(`/print-profiles${branchQuery()}`)
+    .then((lista) => {
+      cache = { sucursal, perfiles: Object.fromEntries(lista.map((p) => [p.document, p])) };
+    })
+    .catch(() => {
+      cache = { sucursal, perfiles: {} };
+    });
+}
+
+function perfilDe(documento) {
+  if (cache.perfiles === null || cache.sucursal !== activeBranchId()) {
+    // Primera impresión con esta sucursal: se pide para la siguiente y esta
+    // sale con los valores por defecto en vez de esperar a la red con el
+    // cliente enfrente.
+    cache = { sucursal: activeBranchId(), perfiles: {} };
+    cargarPerfilesDeImpresion();
+  }
+  return cache.perfiles[documento] ?? PERFIL_POR_DEFECTO;
 }
 
 /** Los modificadores llegan como texto desde el KDS y como objeto desde el detalle. */
@@ -107,7 +156,7 @@ export function imprimirComanda(pedido, { reimpresion = false } = {}) {
 
   // Una hoja por estación: la barra no necesita saber qué lleva la plancha,
   // y con una sola hoja alguien termina recortándola con tijeras.
-  imprimir(
+  imprimirDocumento(
     grupos.map((grupo) =>
     h(
       'div',
@@ -146,7 +195,8 @@ export function imprimirComanda(pedido, { reimpresion = false } = {}) {
       pedido.notes ? h('div', { class: 'doc-pie' }, pedido.notes) : null,
       pedido.delivery ? h('div', { class: 'doc-pie' }, `Domicilio: ${pedido.delivery.address}`) : null
     )
-    )
+    ),
+    'comanda'
   );
 }
 
@@ -164,7 +214,7 @@ export function imprimirTicket(pedido, pagos = []) {
   const fila = (etiqueta, valor) =>
     h('div', { class: 'doc-fila' }, h('span', {}, etiqueta), h('span', {}, valor));
 
-  imprimir(
+  imprimirDocumento(
     h(
       'div',
       { class: 'doc' },

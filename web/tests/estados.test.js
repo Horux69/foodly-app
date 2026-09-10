@@ -63,6 +63,7 @@ async function montarEstados(flujo = FLUJO, extra = {}) {
       '/settings': AJUSTES,
       '/branches': [{ id: '22222222-2222-4222-8222-222222222222', name: 'Centro', code: 'CEN', timezone: 'America/Bogota' }],
       '/branches/*': { schedules: [], channels_without_windows: [] },
+      '/print-profiles': [],
       '/tax-rates': [],
       '/order-statuses': flujo,
       // Guardar, mover el inicial y fijar las salidas cuelgan del id.

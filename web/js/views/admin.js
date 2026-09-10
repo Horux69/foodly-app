@@ -8,7 +8,7 @@ import { api } from '../api.js';
 import { money, percent } from '../format.js';
 import { icon } from '../icons.js';
 import * as router from '../router.js';
-import { activeBranch, can, load as cargarSesion } from '../session.js';
+import { activeBranch, branchQuery, can, load as cargarSesion } from '../session.js';
 import {
   badge, button, card, confirm, empty, errorBox, field, h, input, loading, pageHeader, render,
   section, select, skeleton, tabs, titledCard, toast,
@@ -46,6 +46,7 @@ const SECCIONES = [
     permiso: 'settings.view',
     visible: ({ ajustes }) => ajustes.channels.includes('delivery'),
   },
+  { clave: 'impresion', etiqueta: 'Impresión', icono: 'archivar', permiso: 'branches.manage' },
   { clave: 'equipo', etiqueta: 'Equipo', icono: 'clientes', permiso: 'users.manage' },
 ];
 
@@ -74,6 +75,12 @@ export async function admin(outlet) {
       api.get('/tax-rates'),
     ]);
     Object.assign(estado, { ajustes, sucursales, impuestos });
+
+    // Los perfiles de impresión son de la sucursal activa y los edita quien
+    // administra sedes.
+    if (can('branches.manage')) {
+      estado.impresion = await api.get(`/print-profiles${branchQuery()}`);
+    }
 
     if (can('users.manage')) {
       const [roles, usuarios, permisos] = await Promise.all([
@@ -123,10 +130,77 @@ export async function admin(outlet) {
     else if (clave === 'estados') render(panel, seccionEstados(estado, refrescar));
     else if (clave === 'impuestos') render(panel, seccionImpuestos(estado, refrescar));
     else if (clave === 'domicilios') render(panel, seccionDomicilios(estado, refrescar));
+    else if (clave === 'impresion') render(panel, seccionImpresion(estado, refrescar));
     else render(panel, seccionEquipo(estado, refrescar));
   }
 
   mostrar(activa);
+}
+
+// =========================================================
+// Impresión
+// =========================================================
+
+const DOCUMENTOS = {
+  comanda: { titulo: 'Comanda de cocina', ayuda: 'La que se manda a preparar. Una por estación.' },
+  ticket: { titulo: 'Ticket del cliente', ayuda: 'El que se lleva quien paga.' },
+  precuenta: { titulo: 'Pre-cuenta', ayuda: 'La que se lleva a la mesa antes de cobrar.' },
+};
+
+/**
+ * Cómo imprime esta sucursal.
+ *
+ * Es por sede y no por empresa: la térmica de la sede nueva no tiene por qué
+ * ser la misma que la de la principal. Sin tocar nada, todo sale como
+ * siempre —80 mm y una copia—, así que nadie tiene que configurar esto para
+ * poder imprimir.
+ */
+function seccionImpresion(estado, refrescar) {
+  return section(`Impresión en ${activeBranch()?.name ?? 'esta sucursal'}`, {
+    hint: 'El ancho del papel y cuántas copias sale cada documento. Solo afecta a esta sucursal.',
+    list: estado.impresion.map((perfil) => {
+      const info = DOCUMENTOS[perfil.document] ?? { titulo: perfil.document, ayuda: '' };
+      const ancho = select(
+        [58, 80].map((mm) => ({ value: String(mm), label: `${mm} mm`, selected: mm === perfil.width_mm })),
+        { class: 'campo w-auto', 'aria-label': `Ancho de ${info.titulo}` }
+      );
+      const copias = select(
+        [1, 2, 3].map((n) => ({ value: String(n), label: n === 1 ? '1 copia' : `${n} copias`, selected: n === perfil.copies })),
+        { class: 'campo w-auto', 'aria-label': `Copias de ${info.titulo}` }
+      );
+
+      return h(
+        'div',
+        { class: 'fila' },
+        h(
+          'div',
+          { class: 'flex-1 min-w-0' },
+          h('div', { class: 'text-[13.5px] text-stone-900' }, info.titulo),
+          h('div', { class: 'text-[12px] text-stone-500' }, info.ayuda)
+        ),
+        ancho,
+        copias,
+        button('Guardar', {
+          variant: 'secondary',
+          onClick: async (e) => {
+            const boton = e.currentTarget;
+            boton.disabled = true;
+            try {
+              await api.put(`/print-profiles/${perfil.document}${branchQuery()}`, {
+                width_mm: Number(ancho.value),
+                copies: Number(copias.value),
+              });
+              toast('Impresión actualizada', 'ok');
+              await refrescar();
+            } catch (error) {
+              toast(error.message);
+              boton.disabled = false;
+            }
+          },
+        })
+      );
+    }),
+  });
 }
 
 // =========================================================

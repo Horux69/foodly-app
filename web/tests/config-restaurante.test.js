@@ -35,6 +35,7 @@ async function montarAdmin(respuestaDeSettings = AJUSTES) {
       '/branches/*': { schedules: [], channels_without_windows: [] },
       // El editor de estados carga el flujo del restaurante.
       '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
+      '/print-profiles': [],
       '/tax-rates': [],
     },
   });

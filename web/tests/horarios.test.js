@@ -49,6 +49,7 @@ async function montarHorarios(horarios, extra = {}) {
         url.includes('/schedules') ? horarios : [],
       // El editor de estados carga el flujo del restaurante.
       '/order-statuses': { statuses: [], transitions: [], problems: [], warnings: [], categories: [], permissions: [] },
+      '/print-profiles': [],
       '/tax-rates': [],
       ...extra,
     },

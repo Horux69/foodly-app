@@ -729,7 +729,7 @@ Sobre la propina (F7.3), dos cosas:
 Falta repartirla por mesero, que depende de F4.4 (`orders.server_id`).
 
 - **Fase 8 (impresión y estaciones)**, en curso: estaciones de preparación
-  (F8.1).
+  (F8.1) y perfiles de impresión (F8.2).
 
 Sobre las estaciones, tres decisiones:
 
@@ -749,6 +749,19 @@ Sobre las estaciones, tres decisiones:
   temprano dirían cosas distintas. La línea del pedido lleva ahora la
   `category_id` de su producto —la de hoy, no la congelada: rutear es una
   decisión de operación, no parte del precio.
+
+Sobre los perfiles de impresión (F8.2), dos cosas:
+
+- **El ancho y las copias son configuración de la sucursal**, no constantes
+  del CSS. Una térmica de 58 mm cortaba los nombres largos, y en muchos
+  restaurantes el ticket se archiva por duplicado. Un rollo de 58 imprime 48
+  mm útiles y uno de 80 imprime 72: son los anchos de las térmicas, no una
+  proporción. Sin configurar nada se imprime como siempre.
+- **Imprimir no depende de que la configuración esté disponible.** Los
+  perfiles se leen una vez por sucursal y se guardan en memoria; si la
+  petición falla —o es la primera impresión de la sesión— sale con los
+  valores por defecto en vez de esperar a la red. Con el cliente enfrente, un
+  ticket con el ancho equivocado es mejor que ninguno.
 
 El tablero filtra por estación y **la elegida se recuerda por dispositivo**,
 igual que el interruptor del aviso: la tableta de la barra es siempre la
