@@ -496,6 +496,30 @@ final class OrderRepository
         ]);
     }
 
+    /** Cambia de mesa un pedido. */
+    public function setTable(string $orderId, ?string $tableId): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE orders SET table_id = :table, updated_at = now() WHERE id = :id');
+        $stmt->execute(['table' => $tableId, 'id' => $orderId]);
+    }
+
+    /**
+     * Pasa todas las lineas de un pedido a otro.
+     *
+     * Es el corazon de unir dos cuentas: las lineas conservan su precio y su
+     * impuesto congelados —cambian de pedido, no de valor— y sus
+     * modificadores y componentes se van con ellas, porque cuelgan de la
+     * linea y no del pedido.
+     *
+     * @return int cuantas lineas se movieron
+     */
+    public function moveItems(string $fromOrderId, string $toOrderId): int
+    {
+        $stmt = $this->pdo->prepare('UPDATE order_items SET order_id = :to WHERE order_id = :from');
+        $stmt->execute(['to' => $toOrderId, 'from' => $fromOrderId]);
+        return $stmt->rowCount();
+    }
+
     /** Fija la propina del pedido. Los totales se guardan aparte, con updateTotals. */
     public function setTip(string $orderId, int $tipCents): void
     {

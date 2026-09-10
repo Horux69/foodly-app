@@ -631,7 +631,7 @@ componentes no llevan cifra propia porque no la tienen.
 
 - **Fase 4 (servicio en mesa)**, en curso: modificar un pedido abierto
   (F4.0) —la pieza pesada que le faltaba al backend—, el estado de cada mesa
-  (F4.1) y el mapa del salón (F4.2).
+  (F4.1), el mapa del salón (F4.2) y mover o unir cuentas (F4.3).
 
 Sobre editar un pedido, cuatro decisiones que conviene no deshacer:
 
@@ -683,6 +683,22 @@ Sobre el salón (F4.1 y F4.2), cuatro cosas:
 - **Se coloca una mesa a la vez.** Arrastrar una mesa es un cambio; mandar el
   plano entero pisaría lo que otra persona acabara de mover desde otra
   tableta.
+
+Sobre mover y unir cuentas (F4.3), dos decisiones:
+
+- **La que se une se anula, no se borra.** Un pedido sin líneas no puede
+  quedar abierto, y borrarlo perdería su número y su bitácora. Se anula
+  primero —mientras todavía tiene sus líneas— y después se mueven: así no
+  existe ni un instante un pedido abierto y vacío. Las dos bitácoras lo
+  cuentan: "Unida a X" y "Se le unió Y".
+- **No se une una cuenta con plata encima.** Con un cobro por medio habría
+  que decidir a qué venta pertenece, y esa decisión no la puede tomar el
+  sistema: primero se reembolsa. Es la misma regla que impide anular un
+  pedido cobrado.
+
+Las dos cuentas se bloquean en orden de id, no cada una la suya: dos uniones
+cruzadas a la vez se esperarían en círculo. Y la pantalla pide elegir **una
+mesa**, no un número de pedido — quien atiende piensa en mesas.
 
 Tocar una mesa libre abre la venta con la mesa ya escrita (viaja en el hash);
 tocar una ocupada abre su cuenta. Los minutos los calcula el servidor: el

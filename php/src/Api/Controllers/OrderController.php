@@ -529,6 +529,57 @@ final class OrderController
         ];
     }
 
+    /** Cambia de mesa un pedido. */
+    public static function moveToTable(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.edit');
+        $body = Request::json();
+
+        try {
+            $order = OrderService::moveToTable(
+                $ctx->tenantId,
+                $params['order_id'],
+                Request::string($body, 'table_code', 1, 20),
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return self::orderOut($order);
+    }
+
+    /**
+     * Une otra cuenta a esta.
+     *
+     * Los permisos van al servicio porque la que se une se anula, y anular
+     * lo autoriza la transicion que el restaurante configuro — no este
+     * endpoint.
+     */
+    public static function merge(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'orders.edit');
+        $body = Request::json();
+
+        try {
+            $order = OrderService::mergeOrders(
+                $ctx->tenantId,
+                $params['order_id'],
+                Request::uuid($body, 'source_order_id'),
+                $ctx->permissions,
+                $ctx->userId,
+            );
+        } catch (OrderError $e) {
+            throw new ApiException(422, $e->getMessage());
+        } catch (OrderStatusError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return self::orderOut($order) + [
+            'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
+        ];
+    }
+
     /** Los motivos que el restaurante configuro, para el desplegable de la caja. */
     public static function discountReasons(): array
     {

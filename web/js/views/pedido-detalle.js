@@ -111,6 +111,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
       bloqueImpresion(pedido, pagos),
       pedido.delivery ? bloqueEntrega(pedido.delivery) : null,
       bloqueLineas(pedido, recargarTrasCambio),
+      bloqueMesa(pedido, recargarTrasCambio),
       bloqueTotales(pedido, recargarTrasCambio),
       bloquePagos(pedido, pagos, recargarTrasCambio),
       bloqueFiscal(pedido, recargarTrasCambio),
@@ -389,6 +390,116 @@ function abrirAgregar(pedido, recargar) {
     })
     .catch((error) => render(lista, errorBox(error.message)));
 }
+
+/**
+ * La mesa de la cuenta: moverla o unirle otra.
+ *
+ * Las dos operaciones mueven plata de sitio sin cobrarla, que es donde más
+ * fácil es que desaparezca, así que las dos quedan en la bitácora. Unir pide
+ * elegir de qué mesa viene la otra cuenta, no un número de pedido: quien
+ * atiende piensa en mesas.
+ */
+function bloqueMesa(pedido, recargar) {
+  if (!me().uses_tables || !pedido.is_editable || !can('orders.edit')) return null;
+
+  return section('Mesa', {
+    body: h(
+      'div',
+      { class: 'flex flex-wrap items-center gap-2 text-[13.5px]' },
+      h('span', { class: 'text-stone-500' }, pedido.table_code ? `Mesa ${pedido.table_code}` : 'Sin mesa'),
+      button('Mover', { variant: 'secondary', onClick: () => abrirMover(pedido, recargar) }),
+      button('Unir otra cuenta', { variant: 'secondary', onClick: () => abrirUnir(pedido, recargar) })
+    ),
+  });
+}
+
+/** Elegir mesa entre las del salón, no escribir un código de memoria. */
+function abrirMesas({ titulo, ayuda, etiqueta, filtrar, alElegir, alTerminar }) {
+  const cuerpo = h('div', { class: 'p-5 space-y-4' });
+  let desmontar;
+  const cerrar = () => desmontar();
+
+  const overlay = h(
+    'div',
+    {
+      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      onClick: (e) => e.target === overlay && cerrar(),
+    },
+    h(
+      'div',
+      {
+        class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': etiqueta,
+      },
+      cuerpo
+    )
+  );
+
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  render(cuerpo, loading('Cargando el salón…'));
+
+  api
+    .get(`/branches/${me().branch_id}/tables/status`)
+    .then((mesas) => {
+      const candidatas = mesas.filter((m) => m.is_active && filtrar(m));
+      render(
+        cuerpo,
+        h('h3', { class: 'text-[15px] font-semibold' }, titulo),
+        h('p', { class: 'text-[13px] text-stone-500' }, ayuda),
+        candidatas.length
+          ? h(
+              'div',
+              { class: 'grid grid-cols-3 gap-2' },
+              candidatas.map((mesa) =>
+                button(mesa.code, {
+                  variant: 'secondary',
+                  onClick: async () => {
+                    try {
+                      await alElegir(mesa);
+                      cerrar();
+                      await alTerminar();
+                    } catch (error) {
+                      toast(error.message);
+                    }
+                  },
+                })
+              )
+            )
+          : empty('No hay mesas para esto', 'Revisa el salón.', null, 'mesa'),
+        h('div', { class: 'flex justify-end' }, button('Cancelar', { variant: 'secondary', onClick: cerrar }))
+      );
+    })
+    .catch((error) => render(cuerpo, errorBox(error.message)));
+}
+
+const abrirMover = (pedido, recargar) =>
+  abrirMesas({
+    titulo: `Mover ${pedido.order_number}`,
+    ayuda: 'La cuenta se pasa a la mesa que elijas y queda en la bitácora.',
+    etiqueta: 'Mover de mesa',
+    filtrar: (mesa) => mesa.code !== pedido.table_code,
+    alElegir: (mesa) => api.put(`/orders/${pedido.id}/table`, { table_code: mesa.code }),
+    alTerminar: async () => {
+      toast('Cuenta movida', 'ok');
+      await recargar();
+    },
+  });
+
+const abrirUnir = (pedido, recargar) =>
+  abrirMesas({
+    titulo: `Unir otra cuenta a ${pedido.order_number}`,
+    ayuda: 'Las líneas pasan a esta cuenta y la otra se cierra. Si ya tiene cobros, primero se reembolsan.',
+    etiqueta: 'Unir cuenta',
+    // Solo las que tienen cuenta abierta, y no la propia.
+    filtrar: (mesa) => mesa.order_id !== null && mesa.order_id !== pedido.id,
+    alElegir: (mesa) => api.post(`/orders/${pedido.id}/merge`, { source_order_id: mesa.order_id }),
+    alTerminar: async () => {
+      toast('Cuentas unidas', 'ok');
+      await recargar();
+    },
+  });
 
 /**
  * El documento fiscal de la venta.

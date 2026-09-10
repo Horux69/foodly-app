@@ -564,6 +564,130 @@ final class OrderService
     }
 
     /**
+     * Cambia de mesa un pedido.
+     *
+     * Mover una cuenta es la forma mas simple de que desaparezca plata, asi
+     * que queda en la bitacora con el nombre de las dos mesas y con quien lo
+     * hizo.
+     */
+    public static function moveToTable(
+        string $tenantId,
+        string $orderId,
+        string $tableCode,
+        ?string $userId = null,
+    ): Order {
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+        $order = self::abrirParaEditar($orders, $tenantId, $orderId);
+
+        $tables = new TableRepository($pdo);
+        $destino = $tables->getByCode($order->branchId, $tableCode);
+        if ($destino === null) {
+            throw new OrderError("La mesa '{$tableCode}' no existe en esta sucursal");
+        }
+        if ($order->tableCode === $destino->code) {
+            return $orders->getById($tenantId, $order->id);
+        }
+
+        $orders->setTable($order->id, $destino->id);
+
+        return self::cerrarEdicion(
+            $orders,
+            $order,
+            self::resultadosCongelados($order->items),
+            $order->tableCode === null
+                ? "Puesto en la mesa {$destino->code}"
+                : "Movido de la mesa {$order->tableCode} a la {$destino->code}",
+            $userId,
+        );
+    }
+
+    /**
+     * Une dos cuentas en una.
+     *
+     * Las lineas de la que se une pasan a la otra conservando su precio
+     * congelado, y la que se vacia se anula con la nota que dice a donde
+     * fue: un pedido sin lineas no puede quedar abierto, y borrarlo perderia
+     * su numero y su bitacora.
+     *
+     * Se exige que la que se une no tenga plata encima. Con un cobro por
+     * medio habria que decidir a que venta pertenece, y esa decision no la
+     * puede tomar el sistema: primero se reembolsa.
+     */
+    public static function mergeOrders(
+        string $tenantId,
+        string $targetOrderId,
+        string $sourceOrderId,
+        array $permissions,
+        ?string $userId = null,
+    ): Order {
+        if ($targetOrderId === $sourceOrderId) {
+            throw new OrderError('Un pedido no se une consigo mismo');
+        }
+
+        $pdo = Database::app();
+        $orders = new OrderRepository($pdo);
+
+        // Las dos bloqueadas, y siempre en el mismo orden por id: dos
+        // uniones cruzadas a la vez se esperarian en circulo si cada una
+        // bloqueara primero la suya.
+        [$primero, $segundo] = $targetOrderId < $sourceOrderId
+            ? [$targetOrderId, $sourceOrderId]
+            : [$sourceOrderId, $targetOrderId];
+        $orders->getByIdForUpdate($tenantId, $primero);
+        $orders->getByIdForUpdate($tenantId, $segundo);
+
+        $destino = self::abrirParaEditar($orders, $tenantId, $targetOrderId);
+        $origen = self::abrirParaEditar($orders, $tenantId, $sourceOrderId);
+
+        if ($destino->branchId !== $origen->branchId) {
+            throw new OrderError('Solo se unen cuentas de la misma sucursal');
+        }
+        if (PaymentService::getBalanceForOrder($origen)->netPaidCents > 0) {
+            throw new OrderError(
+                "El pedido {$origen->orderNumber} ya tiene cobros: reembolsalos antes de unir la cuenta"
+            );
+        }
+
+        // Se anula primero, mientras todavia tiene sus lineas: un pedido sin
+        // lineas no puede quedar abierto ni un instante.
+        OrderStatusService::advanceStatus(
+            $tenantId,
+            $origen->id,
+            self::estadoAnulado($tenantId),
+            $permissions,
+            $userId,
+            "Unida a {$destino->orderNumber}",
+        );
+
+        $orders->moveItems($origen->id, $destino->id);
+        $orders->updateTotals($origen->id, 0, 0, 0);
+
+        $releido = $orders->getById($tenantId, $destino->id);
+
+        return self::cerrarEdicion(
+            $orders,
+            $destino,
+            self::resultadosCongelados($releido->items),
+            "Se le unio {$origen->orderNumber}",
+            $userId,
+        );
+    }
+
+    /** El estado de categoria 'cancelled' del tenant, que es donde termina la cuenta que se une. */
+    private static function estadoAnulado(string $tenantId): string
+    {
+        foreach ((new OrderStatusRepository(Database::app()))->listStatuses($tenantId) as $status) {
+            if ($status->category === 'cancelled') {
+                return $status->id;
+            }
+        }
+        throw new OrderError(
+            'Este restaurante no tiene un estado de anulado configurado, y unir cuentas cierra una de las dos'
+        );
+    }
+
+    /**
      * Agrega lineas a un pedido abierto.
      *
      * Las nuevas congelan el precio de hoy —el mismo camino que el alta, con

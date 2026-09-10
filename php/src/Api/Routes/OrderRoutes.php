@@ -37,6 +37,10 @@ final class OrderRoutes
         // La propina se decide al cobrar, no al pedir (F7.3).
         $router->put('/orders/{order_id:uuid}/tip', fn ($p) => OrderController::setTip($p));
 
+        // Mover de mesa y unir cuentas (F4.3).
+        $router->put('/orders/{order_id:uuid}/table', fn ($p) => OrderController::moveToTable($p));
+        $router->post('/orders/{order_id:uuid}/merge', fn ($p) => OrderController::merge($p));
+
         // Documento fiscal de la venta (F12.1).
         $router->get('/orders/{order_id:uuid}/fiscal-document', fn ($p) => FiscalController::show($p));
         $router->post('/orders/{order_id:uuid}/fiscal-document', fn ($p) => FiscalController::emit($p));
