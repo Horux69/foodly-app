@@ -937,7 +937,7 @@ Sobre varias cajas por sucursal (F7.4), cuatro decisiones:
   criterio que la estación del KDS y el interruptor del aviso de cocina.
 
 - **Fase 8 (impresión y estaciones)**, en curso: estaciones de preparación
-  (F8.1) y perfiles de impresión (F8.2).
+  (F8.1), perfiles de impresión (F8.2) y el contrato ESC/POS (F8.3).
 
 Sobre las estaciones, tres decisiones:
 
@@ -970,6 +970,38 @@ Sobre los perfiles de impresión (F8.2), dos cosas:
   petición falla —o es la primera impresión de la sesión— sale con los
   valores por defecto en vez de esperar a la red. Con el cliente enfrente, un
   ticket con el ancho equivocado es mejor que ninguno.
+
+Sobre el contrato ESC/POS (F8.3), cuatro decisiones:
+
+- **Esto es solo el contrato, no el agente.** `GET /orders/{id}/escpos/ticket`
+  y `GET /orders/{id}/escpos/comanda` devuelven los bytes que un agente local
+  —todavía sin construir— le mandaría a una impresora térmica por USB,
+  serial o red. Ese agente es un binario fuera de este repositorio, con su
+  propia decisión de plataforma; aquí vive únicamente qué imprimir, sobre
+  los mismos datos que ya sirven `GET /orders/{id}`, `.../payments` y
+  `.../fiscal-document` para el ticket que arma el navegador — ninguna
+  cifra se recalcula, solo se da un segundo formato.
+- **El texto sale en ASCII, sin tildes.** Sin conocer el modelo real de la
+  impresora no se sabe qué página de códigos tiene activa, y una mal
+  elegida imprimiría bytes basura donde iría una tilde. Perder un acento es
+  mejor que una línea ilegible; elegir la página correcta es del agente de
+  verdad, cuando exista.
+- **El ancho es el mismo que ya configura F8.2**, no una segunda cifra: 32
+  caracteres para un rollo de 58 mm, 48 para uno de 80
+  (`Domain\PrintProfile.widthMm`, ya existente). `comanda` y `ticket` se
+  miden por separado porque son perfiles distintos, igual que en el
+  navegador.
+- **Sin comando de apertura de cajón.** Es uno de los motivos por los que un
+  restaurante querría ESC/POS en primer lugar, pero queda para cuando el
+  agente exista de verdad: un `ESC p` sin una impresora real detrás no se
+  puede probar, y hoy no hay cómo verificarlo.
+
+`Domain\EscPos` son las primitivas (init, negrita, alineado, doble tamaño,
+corte, una fila a dos columnas); `Domain\EscPosTicket` y
+`Domain\EscPosComanda` arman el mismo documento que
+`web/js/views/impresion.js:imprimirTicket`/`imprimirComanda`, línea por
+línea, sobre arreglos planos —la misma forma que ya devuelve la API—, así
+que son puros y se prueban con fixtures sin tocar la base.
 
 El tablero filtra por estación y **la elegida se recuerda por dispositivo**,
 igual que el interruptor del aviso: la tableta de la barra es siempre la
@@ -1147,10 +1179,11 @@ emitirlo devuelve el que ya existe, como una llave de idempotencia. Se emite
 sobre una venta saldada, porque el documento dice cuánto se cobró.
 
 **Siguiente**: lo que queda de las fases 7 a 12 del segundo plan de obra
-—el agente ESC/POS opcional y la identidad del ticket, inventario y costos,
-precios por canal y promociones, y lo que falta de cumplimiento (bitácora de
-auditoría, límite de intentos de ingreso, alcance por sucursal, exportación
-contable)—. Las fases 4 y 9 quedaron completas.
+—el agente ESC/POS de verdad (el binario que habla con la impresora; el
+contrato de qué imprimir ya está en F8.3) y la identidad del ticket,
+inventario y costos, precios por canal y promociones, y lo que falta de
+cumplimiento (bitácora de auditoría, límite de intentos de ingreso, alcance
+por sucursal, exportación contable)—. Las fases 4 y 9 quedaron completas.
 
 Pendientes conocidos:
 

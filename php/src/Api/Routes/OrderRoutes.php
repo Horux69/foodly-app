@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Api\Routes;
 
+use App\Api\Controllers\EscPosController;
 use App\Api\Controllers\KitchenController;
 use App\Api\Controllers\FiscalController;
 use App\Api\Controllers\OrderController;
@@ -51,6 +52,11 @@ final class OrderRoutes
         // Documento fiscal de la venta (F12.1).
         $router->get('/orders/{order_id:uuid}/fiscal-document', fn ($p) => FiscalController::show($p));
         $router->post('/orders/{order_id:uuid}/fiscal-document', fn ($p) => FiscalController::emit($p));
+
+        // El mismo documento que imprime el navegador, en ESC/POS (F8.3):
+        // solo el contrato, para un agente local que todavia no existe.
+        $router->get('/orders/{order_id:uuid}/escpos/ticket', fn ($p) => EscPosController::ticket($p));
+        $router->get('/orders/{order_id:uuid}/escpos/comanda', fn ($p) => EscPosController::comanda($p));
 
         $router->post('/orders/{order_id:uuid}/status', fn ($p) => OrderController::changeStatus($p));
 
