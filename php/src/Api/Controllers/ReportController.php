@@ -211,6 +211,29 @@ final class ReportController
         ], $rows);
     }
 
+    /** Cumplimiento de la promesa de entrega (F9.5). */
+    public static function deliveryPromise(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'reports.view');
+        [$branchId, $from, $to] = self::filters($ctx);
+
+        try {
+            $fila = ReportService::deliveryPromise($ctx->tenantId, $branchId, $from, $to);
+        } catch (ReportError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return [
+            'delivered' => (int) $fila['delivered'],
+            // Los que prometieron algo: sin zona no hay promesa, y contar
+            // esos como incumplidos seria mentir al reves.
+            'promised' => (int) $fila['promised'],
+            'on_time' => (int) $fila['on_time'],
+            'avg_minutes' => $fila['avg_minutes'] === null ? null : (float) $fila['avg_minutes'],
+            'avg_delay_minutes' => $fila['avg_delay'] === null ? null : (float) $fila['avg_delay'],
+        ];
+    }
+
     /** Ventas y propina por mesero (F4.4). */
     public static function salesByServer(): array
     {

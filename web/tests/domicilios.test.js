@@ -19,6 +19,8 @@ const entrega = (address) => ({
   estimated_time: null,
   dispatched_at: null,
   delivered_at: null,
+  promise_state: 'none',
+  late_minutes: 0,
 });
 
 const pedido = (numero, categoria, address) => ({

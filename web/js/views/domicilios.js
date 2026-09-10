@@ -363,9 +363,23 @@ function tarjeta(pedido, repartidores, refrescar) {
     },
   });
 
+  // Cómo va la promesa lo decide el backend (`Domain\DeliveryPromise`): el
+  // tablero solo lo pinta. En rojo lo que ya se incumplió y en ámbar lo que
+  // está por incumplirse, que es cuando todavía se puede hacer algo.
+  const TONO_PROMESA = {
+    late: 'border-red-300 bg-red-50',
+    at_risk: 'border-amber-300 bg-amber-50',
+  };
+  const aviso = {
+    // Recién pasada la hora todavía no hay minutos que decir, y un
+    // "Tarde 0 min" no lo lee nadie.
+    late: entrega.late_minutes ? `Tarde ${entrega.late_minutes} min` : 'Tarde',
+    at_risk: 'Por incumplirse',
+  }[entrega.promise_state];
+
   return h(
     'article',
-    { class: 'seccion p-4 space-y-3' },
+    { class: `seccion p-4 space-y-3 ${TONO_PROMESA[entrega.promise_state] ?? ''}`.trim() },
 
     h(
       'div',
@@ -398,7 +412,20 @@ function tarjeta(pedido, repartidores, refrescar) {
         { class: 'text-right shrink-0 text-[12px] text-stone-500' },
         h('div', { class: 'flex items-center gap-1 justify-end' }, icon('reloj', { size: 13 }), elapsed(pedido.created_at)),
         entrega.estimated_time
-          ? h('div', { class: 'text-stone-400' }, `Promete ${time(entrega.estimated_time)}`)
+          ? h(
+              'div',
+              { class: entrega.promise_state === 'late' ? 'text-red-700 font-medium' : 'text-stone-400' },
+              `Promete ${time(entrega.estimated_time)}`
+            )
+          : null,
+        aviso
+          ? h(
+              'div',
+              {
+                class: `font-semibold ${entrega.promise_state === 'late' ? 'text-red-700' : 'text-amber-700'}`,
+              },
+              aviso
+            )
           : null,
         entrega.dispatched_at ? h('div', { class: 'text-stone-400' }, `Salió ${time(entrega.dispatched_at)}`) : null,
         entrega.delivered_at ? h('div', { class: 'text-stone-400' }, `Entregó ${time(entrega.delivered_at)}`) : null

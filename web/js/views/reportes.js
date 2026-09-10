@@ -142,13 +142,14 @@ export async function reportes(outlet) {
 
     try {
       if (vista === 'venta') {
-        const [ventas, productos, tiempos, horas] = await Promise.all([
+        const [ventas, productos, tiempos, horas, promesa] = await Promise.all([
           api.get(`/reports/sales${query({ from_date: desde.value, to_date: hasta.value, branch_id: sucursal.value, compare: comparar.checked ? 'true' : '' })}`),
           api.get(`/reports/top-products${qs}`),
           api.get(`/reports/prep-times${qs}`),
           api.get(`/reports/peak-hours${qs}`),
+          api.get(`/reports/delivery-promise${qs}`),
         ]);
-        render(contenido, panel(ventas, productos, tiempos, horas, descargar));
+        render(contenido, panel(ventas, productos, tiempos, horas, promesa, descargar));
       } else {
         // Por mesero solo donde hay mesas: en un mostrador diría lo mismo
         // que "por usuario" con otro título, que es ruido y no información.
@@ -173,7 +174,7 @@ export async function reportes(outlet) {
 const etiqueta = (texto, control) =>
   h('label', { class: 'block' }, h('span', { class: 'block text-xs text-stone-600 mb-1' }, texto), control);
 
-function panel(ventas, productos, tiempos, horas, descargar) {
+function panel(ventas, productos, tiempos, horas, promesa, descargar) {
   const t = ventas.totals;
   const minutos = (v) => (v === null || v === undefined ? 'sin datos' : `${Number(v).toFixed(0)} min`);
 
@@ -219,6 +220,34 @@ function panel(ventas, productos, tiempos, horas, descargar) {
           : 'todavía sin pedidos medidos'
       )
     ),
+
+    // Solo si hubo domicilios entregados: en un restaurante que no reparte
+    // sería una tarjeta vacía en cada reporte.
+    promesa.delivered
+      ? h(
+          'div',
+          { class: 'grid grid-cols-1 sm:grid-cols-3 gap-4' },
+          tarjetaDato(
+            'Domicilios a tiempo',
+            // Contra los que prometieron algo: sin zona no hay promesa, y
+            // contarlos como incumplidos sería mentir al revés.
+            promesa.promised
+              ? `${Math.round((promesa.on_time / promesa.promised) * 100)}%`
+              : 'sin promesa',
+            promesa.promised
+              ? `${promesa.on_time} de ${promesa.promised} prometidos`
+              : `${promesa.delivered} entregados sin zona`
+          ),
+          tarjetaDato('Entrega, promedio', minutos(promesa.avg_minutes), 'desde que se toma el pedido'),
+          tarjetaDato(
+            'Cuando llega tarde',
+            minutos(promesa.avg_delay_minutes),
+            promesa.promised - promesa.on_time
+              ? `${promesa.promised - promesa.on_time} pedido${promesa.promised - promesa.on_time === 1 ? '' : 's'} tarde`
+              : 'ninguno se pasó'
+          )
+        )
+      : null,
 
     h(
       'div',

@@ -9,6 +9,7 @@ use App\Api\Deps;
 use App\Api\JsonResponse;
 use App\Api\Request;
 use App\Core\Money;
+use App\Domain\DeliveryPromise;
 use App\Models\DeliveryInfo;
 use App\Models\DeliveryZone;
 use App\Services\AdminService;
@@ -41,6 +42,11 @@ final class DeliveryController
             'zone_name' => $i->zoneName,
             'courier_id' => $i->courierId,
             'courier_name' => $i->courierName,
+            // Como va la promesa (F9.5). Lo decide el dominio y no la
+            // pantalla: el tablero, el reporte y el agente de WhatsApp
+            // tienen que llamar tarde a lo mismo.
+            'promise_state' => DeliveryPromise::estado($i->estimatedTime, $i->deliveredAt),
+            'late_minutes' => DeliveryPromise::retrasoMinutos($i->estimatedTime, $i->deliveredAt),
             'estimated_time' => $i->estimatedTime,
             'dispatched_at' => $i->dispatchedAt,
             'delivered_at' => $i->deliveredAt,

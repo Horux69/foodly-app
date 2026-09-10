@@ -235,6 +235,22 @@ final class ReportService
     }
 
     /**
+     * Cumplimiento de la promesa de entrega (F9.5).
+     *
+     * @return array<string, mixed>
+     */
+    public static function deliveryPromise(
+        string $tenantId,
+        ?string $branchId,
+        ?string $fromDate,
+        ?string $toDate,
+    ): array {
+        [$start, $end] = self::resolveRange($fromDate, $toDate);
+        self::checkBranch($tenantId, $branchId);
+        return (new ReportRepository(Database::app()))->deliveryPromise($tenantId, $branchId, $start, $end);
+    }
+
+    /**
      * Ventas y propina por mesero (F4.4).
      *
      * @return array<int, array<string, mixed>>

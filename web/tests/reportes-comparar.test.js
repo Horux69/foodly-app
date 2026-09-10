@@ -32,6 +32,8 @@ const respuestas = (ventas) => ({
   '/reports/top-products': [],
   '/reports/prep-times': { orders: 0, avg_minutes: null, median_minutes: null, min_minutes: null, max_minutes: null },
   '/reports/peak-hours': [],
+  // F9.5: la pantalla de venta pide también el cumplimiento de la promesa.
+  '/reports/delivery-promise': { delivered: 0, promised: 0, on_time: 0, avg_minutes: null, avg_delay_minutes: null },
 });
 
 const texto = () => document.getElementById('vista').textContent.replace(/ /g, ' ');

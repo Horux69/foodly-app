@@ -270,6 +270,47 @@ final class ReportRepository
     }
 
     /**
+     * Cumplimiento de la promesa de entrega (F9.5).
+     *
+     * Se fecha por la entrega y no por la creacion del pedido: al mirar el
+     * dia importa lo que se entrego hoy, aunque el pedido fuera de anoche.
+     * Solo cuentan los que ya llegaron —de los que siguen en la calle
+     * todavia no se sabe— y el porcentaje se mide contra los que tenian
+     * promesa: un pedido sin zona no prometio nada y contarlo como
+     * incumplido seria mentir al reves.
+     *
+     * @return array<string, mixed>
+     */
+    public function deliveryPromise(string $tenantId, ?string $branchId, string $fromDate, string $toDate): array
+    {
+        $branchCondition = $branchId !== null ? 'AND o.branch_id = :branch_id' : '';
+        $stmt = $this->pdo->prepare(
+            "SELECT count(*) AS delivered,
+                    count(*) FILTER (WHERE d.estimated_time IS NOT NULL) AS promised,
+                    count(*) FILTER (
+                        WHERE d.estimated_time IS NOT NULL AND d.delivered_at <= d.estimated_time
+                    ) AS on_time,
+                    round(avg(
+                        EXTRACT(EPOCH FROM (d.delivered_at - o.created_at)) / 60
+                    )::numeric, 1) AS avg_minutes,
+                    round(avg(
+                        EXTRACT(EPOCH FROM (d.delivered_at - d.estimated_time)) / 60
+                    ) FILTER (
+                        WHERE d.estimated_time IS NOT NULL AND d.delivered_at > d.estimated_time
+                    )::numeric, 1) AS avg_delay
+               FROM delivery_info d
+               JOIN orders o ON o.id = d.order_id
+               JOIN branches b ON b.id = o.branch_id
+              WHERE o.tenant_id = :tenant_id
+                {$branchCondition}
+                AND d.delivered_at IS NOT NULL
+                AND (d.delivered_at AT TIME ZONE b.timezone)::date BETWEEN :from_date AND :to_date"
+        );
+        $stmt->execute(self::params($tenantId, $branchId, $fromDate, $toDate));
+        return $stmt->fetch();
+    }
+
+    /**
      * Ventas y propina por mesero.
      *
      * No es lo mismo que salesByUser: aquel agrupa por quien digito el

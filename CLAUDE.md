@@ -909,7 +909,8 @@ tablero vacío para siempre. Una estación con categorías encima no se borra,
 y el mensaje dice cuántas hay que mover.
 
 - **Fase 9 (domicilios que compiten)**, en curso: el cuadre del repartidor
-  (F9.1) y el seguimiento para el cliente (F9.2).
+  (F9.1), el seguimiento para el cliente (F9.2) y la promesa de entrega
+  (F9.5).
 
 Sobre el cuadre del repartidor, cuatro decisiones:
 
@@ -966,6 +967,25 @@ ingreso—, llega desde un enlace de WhatsApp con datos móviles y la abre una
 vez. Se explica sola, sin Tailwind por CDN, y arma el DOM con su propio `h()`
 por lo mismo que la aplicación: el nombre de un producto es texto de la base.
 El enlace se copia desde el detalle del pedido, en el bloque de entrega.
+
+Sobre la promesa de entrega (F9.5), tres decisiones:
+
+- **La promesa se sella al tomar el pedido y no se recalcula.**
+  `delivery_zones.est_minutes` existía y no lo miraba nadie: era
+  configuración sin consecuencia. Al crear el pedido con zona se convierte
+  en una hora concreta —lo que se le dijo al cliente—; recalcularla con el
+  tiempo que queda haría que ningún pedido llegara tarde nunca, que es la
+  única forma de que el indicador no sirva para nada.
+- **Sin zona no hay promesa, y se dice.** Prometer un tiempo inventado es
+  peor que no prometer, y el reporte mide contra los que prometieron algo:
+  contar un pedido sin zona como incumplido sería mentir al revés.
+- **El aviso llega antes del incumplimiento.** `Domain\DeliveryPromise`
+  marca `at_risk` diez minutos antes: ahí todavía se puede apurar la cocina
+  o llamar al cliente. Enterarse al minuto siguiente de la hora prometida
+  ya no sirve de nada — y un domicilio tarde que nadie vio es una reseña de
+  una estrella. El tablero lo pinta (ámbar y rojo) y el reporte de venta
+  cierra el ciclo: qué porcentaje llegó a tiempo y cuánto se demoran los
+  que no.
 
 - **Fase 12 (cumplimiento y confianza)**, en curso: el documento electrónico
   (F12.1).

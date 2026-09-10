@@ -358,13 +358,21 @@ final class OrderService
         }
 
         if ($delivery !== null) {
-            (new DeliveryRepository($pdo))->createInfo(
+            $entregas = new DeliveryRepository($pdo);
+            $entregas->createInfo(
                 $orderId,
                 $delivery->address,
                 $zone?->id,
                 $delivery->lat,
                 $delivery->lng,
             );
+            // La promesa sale del tiempo estimado de la zona y se sella
+            // ahora (F9.5): es lo que se le dijo al cliente. Sin zona no hay
+            // promesa —el que no promete nada no incumple— y se puede fijar
+            // a mano despues.
+            if ($zone?->estMinutes !== null) {
+                $entregas->setEstimatedTime($orderId, $zone->estMinutes);
+            }
         }
 
         $orders->addStatusHistory($orderId, $initialStatus->id, $createdBy, 'Pedido creado');
