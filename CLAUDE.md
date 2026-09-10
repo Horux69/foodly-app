@@ -568,7 +568,7 @@ y de ahí en adelante habla por la conexión `app()`, bajo RLS.
 Cubren el alta y la sesión, el ciclo del pedido (idempotencia, grupo
 obligatorio, cobro por partes, reembolso, las tres reglas de
 `StatusChangeRules` contra el saldo real), la edición de un pedido abierto,
-los movimientos del cajón, los descuentos con su tope por rol, la propina, los combos —el precio del paquete,
+los movimientos del cajón, los descuentos con su tope por rol, la propina, las estaciones, los combos —el precio del paquete,
 la composición congelada y el bloqueo al archivar— y el aislamiento entre
 empresas,
 que es lo único que no se puede comprobar sin base: RLS vive en Postgres y lo
@@ -728,6 +728,34 @@ Sobre la propina (F7.3), dos cosas:
 
 Falta repartirla por mesero, que depende de F4.4 (`orders.server_id`).
 
+- **Fase 8 (impresión y estaciones)**, en curso: estaciones de preparación
+  (F8.1).
+
+Sobre las estaciones, tres decisiones:
+
+- **La estación es del tenant, el ruteo va por categoría.** La cocina de una
+  marca se organiza igual en todas sus sedes; lo que cambia por sede es a qué
+  impresora va cada una, y eso es F8.2. Y "las bebidas a la barra" es como se
+  piensa una carta: una excepción por producto se resuelve moviéndolo de
+  categoría.
+- **Lo que no tiene estación no se pierde: sale en la comanda general.** Una
+  categoría recién creada, o el postre que nadie clasificó, se imprimen igual.
+  La alternativa sería que un plato no se preparara porque nadie configuró
+  algo, y eso se descubre vendiendo. Sin ninguna estación —el caso de casi
+  todos— sale una sola comanda, como antes.
+- **Quien reparte es `Domain\StationRouting`, no la pantalla.** Llega hecho
+  en `kitchen_tickets`, tanto en el detalle del pedido como en el tablero: si
+  la comanda impresa y el KDS agruparan cada uno por su lado, tarde o
+  temprano dirían cosas distintas. La línea del pedido lleva ahora la
+  `category_id` de su producto —la de hoy, no la congelada: rutear es una
+  decisión de operación, no parte del precio.
+
+El tablero filtra por estación y **la elegida se recuerda por dispositivo**,
+igual que el interruptor del aviso: la tableta de la barra es siempre la
+barra. Si esa estación se borra, el filtro se suelta solo en vez de dejar el
+tablero vacío para siempre. Una estación con categorías encima no se borra,
+y el mensaje dice cuántas hay que mover.
+
 **Siguiente**: el resto de la fase 4 (estado de las mesas, mapa del salón,
 mover y juntar, mesero a cargo, tiempos y pre-cuenta) y las fases 7 a 12 del
 segundo plan de obra: caja completa, impresión por estaciones, domicilios,
@@ -753,8 +781,9 @@ Pendientes conocidos:
   diálogos, la renovación del token y el cambio de contraseña, la comparación
   entre períodos con su descarga en CSV, los combos en la pantalla del menú,
   la edición de un pedido abierto, los movimientos del cajón, el descuento
-  con motivo y permiso, la propina al cobrar, y que un botón que falla
-  vuelva a servir.
+  con motivo y permiso, la propina al cobrar, las estaciones de preparación
+  con su filtro y su comanda partida, y que un botón que falla vuelva a
+  servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta

@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Core\Database;
 use App\Repositories\OrderRepository;
 use App\Repositories\OrderStatusRepository;
+use App\Repositories\StationRepository;
 
 /**
  * Tablero de cocina (KDS).
@@ -42,6 +43,11 @@ final class KitchenService
             array_map(static fn ($s) => $byId[$s->id], $machine->allowedFrom($order->statusId)),
         );
 
+        // Las estaciones y a que categoria sirve cada una viajan con el
+        // tablero: la pantalla filtra sin tener que preguntar dos veces, y
+        // quien decide el ruteo sigue siendo Domain\StationRouting.
+        $stations = new StationRepository(Database::app());
+
         return new KitchenBoard(
             self::columnsFor($tenantId),
             array_map(
@@ -52,6 +58,8 @@ final class KitchenService
                 $conSiguientes,
                 $orders->listByStatusCategories($tenantId, $branchId, ['completed'], self::DISPATCHED_MINUTES),
             ),
+            $stations->listForTenant($tenantId, soloActivas: true),
+            $stations->categoryRouting($tenantId),
         );
     }
 

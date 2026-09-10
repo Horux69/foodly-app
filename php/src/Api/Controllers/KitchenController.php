@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Api\Controllers;
 
 use App\Api\Deps;
+use App\Domain\StationRouting;
 use App\Services\KitchenOrder;
 use App\Services\KitchenService;
 
@@ -15,6 +16,8 @@ final class KitchenController
     {
         $ctx = Deps::require(Deps::getContext(), 'orders.view');
         $board = KitchenService::getBoard($ctx->tenantId, Deps::activeBranchId($ctx));
+        self::$routing = $board->routing;
+        self::$nombresEstacion = array_column($board->stations, 'name', 'id');
 
         return [
             // Que columnas mostrar lo decide la configuracion del
@@ -25,11 +28,53 @@ final class KitchenController
             // por error. Trae sus next_statuses: si el tenant no configuro
             // camino de vuelta, no habra nada que pulsar y eso es correcto.
             'dispatched' => array_map(self::orderOut(...), $board->dispatched),
+            // Las estaciones activas, para el filtro del tablero. Vacio
+            // significa que este restaurante no las usa y ve todo junto.
+            'stations' => $board->stations,
         ];
+    }
+
+    /** @var array<string, string> id de categoria => id de estacion, del tablero en curso */
+    private static array $routing = [];
+
+    /** @var array<string, string> id de estacion => como se llama */
+    private static array $nombresEstacion = [];
+
+    /**
+     * Las lineas de un pedido, ya repartidas en una comanda por estacion.
+     *
+     * Quien reparte es Domain\StationRouting y no la pantalla: la comanda
+     * impresa y el tablero tienen que decir lo mismo, y un cliente nuevo
+     * —el agente de WhatsApp— no deberia volver a implementar la regla.
+     *
+     * @param array<int, array<string, mixed>> $lineas
+     */
+    public static function ticketsOut(array $lineas): array
+    {
+        return StationRouting::split($lineas, self::$routing, self::$nombresEstacion);
     }
 
     private static function orderOut(KitchenOrder $entry): array
     {
+        $lineas = array_map(static fn ($item) => [
+            // El id lo usa el tablero para marcar lineas ya preparadas.
+            'id' => $item->id,
+            'category_id' => $item->categoryId,
+            'name_snapshot' => $item->nameSnapshot,
+            'quantity' => $item->quantity,
+            'notes' => $item->notes,
+            'modifiers' => array_map(static fn ($m) => $m->nameSnapshot, $item->modifiers),
+            // Un combo llega al tablero como una linea con lo que lleva
+            // debajo: la cocina necesita la lista de platos, no el nombre
+            // comercial del paquete.
+            'components' => array_map(static fn ($c) => [
+                'name_snapshot' => $c->nameSnapshot,
+                'quantity' => $c->quantity,
+            ], $item->components),
+            'station_id' => self::$routing[$item->categoryId ?? ''] ?? null,
+            'station_name' => self::$nombresEstacion[self::$routing[$item->categoryId ?? ''] ?? ''] ?? null,
+        ], $entry->order->items);
+
         return [
             'id' => $entry->order->id,
             'order_number' => $entry->order->orderNumber,
@@ -37,21 +82,9 @@ final class KitchenController
             'table_code' => $entry->order->tableCode,
             'created_at' => $entry->order->createdAt,
             'status' => OrderController::statusOut($entry->order->status),
-            'items' => array_map(static fn ($item) => [
-                // El id lo usa el tablero para marcar lineas ya preparadas.
-                'id' => $item->id,
-                'name_snapshot' => $item->nameSnapshot,
-                'quantity' => $item->quantity,
-                'notes' => $item->notes,
-                'modifiers' => array_map(static fn ($m) => $m->nameSnapshot, $item->modifiers),
-                // Un combo llega al tablero como una linea con lo que lleva
-                // debajo: la cocina necesita la lista de platos, no el nombre
-                // comercial del paquete.
-                'components' => array_map(static fn ($c) => [
-                    'name_snapshot' => $c->nameSnapshot,
-                    'quantity' => $c->quantity,
-                ], $item->components),
-            ], $entry->order->items),
+            'items' => $lineas,
+            // Una comanda por estacion, ya repartida por el dominio.
+            'kitchen_tickets' => self::ticketsOut($lineas),
             'next_statuses' => array_map(OrderController::statusOut(...), $entry->nextStatuses),
         ];
     }

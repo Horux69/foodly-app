@@ -6,6 +6,7 @@ namespace App\Api\Routes;
 
 use App\Api\Controllers\MenuController;
 use App\Api\Controllers\ModifierController;
+use App\Api\Controllers\StationController;
 use App\Api\Router;
 
 /** Mismas rutas que app/api/v1/menu.py, montadas bajo /menu como en router.py. */
@@ -34,6 +35,13 @@ final class MenuRoutes
         $router->delete('/menu/modifiers/{modifier_id:uuid}', fn ($p) => ModifierController::deleteModifier($p));
 
         $router->put('/menu/items/{item_id:uuid}/modifier-groups', fn ($p) => ModifierController::setItemGroups($p));
+
+        // Estaciones de preparacion y a cual va cada categoria (F8.1).
+        $router->get('/stations', fn () => StationController::index());
+        $router->post('/stations', fn () => StationController::create());
+        $router->patch('/stations/{station_id:uuid}', fn ($p) => StationController::update($p));
+        $router->delete('/stations/{station_id:uuid}', fn ($p) => StationController::delete($p));
+        $router->put('/menu/categories/{category_id:uuid}/station', fn ($p) => StationController::assignCategory($p));
 
         // Combos: que productos lleva uno dentro.
         $router->put('/menu/items/{item_id:uuid}/components', fn ($p) => MenuController::setComponents($p));

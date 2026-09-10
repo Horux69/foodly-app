@@ -16,6 +16,8 @@ final class MenuCategory
         public readonly int $sortOrder,
         public readonly bool $isActive,
         public readonly array $items = [],
+        /** A que estacion de preparacion va lo de esta categoria (F8.1). */
+        public readonly ?string $stationId = null,
     ) {
     }
 
@@ -32,6 +34,7 @@ final class MenuCategory
             sortOrder: (int) $row['sort_order'],
             isActive: Row::bool($row['is_active']),
             items: $items,
+            stationId: $row['station_id'] ?? null,
         );
     }
 }

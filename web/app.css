@@ -412,6 +412,16 @@ textarea {
 
 /* La marca de reimpresión es lo que evita que la cocina prepare dos veces lo
    mismo, así que se imprime grande y no como una nota al pie. */
+.doc-estacion {
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .06em;
+  border-bottom: 1px dashed #000;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+
 .doc-reimpresion {
   border: 2px solid #000;
   text-align: center;
@@ -425,6 +435,12 @@ textarea {
   @page {
     size: auto;
     margin: 4mm;
+  }
+
+  /* Una hoja por comanda: cada estación recibe la suya y no un trozo de la
+     de al lado. Con una sola comanda no cambia nada. */
+  .doc + .doc {
+    break-before: page;
   }
 
   /* Solo se imprime el documento: todo lo demás desaparece. */

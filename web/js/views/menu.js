@@ -9,7 +9,7 @@ import { money, percent } from '../format.js';
 import { activeBranch, branchQuery, branches, can } from '../session.js';
 import {
   badge, button, card, confirm, empty, errorBox, field, h, input, montarDialogo, pageHeader,
-  render, select, skeleton, tabs, titledCard, toast,
+  render, section, select, skeleton, tabs, titledCard, toast,
 } from '../ui.js';
 
 export async function menu(outlet) {
@@ -17,11 +17,13 @@ export async function menu(outlet) {
 
   let catalogo;
   let grupos = [];
+  let estaciones = [];
   let impuestos = [];
   try {
-    [catalogo, grupos] = await Promise.all([
+    [catalogo, grupos, estaciones] = await Promise.all([
       api.get(`/menu/catalog${branchQuery()}`),
       api.get('/menu/modifier-groups'),
+      api.get('/stations'),
     ]);
     if (can('settings.view')) impuestos = await api.get('/tax-rates');
   } catch (error) {
@@ -32,12 +34,13 @@ export async function menu(outlet) {
   const lista = h('div', { class: 'space-y-4' });
 
   const recargar = async () => {
-    [catalogo, grupos] = await Promise.all([
+    [catalogo, grupos, estaciones] = await Promise.all([
       api.get(`/menu/catalog${branchQuery()}`),
       api.get('/menu/modifier-groups'),
+      api.get('/stations'),
     ]);
     pintar();
-    if (pestana === 'opciones') pintarPanel();
+    if (pestana !== 'productos') pintarPanel();
   };
 
   // El precio por sucursal solo tiene sentido con más de una: en un local
@@ -777,6 +780,7 @@ export async function menu(outlet) {
   const PESTANAS = [
     { key: 'productos', label: 'Productos' },
     { key: 'opciones', label: 'Opciones' },
+    { key: 'estaciones', label: 'Estaciones' },
   ];
   let pestana = 'productos';
   const barra = h('div');
@@ -794,7 +798,125 @@ export async function menu(outlet) {
   }
 
   function pintarPanel() {
-    render(panel, ...(pestana === 'productos' ? panelProductos() : panelOpciones()));
+    if (pestana === 'productos') return render(panel, ...panelProductos());
+    if (pestana === 'opciones') return render(panel, ...panelOpciones());
+    render(panel, ...panelEstaciones());
+  }
+
+  // ---------- estaciones de preparación ----------
+
+  /**
+   * A qué estación va cada categoría de la carta.
+   *
+   * Es lo que parte la comanda —la barra recibe las bebidas y la plancha lo
+   * suyo— y lo que deja filtrar el tablero de cocina. Ningún restaurante
+   * necesita estaciones: sin ninguna, todo sale junto como siempre.
+   */
+  function panelEstaciones() {
+    const nombre = input({ placeholder: 'Barra, Plancha, Fríos…', class: 'campo flex-1 min-w-[180px]' });
+    const crear = button('Crear estación', {
+      onClick: async () => {
+        crear.disabled = true;
+        try {
+          await api.post('/stations', { name: nombre.value.trim(), sort_order: estaciones.length });
+          nombre.value = '';
+          toast('Estación creada', 'ok');
+          await recargar();
+        } catch (error) {
+          toast(error.message);
+        }
+        crear.disabled = false;
+      },
+    });
+
+    const opciones = (categoria) => [
+      { value: '', label: 'Comanda general', selected: !categoria.station_id },
+      ...estaciones.map((e) => ({ value: e.id, label: e.name, selected: e.id === categoria.station_id })),
+    ];
+
+    return [
+      section('Estaciones', {
+        hint: 'Cada estación recibe su propia comanda y puede filtrar el tablero de cocina.',
+        body: h('div', { class: 'flex flex-wrap items-center gap-2' }, nombre, crear),
+        list: estaciones.length
+          ? estaciones.map((e) => filaEstacion(e))
+          : [h('p', { class: 'text-[13px] text-stone-500' }, 'Sin estaciones, la comanda sale entera en una hoja.')],
+      }),
+      estaciones.length
+        ? section('A qué estación va cada categoría', {
+            hint: 'Lo que no se asigne sale en la comanda general: nada se pierde por no configurarlo.',
+            list: catalogo.categories.map((c) =>
+              h(
+                'div',
+                { class: 'fila' },
+                h('span', { class: 'flex-1 min-w-0 text-[13.5px]' }, c.name),
+                select(opciones(c), {
+                  class: 'campo w-auto',
+                  'aria-label': `Estación de ${c.name}`,
+                  onChange: async (e) => {
+                    try {
+                      await api.put(`/menu/categories/${c.id}/station`, { station_id: e.target.value || null });
+                      await recargar();
+                    } catch (error) {
+                      toast(error.message);
+                    }
+                  },
+                })
+              )
+            ),
+          })
+        : null,
+    ];
+  }
+
+  function filaEstacion(estacion) {
+    const nombre = input({ value: estacion.name, class: 'campo flex-1 min-w-[140px]' });
+    const activa = h('input', {
+      type: 'checkbox',
+      class: 'w-4 h-4 rounded border-stone-300',
+      checked: estacion.is_active,
+    });
+
+    return h(
+      'div',
+      { class: 'fila' },
+      nombre,
+      h('label', { class: 'flex items-center gap-1.5 text-[13px] text-stone-600' }, activa, 'Activa'),
+      button('Guardar', {
+        variant: 'secondary',
+        onClick: async (e) => {
+          const boton = e.currentTarget;
+          boton.disabled = true;
+          try {
+            await api.patch(`/stations/${estacion.id}`, { name: nombre.value.trim(), is_active: activa.checked });
+            toast('Estación actualizada', 'ok');
+            await recargar();
+          } catch (error) {
+            toast(error.message);
+            boton.disabled = false;
+          }
+        },
+      }),
+      button('Borrar', {
+        variant: 'subtle',
+        onClick: async () => {
+          if (!(await confirm({
+            title: `¿Borrar “${estacion.name}”?`,
+            message: 'Las categorías que manden aquí volverán a la comanda general.',
+            confirmLabel: 'Borrar',
+          }))) {
+            return;
+          }
+          try {
+            await api.delete(`/stations/${estacion.id}`);
+            toast('Estación borrada', 'ok');
+            await recargar();
+          } catch (error) {
+            toast(error.message);
+          }
+        },
+      })
+    );
   }
 
   render(

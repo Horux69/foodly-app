@@ -58,6 +58,7 @@ async function montarMenu(grupos = [], extra = {}) {
       '/auth/me': sesion({ permissions: ['menu.view', 'menu.edit'] }),
       '/menu/catalog': CATALOGO,
       '/menu/modifier-groups': grupos,
+      '/stations': [],
       ...extra,
     },
   });

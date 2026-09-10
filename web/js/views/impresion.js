@@ -89,8 +89,26 @@ const cabecera = (pedido, titulo) =>
  * Comanda de cocina: qué hay que preparar. Sin precios — a la cocina el
  * dinero no le sirve para nada y le quita sitio a lo que sí.
  */
+/**
+ * Las comandas del pedido, una por estación.
+ *
+ * Quien las reparte es `Domain\StationRouting` y llegan hechas en
+ * `kitchen_tickets`: la comanda impresa y el tablero de cocina tienen que
+ * decir lo mismo, y agrupar aquí sería una segunda fuente de verdad. Un
+ * pedido sin estaciones trae una sola, sin nombre.
+ */
+const comandasDe = (pedido) =>
+  pedido.kitchen_tickets?.length
+    ? pedido.kitchen_tickets
+    : [{ station_id: null, station_name: null, lines: pedido.items }];
+
 export function imprimirComanda(pedido, { reimpresion = false } = {}) {
+  const grupos = comandasDe(pedido);
+
+  // Una hoja por estación: la barra no necesita saber qué lleva la plancha,
+  // y con una sola hoja alguien termina recortándola con tijeras.
   imprimir(
+    grupos.map((grupo) =>
     h(
       'div',
       { class: 'doc doc-comanda' },
@@ -99,10 +117,14 @@ export function imprimirComanda(pedido, { reimpresion = false } = {}) {
         : null,
       cabecera(pedido, 'COMANDA'),
 
+      grupos.length > 1 && grupo.station_name
+        ? h('div', { class: 'doc-estacion' }, grupo.station_name.toUpperCase())
+        : null,
+
       h(
         'div',
         {},
-        pedido.items.map((item) =>
+        grupo.lines.map((item) =>
           h(
             'div',
             {},
@@ -123,6 +145,7 @@ export function imprimirComanda(pedido, { reimpresion = false } = {}) {
 
       pedido.notes ? h('div', { class: 'doc-pie' }, pedido.notes) : null,
       pedido.delivery ? h('div', { class: 'doc-pie' }, `Domicilio: ${pedido.delivery.address}`) : null
+    )
     )
   );
 }

@@ -51,6 +51,7 @@ async function montarMenu(items) {
       '/auth/me': sesion({ permissions: ['menu.view', 'menu.edit'] }),
       '/menu/catalog': catalogo(items),
       '/menu/modifier-groups': [],
+      '/stations': [],
     },
   });
 }

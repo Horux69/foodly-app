@@ -29,6 +29,8 @@ final class OrderItem
         public readonly ?string $notes,
         public readonly array $modifiers = [],
         public readonly array $components = [],
+        /** La categoria a la que pertenece hoy el producto: decide su estacion. */
+        public readonly ?string $categoryId = null,
     ) {
     }
 
@@ -51,6 +53,7 @@ final class OrderItem
             notes: $row['notes'],
             modifiers: $modifiers,
             components: $components,
+            categoryId: $row['category_id'] ?? null,
         );
     }
 }

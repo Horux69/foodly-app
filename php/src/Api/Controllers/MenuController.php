@@ -85,6 +85,8 @@ final class MenuController
                 'name' => $c->name,
                 'sort_order' => $c->sortOrder,
                 'is_active' => $c->isActive,
+                // A que estacion de preparacion manda esta categoria (F8.1).
+                'station_id' => $c->stationId,
             ], $categories),
             'items' => array_map(static fn (MenuItem $i) => [
                 'id' => $i->id,

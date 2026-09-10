@@ -38,10 +38,15 @@ const COLUMNAS = {
 const REJILLA = { 1: 'md:grid-cols-1', 2: 'md:grid-cols-2', 3: 'md:grid-cols-3', 4: 'md:grid-cols-4' };
 
 const AVISO_KEY = 'resto_aviso_cocina';
+// La estación que mira esta pantalla se recuerda por dispositivo: la
+// tableta de la barra es siempre la barra, la del pase es el pase.
+const ESTACION_KEY = 'resto_estacion_cocina';
 const LINEAS_KEY = 'resto_lineas_listas';
 
 export async function cocina(outlet) {
   const tablero = h('div');
+  const filtroEstacion = h('div');
+  let estacion = leerEstacion();
   const marca = h('span', { class: 'flex items-center gap-1.5 text-xs text-stone-500' });
   const aviso = crearAviso();
   const interruptor = h('button', { class: 'boton boton-secundario', onClick: cambiarAviso });
@@ -55,6 +60,56 @@ export async function cocina(outlet) {
     interruptor.title = aviso.activo
       ? 'Suena y cuenta en la pestaña cuando entra un pedido'
       : 'El tablero se actualiza en silencio';
+  }
+
+  function leerEstacion() {
+    try {
+      return localStorage.getItem(ESTACION_KEY) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function elegirEstacion(id) {
+    estacion = id;
+    try {
+      if (id === null) localStorage.removeItem(ESTACION_KEY);
+      else localStorage.setItem(ESTACION_KEY, id);
+    } catch {
+      // Sin almacenamiento el filtro vale para esta sesión y ya.
+    }
+    refrescar();
+  }
+
+  /**
+   * Las estaciones que el restaurante configuró. Sin ninguna no hay filtro
+   * que mostrar: no todos los restaurantes reparten la cocina.
+   */
+  function pintarFiltro(estaciones) {
+    if (!estaciones.length) return render(filtroEstacion);
+
+    // Una estación que se borró mientras esta pantalla estaba abierta deja
+    // de existir: se vuelve a "Todo" en vez de mostrar un tablero vacío.
+    if (estacion !== null && !estaciones.some((e) => e.id === estacion)) estacion = null;
+
+    render(
+      filtroEstacion,
+      h(
+        'div',
+        { class: 'flex flex-wrap items-center gap-1.5' },
+        [{ id: null, name: 'Todo' }, ...estaciones].map((e) =>
+          h(
+            'button',
+            {
+              class: `boton ${e.id === estacion ? 'boton-primario' : 'boton-secundario'}`,
+              'aria-pressed': e.id === estacion ? 'true' : 'false',
+              onClick: () => elegirEstacion(e.id),
+            },
+            e.name
+          )
+        )
+      )
+    );
   }
 
   function cambiarAviso() {
@@ -73,6 +128,7 @@ export async function cocina(outlet) {
         h('h1', { class: 'text-xl font-semibold tracking-tight text-stone-900' }, 'Tablero de cocina'),
         h('div', { class: 'flex items-center gap-3' }, marca, interruptor)
       ),
+      filtroEstacion,
       tablero
     )
   );
@@ -101,8 +157,19 @@ export async function cocina(outlet) {
     }
     if (!vivo) return;
 
-    const pedidos = tablero_.orders;
-    const despachados = tablero_.dispatched;
+    pintarFiltro(tablero_.stations ?? []);
+
+    // Filtrar en la pantalla y no en el servidor: el tablero ya viene
+    // entero, y así cambiar de estación es instantáneo en vez de otra
+    // vuelta a la red con la cocina llena.
+    const soloDeLaEstacion = (pedido) => ({
+      ...pedido,
+      items: estacion === null ? pedido.items : pedido.items.filter((i) => i.station_id === estacion),
+    });
+    const conLineas = (lista) => lista.map(soloDeLaEstacion).filter((p) => p.items.length);
+
+    const pedidos = conLineas(tablero_.orders);
+    const despachados = conLineas(tablero_.dispatched);
 
     // Lo que entró desde el refresco anterior. Con las manos ocupadas nadie
     // mira la pantalla, así que se avisa en vez de repintar en silencio.

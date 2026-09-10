@@ -238,7 +238,17 @@ final class OrderRepository
         }
 
         $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
-        $stmt = $this->pdo->prepare("SELECT * FROM order_items WHERE order_id IN ({$placeholders})");
+        // La categoria del producto viaja con la linea porque es lo que
+        // decide a que estacion va (F8.1). Es la de hoy y no la del momento
+        // de la venta a proposito: rutear es una decision de operacion, no
+        // parte del precio congelado. LEFT JOIN porque el producto pudo
+        // archivarse.
+        $stmt = $this->pdo->prepare(
+            "SELECT oi.*, mi.category_id
+               FROM order_items oi
+               LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+              WHERE oi.order_id IN ({$placeholders})"
+        );
         $stmt->execute(array_values($orderIds));
         $itemRows = $stmt->fetchAll();
         if ($itemRows === []) {

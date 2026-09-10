@@ -11,9 +11,11 @@ use App\Api\Request;
 use App\Core\Database;
 use App\Core\Money;
 use App\Domain\OrderEditRules;
+use App\Domain\StationRouting;
 use App\Domain\PaymentBalance;
 use App\Models\Order;
 use App\Repositories\DiscountReasonRepository;
+use App\Repositories\StationRepository;
 use App\Models\OrderStatusRow;
 use App\Services\DeliveryInput;
 use App\Services\OrderError;
@@ -253,7 +255,27 @@ final class OrderController
 
         $delivery = (new DeliveryRepository(Database::app()))->getForOrder($order->id);
 
-        return self::orderOut($order) + [
+        // A que estacion va cada linea, para poder partir la comanda al
+        // imprimirla desde aqui (F8.1). Solo en el detalle: en la lista
+        // seria una consulta por pedido y no se usa.
+        $stations = new StationRepository(Database::app());
+        $ruteo = $stations->categoryRouting($ctx->tenantId);
+        $nombres = array_column($stations->listForTenant($ctx->tenantId, soloActivas: true), 'name', 'id');
+
+        $salida = self::orderOut($order);
+        $salida['items'] = array_map(static function (array $linea, $item) use ($ruteo, $nombres) {
+            $estacion = $ruteo[$item->categoryId ?? ''] ?? null;
+            return $linea + [
+                'category_id' => $item->categoryId,
+                'station_id' => $estacion,
+                'station_name' => $nombres[$estacion ?? ''] ?? null,
+            ];
+        }, $salida['items'], $order->items);
+
+        return $salida + [
+            // La misma comanda repartida que ve la cocina: quien reparte es
+            // Domain\StationRouting, no cada pantalla.
+            'kitchen_tickets' => StationRouting::split($salida['items'], $ruteo, $nombres),
             'balance' => self::balanceOut(PaymentService::getBalanceForOrder($order)),
             // Solo los domicilios tienen entrega; su presencia es lo que
             // convierte al pedido en uno.
