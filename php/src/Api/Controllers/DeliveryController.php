@@ -173,4 +173,59 @@ final class DeliveryController
         }
         return self::infoOut($info);
     }
+
+    // ---------- Cuadre del repartidor (F9.1) ----------
+
+    /**
+     * Cuanto debe traer cada repartidor.
+     *
+     * Bajo 'cash.close' y no bajo 'delivery.assign': es el mismo control del
+     * arqueo sobre otra caja —la del repartidor—, y ver cuanto deberia haber
+     * antes de contarlo es justo lo que ese permiso separa.
+     */
+    public static function pendingSettlements(): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'cash.close');
+        try {
+            return [
+                'couriers' => DeliveryService::pendingSettlements($ctx->tenantId, Deps::activeBranchId($ctx)),
+                'history' => DeliveryService::settlementHistory($ctx->tenantId, Deps::activeBranchId($ctx)),
+            ];
+        } catch (DeliveryServiceError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
+    }
+
+    /** Los pedidos que entran en el cuadre de un repartidor. */
+    public static function courierSettlement(array $params): array
+    {
+        $ctx = Deps::require(Deps::getContext(), 'cash.close');
+        try {
+            return DeliveryService::courierDetail($ctx->tenantId, Deps::activeBranchId($ctx), $params['courier_id']);
+        } catch (DeliveryServiceError $e) {
+            throw new ApiException(404, $e->getMessage());
+        }
+    }
+
+    /** Cierra el cuadre con lo que el repartidor entrego. */
+    public static function settleCourier(array $params): JsonResponse
+    {
+        $ctx = Deps::require(Deps::getContext(), 'cash.close');
+        $body = Request::json();
+
+        try {
+            $cuadre = DeliveryService::settleCourier(
+                $ctx->tenantId,
+                Deps::activeBranchId($ctx),
+                $params['courier_id'],
+                Money::fromDecimalString(Request::decimalString($body, 'counted_cash')),
+                Request::optionalString($body, 'note'),
+                $ctx->userId,
+            );
+        } catch (DeliveryServiceError $e) {
+            throw new ApiException(422, $e->getMessage());
+        }
+
+        return new JsonResponse($cuadre, 201);
+    }
 }

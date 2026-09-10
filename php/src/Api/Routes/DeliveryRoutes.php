@@ -27,6 +27,17 @@ final class DeliveryRoutes
 
         $router->get('/couriers', fn () => DeliveryController::listCouriers());
 
+        // Cuadre del repartidor (F9.1): el arqueo sobre la otra caja.
+        $router->get('/couriers/settlements', fn () => DeliveryController::pendingSettlements());
+        $router->get(
+            '/couriers/{courier_id:uuid}/settlement',
+            fn ($p) => DeliveryController::courierSettlement($p),
+        );
+        $router->post(
+            '/couriers/{courier_id:uuid}/settlement',
+            fn ($p) => DeliveryController::settleCourier($p),
+        );
+
         $router->get('/orders/{order_id:uuid}/delivery', fn ($p) => DeliveryController::getDelivery($p));
         $router->put(
             '/orders/{order_id:uuid}/delivery/courier',

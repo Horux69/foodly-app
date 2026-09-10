@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Core\Money;
+use App\Domain\CourierSettlement;
+use App\Domain\CourierSettlementError;
 use App\Models\DeliveryInfo;
 use App\Models\DeliveryZone;
 use App\Repositories\BranchRepository;
+use App\Repositories\CourierSettlementRepository;
 use App\Repositories\DeliveryRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\UserRepository;
@@ -131,5 +135,144 @@ final class DeliveryService
         }
 
         (new DeliveryRepository(self::pdo()))->stamp($orderId, $column);
+    }
+
+    // ---------- Cuadre del repartidor (F9.1) ----------
+
+    /**
+     * Cuanto deberia traer cada repartidor y desde cuando se le cuenta.
+     *
+     * Sale de los cobros reales de sus pedidos y no de una columna que
+     * alguien mantenga: asi un reembolso registrado despues le baja solo lo
+     * que debe, sin que nadie tenga que acordarse.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function pendingSettlements(string $tenantId, string $branchId): array
+    {
+        self::ownBranch($tenantId, $branchId);
+        $repo = new CourierSettlementRepository(self::pdo());
+
+        return array_map(static function (array $fila) {
+            $cobrado = Money::fromDecimalString((string) $fila['charged']);
+            $devuelto = Money::fromDecimalString((string) $fila['refunded']);
+            $esperado = CourierSettlement::expectedCents($cobrado, $devuelto);
+
+            return [
+                'courier_id' => $fila['courier_id'],
+                'courier_name' => $fila['courier_name'],
+                'from_at' => $fila['from_at'],
+                'orders' => (int) $fila['orders'],
+                'charged' => Money::toDecimalString($cobrado),
+                'refunded' => Money::toDecimalString($devuelto),
+                'expected_cash' => Money::toDecimalString($esperado),
+            ];
+        }, $repo->pending($tenantId, $branchId));
+    }
+
+    /**
+     * El detalle de lo que trae un repartidor: sus pedidos sin cuadrar.
+     *
+     * @return array<string, mixed>
+     */
+    public static function courierDetail(string $tenantId, string $branchId, string $courierId): array
+    {
+        self::ownBranch($tenantId, $branchId);
+        $repo = new CourierSettlementRepository(self::pdo());
+        $desde = $repo->lastClosedAt($tenantId, $courierId);
+
+        $pedidos = array_map(static fn (array $f) => [
+            'order_number' => $f['order_number'],
+            'total' => Money::toDecimalString(Money::fromDecimalString((string) $f['total'])),
+            'cash' => Money::toDecimalString(Money::fromDecimalString((string) $f['cash'])),
+            'delivered_at' => $f['delivered_at'],
+        ], $repo->orders($tenantId, $branchId, $courierId, $desde));
+
+        $esperado = array_sum(array_map(
+            static fn (array $p) => Money::fromDecimalString($p['cash']),
+            $pedidos,
+        ));
+
+        return [
+            'courier_id' => $courierId,
+            'from_at' => $desde,
+            'orders' => $pedidos,
+            'expected_cash' => Money::toDecimalString($esperado),
+        ];
+    }
+
+    /**
+     * Cierra el cuadre de un repartidor con lo que entrego.
+     *
+     * Se guarda lo contado y la ventana; el esperado y la diferencia salen
+     * del calculo, como en el arqueo. No mueve el cajon: el efectivo de un
+     * domicilio ya entro a la caja como el cobro del pedido, y registrarlo
+     * otra vez lo contaria dos veces en el arqueo.
+     *
+     * @return array<string, mixed>
+     */
+    public static function settleCourier(
+        string $tenantId,
+        string $branchId,
+        string $courierId,
+        int $countedCents,
+        ?string $note,
+        ?string $userId,
+    ): array {
+        self::ownBranch($tenantId, $branchId);
+
+        if ((new UserRepository(self::pdo(), new RoleRepository(self::pdo())))->get($tenantId, $courierId) === null) {
+            throw new DeliveryServiceError('Ese repartidor no existe en este restaurante');
+        }
+
+        $repo = new CourierSettlementRepository(self::pdo());
+        $desde = $repo->lastClosedAt($tenantId, $courierId);
+        $detalle = self::courierDetail($tenantId, $branchId, $courierId);
+        $esperado = Money::fromDecimalString($detalle['expected_cash']);
+
+        try {
+            CourierSettlement::ensureCounted($countedCents);
+            CourierSettlement::ensureHayQueCuadrar($esperado, $countedCents);
+        } catch (CourierSettlementError $e) {
+            throw new DeliveryServiceError($e->getMessage());
+        }
+
+        $fila = $repo->create($tenantId, $branchId, $courierId, $desde, $countedCents, $note, $userId);
+        $diferencia = CourierSettlement::differenceCents($countedCents, $esperado);
+
+        return [
+            'id' => $fila['id'],
+            'courier_id' => $courierId,
+            'from_at' => $fila['from_at'],
+            'to_at' => $fila['to_at'],
+            'orders' => count($detalle['orders']),
+            'expected_cash' => Money::toDecimalString($esperado),
+            'counted_cash' => Money::toDecimalString($countedCents),
+            // Calculada, nunca guardada: manana puede aparecer un reembolso
+            // de uno de estos pedidos.
+            'difference' => Money::toDecimalString($diferencia),
+            'summary' => CourierSettlement::describe($diferencia),
+            'note' => $fila['note'],
+        ];
+    }
+
+    /**
+     * Los cuadres ya hechos, para poder mirar atras.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function settlementHistory(string $tenantId, string $branchId): array
+    {
+        self::ownBranch($tenantId, $branchId);
+        return array_map(static fn (array $f) => [
+            'id' => $f['id'],
+            'courier_id' => $f['courier_id'],
+            'courier_name' => $f['courier_name'],
+            'from_at' => $f['from_at'],
+            'to_at' => $f['to_at'],
+            'counted_cash' => Money::toDecimalString(Money::fromDecimalString((string) $f['counted_cash'])),
+            'note' => $f['note'],
+            'created_by_name' => $f['created_by_name'],
+        ], (new CourierSettlementRepository(self::pdo()))->history($tenantId, $branchId));
     }
 }

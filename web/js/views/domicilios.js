@@ -18,7 +18,8 @@ import { elapsed, money, time } from '../format.js';
 import { icon } from '../icons.js';
 import { branchQuery, can } from '../session.js';
 import {
-  badge, button, empty, errorBox, h, input, pageHeader, render, select, skeleton, toast,
+  badge, button, empty, errorBox, h, input, montarDialogo, pageHeader, render, section, select,
+  skeleton, toast,
 } from '../ui.js';
 import { abrirCancelacion } from './cancelar-pedido.js';
 import { abrirPedido } from './pedido-detalle.js';
@@ -37,14 +38,21 @@ export async function domicilios(outlet) {
   let vivo = true;
   let repartidores = [];
 
+  // El cuadre de los repartidores vive en esta pantalla y no en la de caja:
+  // es de quien despacha, y se hace cuando el repartidor vuelve.
+  const cuadre = h('div');
+
   render(
     outlet,
     pageHeader('Domicilios', {
       hint: 'Las columnas son categorías de estado, no nombres: funcionan igual aunque tu restaurante los llame de otra forma.',
       actions: marca,
     }),
+    cuadre,
     tablero
   );
+  const cargarCuadre = () => pintarCuadre(cuadre);
+  cargarCuadre();
   render(tablero, skeleton({ rows: 2 }));
 
   if (can('delivery.assign')) {
@@ -134,6 +142,169 @@ export async function domicilios(outlet) {
       clearInterval(temporizador);
     },
   };
+}
+
+/**
+ * Cuánto debe traer cada repartidor.
+ *
+ * Bajo `cash.close`, el mismo permiso del arqueo: es el mismo control sobre
+ * otra caja. Quien no lo tiene ni ve la sección — y no por esconder, sino
+ * porque ver cuánto debería haber antes de contarlo es justo lo que ese
+ * permiso separa.
+ */
+async function pintarCuadre(host) {
+  if (!can('cash.close')) return;
+
+  let datos;
+  try {
+    datos = await api.get(`/couriers/settlements${branchQuery()}`);
+  } catch {
+    // El cuadre es un añadido: si falla, el tablero sigue sirviendo.
+    return render(host);
+  }
+
+  const pendientes = datos.couriers.filter((c) => Number(c.expected_cash) !== 0 || c.orders > 0);
+  if (!pendientes.length) return render(host);
+
+  render(
+    host,
+    section('Efectivo en la calle', {
+      hint: 'Lo que cada repartidor debería traer, según los cobros en efectivo de sus pedidos.',
+      list: pendientes.map((c) =>
+        h(
+          'div',
+          { class: 'fila items-center' },
+          h(
+            'div',
+            { class: 'flex-1 min-w-0' },
+            h('div', { class: 'text-[13.5px] text-stone-900' }, c.courier_name ?? 'Sin nombre'),
+            h(
+              'div',
+              { class: 'text-[12px] text-stone-500' },
+              `${c.orders} pedido${c.orders === 1 ? '' : 's'}${
+                c.from_at ? ` · desde el último cuadre` : ''
+              }`
+            )
+          ),
+          h('span', { class: 'text-[13.5px] tabular-nums font-medium' }, money(c.expected_cash)),
+          button('Cuadrar', { variant: 'secondary', onClick: () => abrirCuadre(c, host) })
+        )
+      ),
+    })
+  );
+}
+
+/** El diálogo del cuadre: sus pedidos, lo que entrega y la diferencia. */
+function abrirCuadre(courier, host) {
+  const cuerpo = h('div', { class: 'p-5 space-y-4' });
+  let desmontar;
+  const cerrar = () => desmontar();
+
+  const overlay = h(
+    'div',
+    {
+      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      onClick: (e) => e.target === overlay && cerrar(),
+    },
+    h(
+      'div',
+      {
+        class: 'aparece bg-white rounded-[--r-g] max-w-md w-full shadow-xl border border-[--linea] max-h-[85vh] overflow-y-auto',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': 'Cuadre del repartidor',
+      },
+      cuerpo
+    )
+  );
+
+  desmontar = montarDialogo(overlay, { alCerrar: cerrar });
+  render(cuerpo, h('p', { class: 'text-sm text-stone-500' }, 'Cargando sus pedidos…'));
+
+  api
+    .get(`/couriers/${courier.courier_id}/settlement${branchQuery()}`)
+    .then((detalle) => {
+      const entregado = input({
+        type: 'number',
+        min: '0',
+        step: '1',
+        class: 'campo tabular-nums',
+        'aria-label': 'Efectivo que entrega',
+      });
+      const diferencia = h('p', { class: 'text-[13px] text-stone-500' });
+      const nota = input({ placeholder: 'Nota (opcional)', maxlength: '255' });
+
+      // La diferencia se muestra mientras se teclea, pero la que vale es la
+      // que calcula el backend: aquí es una ayuda, no la fuente.
+      const repintarDiferencia = () => {
+        const valor = Number(entregado.value || 0) - Number(detalle.expected_cash);
+        render(
+          diferencia,
+          entregado.value === ''
+            ? 'Escribe cuánto entregó.'
+            : valor === 0
+              ? 'Cuadra exacto.'
+              : valor > 0
+                ? `Sobran ${money(valor)}.`
+                : `Faltan ${money(-valor)}.`
+        );
+      };
+      entregado.addEventListener('input', repintarDiferencia);
+      repintarDiferencia();
+
+      const guardar = button('Registrar cuadre', {
+        onClick: async () => {
+          guardar.disabled = true;
+          try {
+            const hecho = await api.post(`/couriers/${courier.courier_id}/settlement${branchQuery()}`, {
+              counted_cash: Number(entregado.value || 0),
+              note: nota.value.trim() || null,
+            });
+            cerrar();
+            toast(hecho.summary, hecho.difference === '0.00' ? 'ok' : 'warn');
+            await pintarCuadre(host);
+          } catch (error) {
+            toast(error.message);
+            guardar.disabled = false;
+          }
+        },
+      });
+
+      render(
+        cuerpo,
+        h('h3', { class: 'text-[15px] font-semibold' }, `Cuadre de ${courier.courier_name ?? 'el repartidor'}`),
+        detalle.orders.length
+          ? h(
+              'div',
+              { class: 'space-y-1 max-h-56 overflow-y-auto' },
+              detalle.orders.map((p) =>
+                h(
+                  'div',
+                  { class: 'flex items-center justify-between text-[13px]' },
+                  h('span', {}, p.order_number),
+                  h('span', { class: 'tabular-nums' }, money(p.cash))
+                )
+              )
+            )
+          : h('p', { class: 'text-[13px] text-stone-500' }, 'Sin pedidos en efectivo pendientes.'),
+        h(
+          'div',
+          { class: 'flex items-center justify-between text-[14px] font-medium border-t border-[--linea] pt-2' },
+          h('span', {}, 'Debería traer'),
+          h('span', { class: 'tabular-nums' }, money(detalle.expected_cash))
+        ),
+        entregado,
+        diferencia,
+        nota,
+        h(
+          'div',
+          { class: 'flex justify-end gap-2' },
+          button('Cancelar', { variant: 'secondary', onClick: cerrar }),
+          guardar
+        )
+      );
+    })
+    .catch((error) => render(cuerpo, errorBox(error.message)));
 }
 
 function tarjeta(pedido, repartidores, refrescar) {

@@ -908,6 +908,31 @@ barra. Si esa estación se borra, el filtro se suelta solo en vez de dejar el
 tablero vacío para siempre. Una estación con categorías encima no se borra,
 y el mensaje dice cuántas hay que mover.
 
+- **Fase 9 (domicilios que compiten)**, en curso: el cuadre del repartidor
+  (F9.1).
+
+Sobre el cuadre del repartidor, cuatro decisiones:
+
+- **Es el arqueo aplicado a otra caja: la del repartidor.** Sale con pedidos
+  que se cobran contra entrega y vuelve con efectivo que nadie cuadraba
+  contra nada; la diferencia aparecía —si aparecía— en el arqueo del cajón,
+  donde ya no se puede decir de qué pedido salió. Por eso pide `cash.close`
+  y no `delivery.assign`: es el mismo control, y ver cuánto debería haber
+  antes de contarlo es justo lo que ese permiso separa.
+- **Lo esperado se calcula, se guarda lo entregado.** Igual que el arqueo, y
+  por lo mismo: un reembolso registrado mañana le baja solo lo que debe. Un
+  esperado almacenado mentiría desde ese momento. Solo cuenta el efectivo:
+  lo que el cliente pagó con tarjeta no pasa por sus manos.
+- **La ventana la marca el cuadre anterior.** `courier_settlements` guarda
+  el intervalo, y el siguiente arranca donde terminó el último. Es lo que
+  impide exigir dos veces el mismo cobro sin tener que marcar pago por pago
+  —y por eso no se cuadra a quien no debe nada: cerraría la ventana sobre lo
+  que entre un minuto después—.
+- **No mueve el cajón.** El efectivo de un domicilio ya entró a la caja como
+  el cobro del pedido; registrarlo además como entrada de cajón lo contaría
+  dos veces en el arqueo. El cuadre dice quién trajo qué, no vuelve a
+  contar la plata.
+
 - **Fase 12 (cumplimiento y confianza)**, en curso: el documento electrónico
   (F12.1).
 
