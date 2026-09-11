@@ -21,3 +21,12 @@ postgres-data/
 
 # Herramientas de desarrollo del frontend: la SPA se sirve sin paso de build
 node_modules/
+
+# Configuración local de los asistentes de código (impeccable y similares).
+# Cada quien instala la suya con `npx impeccable install`, y cada instalación
+# trae un binario de 15 MB compilado para su plataforma: versionarlo metería
+# ~49 MB de ejecutables de Windows que a un compañero en Mac no le sirven.
+.claude/
+.agents/
+.cursor/
+.codex/
