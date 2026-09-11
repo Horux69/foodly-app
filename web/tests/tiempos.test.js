@@ -105,8 +105,16 @@ const boton = (etiqueta, raiz = document) =>
 const producto = (nombre) =>
   [...document.querySelectorAll('#vista button')].find((b) => b.textContent.trim().startsWith(nombre));
 
-const llamada = (fetch, metodo) => {
-  const hecha = fetch.mock.calls.filter(([, o]) => o?.method === metodo).at(-1);
+/**
+ * La última llamada a una ruta. Filtrar solo por método no sirve aquí: al
+ * crear el pedido el carrito se vacía y repinta, y ese repintado lanza un
+ * `/orders/preview` con `items: []` que queda como el último POST. Se pide la
+ * ruta exacta —sin query string— para no quedarse con el preview.
+ */
+const llamada = (fetch, metodo, ruta = null) => {
+  const hecha = fetch.mock.calls
+    .filter(([u, o]) => o?.method === metodo && (ruta === null || String(u).split('?')[0].endsWith(ruta)))
+    .at(-1);
   return hecha ? { url: String(hecha[0]), cuerpo: JSON.parse(hecha[1].body ?? 'null') } : null;
 };
 
@@ -154,7 +162,7 @@ describe('tomar el pedido por tiempos', () => {
     boton('Crear pedido').click();
     await reposar(4);
 
-    expect(llamada(fetch, 'POST').cuerpo.items).toEqual([
+    expect(llamada(fetch, 'POST', '/orders').cuerpo.items).toEqual([
       { menu_item_id: 'i1', quantity: 1, modifier_ids: [], course: 1 },
       { menu_item_id: 'i2', quantity: 1, modifier_ids: [], course: 3 },
     ]);
@@ -177,7 +185,7 @@ describe('tomar el pedido por tiempos', () => {
     boton('Crear pedido').click();
     await reposar(4);
 
-    expect(llamada(fetch, 'POST').cuerpo.items).toEqual([
+    expect(llamada(fetch, 'POST', '/orders').cuerpo.items).toEqual([
       { menu_item_id: 'i1', quantity: 1, modifier_ids: [], course: 1 },
       { menu_item_id: 'i1', quantity: 1, modifier_ids: [], course: 2 },
     ]);
@@ -195,7 +203,7 @@ describe('tomar el pedido por tiempos', () => {
     boton('Crear pedido').click();
     await reposar(4);
 
-    expect(llamada(fetch, 'POST').cuerpo.items[0].course).toBe(1);
+    expect(llamada(fetch, 'POST', '/orders').cuerpo.items[0].course).toBe(1);
   });
 });
 
