@@ -132,20 +132,20 @@ export function abrirModificadores(item, alConfirmar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4',
+      class: 'fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl',
+        class: 'aparece bg-[--panel] rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': `Opciones de ${item.name}`,
       },
       h(
         'div',
-        { class: 'p-4 border-b border-stone-200 flex items-center justify-between gap-2 sticky top-0 bg-white' },
+        { class: 'p-4 border-b border-stone-200 flex items-center justify-between gap-2 sticky top-0 bg-[--panel]' },
         h('h3', { class: 'font-semibold text-stone-900' }, item.name),
         h(
           'button',
@@ -157,7 +157,7 @@ export function abrirModificadores(item, alConfirmar) {
       aviso,
       h(
         'div',
-        { class: 'p-4 border-t border-stone-200 flex gap-2 sticky bottom-0 bg-white' },
+        { class: 'p-4 border-t border-stone-200 flex gap-2 sticky bottom-0 bg-[--panel]' },
         button('Cancelar', { variant: 'secondary', onClick: cerrar, full: true }),
         agregar
       )

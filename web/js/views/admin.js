@@ -1074,7 +1074,7 @@ function seccionEstados({ flujo }, refrescar) {
     const color = h('input', {
       type: 'color',
       value: estado.color ?? '#78716c',
-      class: 'h-9 w-12 rounded-lg border border-stone-300 bg-white p-1',
+      class: 'h-9 w-12 rounded-lg border border-stone-300 bg-[--panel] p-1',
       disabled: !edita,
     });
     const orden = input({ type: 'number', value: estado.sort_order, class: 'campo w-20 tabular-nums', disabled: !edita });
@@ -1651,13 +1651,13 @@ function abrirMapaZona(zona, otras, refrescar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-[--r-g] max-w-xl w-full shadow-xl border border-[--linea]',
+        class: 'aparece bg-[--panel] rounded-[--r-g] max-w-xl w-full shadow-xl border border-[--linea]',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': `Forma de ${zona.name}`,

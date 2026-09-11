@@ -273,13 +273,13 @@ export async function menu(outlet) {
     const overlay = h(
       'div',
       {
-        class: 'fixed inset-0 z-50 bg-stone-900/30 flex items-center justify-center p-4',
+        class: 'fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4',
         onClick: (e) => e.target === overlay && cerrar(),
       },
       h(
         'div',
         {
-          class: 'aparece bg-white rounded-[--r-g] max-w-md w-full p-5 shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+          class: 'aparece bg-[--panel] rounded-[--r-g] max-w-md w-full p-5 shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
           role: 'dialog',
           'aria-modal': 'true',
         },
@@ -390,13 +390,13 @@ export async function menu(outlet) {
     const overlay = h(
       'div',
       {
-        class: 'fixed inset-0 z-50 bg-stone-900/30 flex items-center justify-center p-4',
+        class: 'fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4',
         onClick: (e) => e.target === overlay && cerrar(),
       },
       h(
         'div',
         {
-          class: 'aparece bg-white rounded-[--r-g] max-w-md w-full p-5 shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+          class: 'aparece bg-[--panel] rounded-[--r-g] max-w-md w-full p-5 shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
           role: 'dialog',
           'aria-modal': 'true',
         },

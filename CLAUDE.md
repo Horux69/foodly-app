@@ -1207,7 +1207,8 @@ Pendientes conocidos:
   la edición de un pedido abierto, los movimientos del cajón, el descuento
   con motivo y permiso, la propina al cobrar, las estaciones de preparación
   con su filtro y su comanda partida, el documento fiscal con su número en el
-  ticket, y que un botón que falla vuelva a servir.
+  ticket, el tema claro/oscuro por dispositivo, y que un botón que falla
+  vuelva a servir.
   Cada pantalla nueva debería llegar con la suya.
 
   Existe porque la pantalla de login estuvo rota desde `c697b9e` hasta
@@ -1237,6 +1238,56 @@ Pendientes conocidos:
 
 Ya resuelto en la migración: el avance de estado usa `SELECT ... FOR UPDATE`,
 así que dos cajeros que avancen el mismo pedido a la vez ya no se pisan.
+
+## Identidad visual (paleta índigo, tema claro/oscuro)
+
+La paleta cambió de la amber/stone editorial original a una índigo/fría —
+`--acento` pasó de `#b45309` a `#4F46E5`— con Plus Jakarta Sans de cuerpo y
+Space Grotesk en títulos, cifras e iniciales, y radios más suaves (`--r` 10px,
+`--r-g` 16px en vez de 6/10). Vino de un mockup de referencia, no de un
+capricho, y se aplicó con tema oscuro completo. Cuatro decisiones que
+conviene no deshacer:
+
+- **Los seis grupos de Tailwind que usan las pantallas —`stone`, `amber`,
+  `emerald`, `red`, `rose`, `sky`— están remapeados por configuración a
+  variables CSS**, con una escala de diez pasos por color
+  (`--gris-50`…`--gris-950`, y lo mismo para `aviso`/`ok`/`peligro`/`acento`)
+  en vez de tocar cada `text-stone-500` o `bg-amber-50` de las ~20 vistas que
+  ya los usaban. Es la razón por la que retintar las insignias de estado no
+  tocó ni un archivo de `web/js/views/`: `tailwind.config` en `index.html`
+  apunta cada paso al `rgb(var(--x-rgb) / <alpha-value>)` correspondiente, y
+  el formato con `-rgb` en space-separated es el que le permite a Tailwind
+  seguir aplicando el modificador de opacidad (`bg-amber-50/60`) sobre una
+  variable.
+- **El tema es del dispositivo, no de la sesión ni de la empresa.** Igual que
+  la estación del KDS o la caja elegida: `web/js/tema.js` lo guarda en
+  `localStorage` y sobrevive a cerrar sesión, porque una tableta no cambia de
+  opinión sobre su tema porque cambió quien la usa. Sin elección explícita
+  sigue `prefers-color-scheme` y se ajusta en caliente si el sistema cambia;
+  en cuanto alguien toca el interruptor, esa elección manda. El atributo
+  `data-theme` se fija con un script síncrono en la cabecera de
+  `index.html`, antes de cualquier CSS, para que no haya un parpadeo del
+  tema equivocado al cargar — un módulo importado corre después del primer
+  pintado y llegaría tarde.
+- **Un color puede significar dos cosas distintas según dónde se usa, y eso
+  no se puede resolver con una sola variable.** `bg-stone-900` es a la vez
+  "texto de más énfasis" (que en oscuro tiene que aclararse) y "una ficha
+  sólida de fondo oscuro, siempre" (el respaldo de un diálogo, el aviso de
+  cocina, la ficha de "Mostrador" elegido) — invertir el primero está bien,
+  invertir el segundo dejaría un respaldo blanco o una ficha invisible. Por
+  eso el respaldo de los diálogos y menús pasó de `bg-stone-900/30` a
+  `bg-black/30`, ajeno al tema a propósito, y por eso existe `--tinta-inversa`
+  (blanco en claro, casi negro en oscuro): el texto o ícono que va *encima*
+  de un relleno sólido de acento o de tinta, sea cual sea el tema.
+- **El papel no tiene tema.** `.doc` y sus variantes (comanda, ticket, corte
+  de caja) siguen en negro sobre blanco fijo: una térmica no entiende de
+  `prefers-color-scheme`, y iniciar la impresión "en oscuro" imprimiría
+  papel negro o simplemente nada legible.
+
+`web/seguimiento.html` recibió la misma paleta en claro —es la que ve el
+cliente— pero no el interruptor: se abre una vez desde un enlace de
+WhatsApp y no vale la pena la infraestructura de `tema.js` para una sola
+visita.
 
 ## Convenciones
 

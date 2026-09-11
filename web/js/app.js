@@ -4,6 +4,7 @@ import * as cola from './cola.js';
 import { icon } from './icons.js';
 import * as router from './router.js';
 import * as session from './session.js';
+import { alternarTema, temaActual } from './tema.js';
 import { confirm, h, render, select, toast } from './ui.js';
 import { admin } from './views/admin.js';
 import { abrirCuenta } from './views/cuenta.js';
@@ -175,16 +176,40 @@ async function verRechazos(rechazados) {
   if (olvidar) cola.olvidarRechazos();
 }
 
+/**
+ * Tema claro u oscuro (por dispositivo, ver `tema.js`). Un botón más de la
+ * lista, con el mismo aspecto que "Mi cuenta" o "Salir": no hace falta un
+ * control nuevo para algo que ya se resuelve alternando una etiqueta.
+ */
+function botonTema({ full = true } = {}) {
+  const oscuro = temaActual() === 'dark';
+  const etiqueta = oscuro ? 'Tema claro' : 'Tema oscuro';
+  return h(
+    'button',
+    {
+      class: full ? 'rail-item w-full justify-center lg:justify-start' : 'boton boton-sutil',
+      title: etiqueta,
+      'aria-label': full ? null : etiqueta,
+      onClick: () => {
+        alternarTema();
+        pintarEstructura(rutaMontada);
+      },
+    },
+    icon('luna', { size: 18 }),
+    full ? h('span', { class: 'hidden lg:inline' }, etiqueta) : null
+  );
+}
+
 function pintarRail(rutaActiva, usuario) {
   render(
     rail,
-    // Identidad: iniciales sobre un cuadro sobrio. Sin logotipo inventado.
+    // Identidad: iniciales sobre el acento. Sin logotipo inventado.
     h(
       'div',
       { class: 'flex items-center gap-2.5 h-14 px-3.5 lg:px-4 border-b border-[--linea]' },
       h(
         'span',
-        { class: 'w-7 h-7 rounded-md bg-stone-900 text-white grid place-items-center text-[11px] font-semibold shrink-0' },
+        { class: 'w-7 h-7 rounded-md bg-[--acento] text-[--tinta-inversa] grid place-items-center text-[11px] font-semibold shrink-0' },
         iniciales(usuario.tenant_name)
       ),
       h('span', { class: 'hidden lg:block text-[13.5px] font-semibold truncate' }, usuario.tenant_name)
@@ -237,6 +262,7 @@ function pintarRail(rutaActiva, usuario) {
         icon('usuario', { size: 18 }),
         h('span', { class: 'hidden lg:inline' }, 'Mi cuenta')
       ),
+      botonTema(),
       h(
         'button',
         {
@@ -262,13 +288,13 @@ function pintarTopbar(rutaActiva, usuario) {
     topbar,
     h(
       'header',
-      { class: 'md:hidden flex items-center justify-between gap-3 h-14 px-4 bg-white border-b border-[--linea] sticky top-0 z-30' },
+      { class: 'md:hidden flex items-center justify-between gap-3 h-14 px-4 bg-[--panel] border-b border-[--linea] sticky top-0 z-30' },
       h(
         'div',
         { class: 'flex items-center gap-2.5 min-w-0' },
         h(
           'span',
-          { class: 'w-7 h-7 rounded-md bg-stone-900 text-white grid place-items-center text-[11px] font-semibold shrink-0' },
+          { class: 'w-7 h-7 rounded-md bg-[--acento] text-[--tinta-inversa] grid place-items-center text-[11px] font-semibold shrink-0' },
           iniciales(usuario.tenant_name)
         ),
         h(
@@ -289,6 +315,7 @@ function pintarTopbar(rutaActiva, usuario) {
         { class: 'boton boton-sutil', 'aria-label': 'Mi cuenta', onClick: abrirCuenta },
         icon('usuario', { size: 18 })
       ),
+      botonTema({ full: false }),
       h(
         'button',
         {
@@ -312,7 +339,7 @@ function pintarBarraInferior(rutaActiva) {
     h(
       'nav',
       {
-        class: 'md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-[--linea] flex',
+        class: 'md:hidden fixed bottom-0 inset-x-0 z-30 bg-[--panel] border-t border-[--linea] flex',
         'aria-label': 'Secciones',
       },
       router.menuRoutes().map((r) => {

@@ -43,6 +43,7 @@ const ESQUELETO = [
   '/js/icons.js',
   '/js/router.js',
   '/js/session.js',
+  '/js/tema.js',
   '/js/ui.js',
   '/js/views/admin.js',
   '/js/views/caja.js',

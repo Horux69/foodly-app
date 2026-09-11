@@ -141,8 +141,8 @@ async function vistaNuevo(host) {
           {
             class: `px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
               c === canalActivo
-                ? 'bg-stone-900 text-white border-stone-900'
-                : 'bg-white text-stone-600 border-stone-300 hover:border-stone-900'
+                ? 'bg-stone-900 text-[--tinta-inversa] border-stone-900'
+                : 'bg-[--panel] text-stone-600 border-stone-300 hover:border-stone-900'
             }`,
             onClick: () => {
               canalActivo = c;
@@ -474,8 +474,8 @@ async function vistaNuevo(host) {
           {
             class: `px-2.5 py-1 rounded-full text-[12.5px] border transition ${
               indice + 1 === tiempoActivo
-                ? 'bg-stone-900 text-white border-stone-900'
-                : 'bg-white text-stone-600 border-stone-300 hover:border-stone-900'
+                ? 'bg-stone-900 text-[--tinta-inversa] border-stone-900'
+                : 'bg-[--panel] text-stone-600 border-stone-300 hover:border-stone-900'
             }`,
             'aria-pressed': String(indice + 1 === tiempoActivo),
             onClick: () => {

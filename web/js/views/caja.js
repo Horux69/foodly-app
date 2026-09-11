@@ -77,8 +77,8 @@ export async function caja(outlet) {
               {
                 class: `px-3 py-1.5 rounded-full text-[13px] border transition ${
                   c.id === registerId
-                    ? 'bg-stone-900 text-white border-stone-900'
-                    : 'bg-white text-stone-600 border-stone-300 hover:border-stone-900'
+                    ? 'bg-stone-900 text-[--tinta-inversa] border-stone-900'
+                    : 'bg-[--panel] text-stone-600 border-stone-300 hover:border-stone-900'
                 }`,
                 'aria-pressed': String(c.id === registerId),
                 onClick: () => {

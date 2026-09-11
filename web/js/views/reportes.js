@@ -595,7 +595,7 @@ const sinDatos = (titulo) =>
 function tablaDeDatos(porDia) {
   return h(
     'details',
-    { class: 'bg-white rounded-xl border border-stone-200 p-4' },
+    { class: 'bg-[--panel] rounded-xl border border-stone-200 p-4' },
     h('summary', { class: 'cursor-pointer font-semibold text-stone-900' }, 'Ver los datos en tabla'),
     h(
       'table',

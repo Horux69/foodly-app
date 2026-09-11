@@ -1,37 +1,317 @@
 /* Lenguaje visual.
  *
- * Se rehízo la composición porque la anterior era la genérica: cabecera,
- * pestañas y todo metido en tarjetas blancas flotando sobre gris. Eso no
- * jerarquiza nada —si todo es una tarjeta, ninguna destaca— y hace que
- * cualquier producto se parezca a cualquier otro.
+ * Barra lateral, contenido sobre superficie continua, separación por líneas
+ * finas en vez de por bordes de tarjeta. La elevación queda reservada para lo
+ * que de verdad flota (diálogos) y la tarjeta para lo que de verdad es un
+ * objeto suelto (un ticket de cocina).
  *
- * Ahora: barra lateral, contenido sobre superficie continua, y separación
- * por líneas finas en vez de por bordes de tarjeta. La elevación queda
- * reservada para lo que de verdad flota (diálogos) y la tarjeta para lo que
- * de verdad es un objeto suelto (un ticket de cocina).
+ * Los colores y los seis grupos de Tailwind que se usan en toda la
+ * aplicación (`stone`, `amber`, `emerald`, `red`, `rose`, `sky`) están
+ * remapeados en `index.html` a las variables de aquí abajo, así que
+ * `text-stone-500` o `bg-amber-50` en cualquier vista salen ya en esta
+ * paleta y responden al tema sin que ninguna vista tenga que saberlo. Es la
+ * razón por la que hay una escala de diez pasos por color y no solo los
+ * nombres semánticos: sin ella, remapear rompería cada `bg-stone-100` o
+ * `text-emerald-700` que ya existe en `web/js/`.
+ *
+ * El tema (claro/oscuro) se decide por dispositivo — `web/js/tema.js` — y se
+ * aplica como `data-theme` en `<html>`, fijado por un script en `index.html`
+ * antes de que se pinte nada, para que no haya parpadeo del tema equivocado.
  */
 
 :root {
-  --lienzo: #fafaf9;
+  /* ---- tokens semánticos ---- */
+  --lienzo: #ECEEF6;
   --panel: #ffffff;
-  --linea: #ebe9e6;
-  --linea-fuerte: #d6d3d1;
+  --panel-2: #F7F8FC;
+  --linea: #DCE0EE;
+  --linea-fuerte: #C6CBDF;
 
-  --tinta: #1c1917;
-  --tinta-2: #57534e;
-  --tinta-3: #a8a29e;
+  --tinta: #101322;
+  --tinta-2: #585E7A;
+  --tinta-3: #9AA0B8;
+  /* El texto o ícono que va ENCIMA de un relleno sólido (el acento, la
+     ficha activa): blanco en claro, casi negro en oscuro — nunca "blanco"
+     a secas, porque en oscuro ese relleno se aclara y el blanco encima
+     dejaría de leerse. */
+  --tinta-inversa: #ffffff;
 
-  --acento: #b45309;
-  --acento-suave: #fffbeb;
+  --acento: #4F46E5;
+  --acento-suave: #EEF0FF;
 
-  --ok: #047857;
-  --aviso: #b45309;
-  --peligro: #b91c1c;
+  --ok: #0E9F6E;
+  --ok-suave: #E7F7F0;
+  --aviso: #B7791F;
+  --aviso-suave: #FDF6E7;
+  --peligro: #DC2626;
+  --peligro-suave: #FDEEEE;
 
-  /* Radio contenido: el 12px de todas partes es lo que hace que una interfaz
-     parezca una plantilla. */
-  --r: 6px;
-  --r-g: 10px;
+  --sombra: 0 1px 2px rgba(16, 19, 34, 0.06), 0 10px 22px -14px rgba(16, 19, 34, 0.45);
+
+  /* Tipografías: Space Grotesk para títulos, cifras y etiquetas cortas
+     (lo que hay que leer de un vistazo); Plus Jakarta Sans para todo lo
+     demás. Cargadas por CDN en index.html, sin paso de compilación. */
+  --fuente: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --fuente-num: 'Space Grotesk', sans-serif;
+
+  /* Radio contenido: chico para controles (botón, campo, insignia), grande
+     para bloques (sección, diálogo). */
+  --r: 10px;
+  --r-g: 16px;
+
+  /* ---- escala completa (remapeo de Tailwind, ver index.html) ---- */
+  --gris-50: #F7F8FC;
+  --gris-50-rgb: 247 248 252;
+  --gris-100: #ECEEF6;
+  --gris-100-rgb: 236 238 246;
+  --gris-200: #DCE0EE;
+  --gris-200-rgb: 220 224 238;
+  --gris-300: #C6CBDF;
+  --gris-300-rgb: 198 203 223;
+  --gris-400: #9AA0B8;
+  --gris-400-rgb: 154 160 184;
+  --gris-500: #757D9D;
+  --gris-500-rgb: 117 125 157;
+  --gris-600: #585E7A;
+  --gris-600-rgb: 88 94 122;
+  --gris-700: #3C4360;
+  --gris-700-rgb: 60 67 96;
+  --gris-800: #242A43;
+  --gris-800-rgb: 36 42 67;
+  --gris-900: #101322;
+  --gris-900-rgb: 16 19 34;
+  --gris-950: #0A0C14;
+  --gris-950-rgb: 10 12 20;
+  --aviso-50: #FDF6E7;
+  --aviso-50-rgb: 253 246 231;
+  --aviso-100: #FBEED4;
+  --aviso-100-rgb: 251 238 212;
+  --aviso-200: #F7DEAF;
+  --aviso-200-rgb: 247 222 175;
+  --aviso-300: #F2CD8B;
+  --aviso-300-rgb: 242 205 139;
+  --aviso-400: #ECBB67;
+  --aviso-400-rgb: 236 187 103;
+  --aviso-500: #E5A844;
+  --aviso-500-rgb: 229 168 68;
+  --aviso-600: #DD9323;
+  --aviso-600-rgb: 221 147 35;
+  --aviso-700: #B7791F;
+  --aviso-700-rgb: 183 121 31;
+  --aviso-800: #96610A;
+  --aviso-800-rgb: 150 97 10;
+  --aviso-900: #6E4700;
+  --aviso-900-rgb: 110 71 0;
+  --aviso-950: #6E4700;
+  --aviso-950-rgb: 110 71 0;
+  --ok-50: #E7F7F0;
+  --ok-50-rgb: 231 247 240;
+  --ok-100: #D5F2E5;
+  --ok-100-rgb: 213 242 229;
+  --ok-200: #AEE9D1;
+  --ok-200-rgb: 174 233 209;
+  --ok-300: #85E3BE;
+  --ok-300-rgb: 133 227 190;
+  --ok-400: #5AE0AC;
+  --ok-400-rgb: 90 224 172;
+  --ok-500: #2CDF9D;
+  --ok-500-rgb: 44 223 157;
+  --ok-600: #18C487;
+  --ok-600-rgb: 24 196 135;
+  --ok-700: #0E9F6E;
+  --ok-700-rgb: 14 159 110;
+  --ok-800: #0B7F58;
+  --ok-800-rgb: 11 127 88;
+  --ok-900: #095F42;
+  --ok-900-rgb: 9 95 66;
+  --ok-950: #095F42;
+  --ok-950-rgb: 9 95 66;
+  --peligro-50: #FDEEEE;
+  --peligro-50-rgb: 253 238 238;
+  --peligro-100: #FBDEDE;
+  --peligro-100-rgb: 251 222 222;
+  --peligro-200: #F7BEBE;
+  --peligro-200-rgb: 247 190 190;
+  --peligro-300: #F29F9F;
+  --peligro-300-rgb: 242 159 159;
+  --peligro-400: #ED8080;
+  --peligro-400-rgb: 237 128 128;
+  --peligro-500: #E86262;
+  --peligro-500-rgb: 232 98 98;
+  --peligro-600: #E24444;
+  --peligro-600-rgb: 226 68 68;
+  --peligro-700: #DC2626;
+  --peligro-700-rgb: 220 38 38;
+  --peligro-800: #B91C1C;
+  --peligro-800-rgb: 185 28 28;
+  --peligro-900: #8F1616;
+  --peligro-900-rgb: 143 22 22;
+  --peligro-950: #8F1616;
+  --peligro-950-rgb: 143 22 22;
+  --acento-50: #EEF0FF;
+  --acento-50-rgb: 238 240 255;
+  --acento-100: #DDE0FF;
+  --acento-100-rgb: 221 224 255;
+  --acento-200: #BBC0FD;
+  --acento-200-rgb: 187 192 253;
+  --acento-300: #9C9FF9;
+  --acento-300-rgb: 156 159 249;
+  --acento-400: #7E7EF4;
+  --acento-400-rgb: 126 126 244;
+  --acento-500: #6561ED;
+  --acento-500-rgb: 101 97 237;
+  --acento-600: #4F46E5;
+  --acento-600-rgb: 79 70 229;
+  --acento-700: #4038B8;
+  --acento-700-rgb: 64 56 184;
+  --acento-800: #332D8F;
+  --acento-800-rgb: 51 45 143;
+  --acento-900: #272369;
+  --acento-900-rgb: 39 35 105;
+  --acento-950: #272369;
+  --acento-950-rgb: 39 35 105;
+}
+
+/* El tema lo fija `tema.js` como atributo antes del primer pintado: un
+   script en `index.html`, síncrono y antes de cualquier CSS, lee
+   localStorage o `prefers-color-scheme` y pone `data-theme` en `<html>`.
+   Por eso este bloque no necesita un respaldo con `@media`: la aplicación
+   ya exige JavaScript para funcionar (ver el `<noscript>` de index.html), así
+   que sin él no habría aplicación que pintar, con o sin este bloque. */
+:root[data-theme='dark'] {
+  --lienzo: #0A0C14;
+    --panel: #12151F;
+    --panel-2: #171B27;
+    --linea: #232838;
+    --linea-fuerte: #323848;
+
+    --tinta: #EDEFF7;
+    --tinta-2: #A0A7C0;
+    --tinta-3: #6E7690;
+    --tinta-inversa: #0A0C14;
+
+    --acento: #9994f0;
+    --acento-suave: #212237;
+
+    --ok: #34D399;
+    --ok-suave: #0F2A22;
+    --aviso: #F0B429;
+    --aviso-suave: #2C2313;
+    --peligro: #F87171;
+    --peligro-suave: #2C1618;
+
+    --sombra: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 30px -20px rgba(0, 0, 0, 0.9);
+
+    --gris-50: #171B27;
+    --gris-50-rgb: 23 27 39;
+    --gris-100: #0A0C14;
+    --gris-100-rgb: 10 12 20;
+    --gris-200: #232838;
+    --gris-200-rgb: 35 40 56;
+    --gris-300: #323848;
+    --gris-300-rgb: 50 56 72;
+    --gris-400: #6E7690;
+    --gris-400-rgb: 110 118 144;
+    --gris-500: #868EA9;
+    --gris-500-rgb: 134 142 169;
+    --gris-600: #A0A7C0;
+    --gris-600-rgb: 160 167 192;
+    --gris-700: #B7BDD5;
+    --gris-700-rgb: 183 189 213;
+    --gris-800: #D1D5E7;
+    --gris-800-rgb: 209 213 231;
+    --gris-900: #EDEFF7;
+    --gris-900-rgb: 237 239 247;
+    --gris-950: #FFFFFF;
+    --gris-950-rgb: 255 255 255;
+    --aviso-50: #2C2313;
+    --aviso-50-rgb: 44 35 19;
+    --aviso-100: #33280F;
+    --aviso-100-rgb: 51 40 15;
+    --aviso-200: #4F3D15;
+    --aviso-200-rgb: 79 61 21;
+    --aviso-300: #6C5119;
+    --aviso-300-rgb: 108 81 25;
+    --aviso-400: #8A661C;
+    --aviso-400-rgb: 138 102 28;
+    --aviso-500: #B1811B;
+    --aviso-500-rgb: 177 129 27;
+    --aviso-600: #DA9E18;
+    --aviso-600-rgb: 218 158 24;
+    --aviso-700: #F0B429;
+    --aviso-700-rgb: 240 180 41;
+    --aviso-800: #F3BC40;
+    --aviso-800-rgb: 243 188 64;
+    --aviso-900: #F6C458;
+    --aviso-900-rgb: 246 196 88;
+    --aviso-950: #F6C458;
+    --aviso-950-rgb: 246 196 88;
+    --ok-50: #0F2A22;
+    --ok-50-rgb: 15 42 34;
+    --ok-100: #123328;
+    --ok-100-rgb: 18 51 40;
+    --ok-200: #174A38;
+    --ok-200-rgb: 23 74 56;
+    --ok-300: #1C6148;
+    --ok-300-rgb: 28 97 72;
+    --ok-400: #1F7A58;
+    --ok-400-rgb: 31 122 88;
+    --ok-500: #25996E;
+    --ok-500-rgb: 37 153 110;
+    --ok-600: #2AB884;
+    --ok-600-rgb: 42 184 132;
+    --ok-700: #34D399;
+    --ok-700-rgb: 52 211 153;
+    --ok-800: #4CD9A5;
+    --ok-800-rgb: 76 217 165;
+    --ok-900: #65DFB1;
+    --ok-900-rgb: 101 223 177;
+    --ok-950: #65DFB1;
+    --ok-950-rgb: 101 223 177;
+    --peligro-50: #2C1618;
+    --peligro-50-rgb: 44 22 24;
+    --peligro-100: #351A1D;
+    --peligro-100-rgb: 53 26 29;
+    --peligro-200: #502629;
+    --peligro-200-rgb: 80 38 41;
+    --peligro-300: #6D3034;
+    --peligro-300-rgb: 109 48 52;
+    --peligro-400: #8A3A3D;
+    --peligro-400-rgb: 138 58 61;
+    --peligro-500: #C63539;
+    --peligro-500-rgb: 198 53 57;
+    --peligro-600: #E44E4F;
+    --peligro-600-rgb: 228 78 79;
+    --peligro-700: #F87171;
+    --peligro-700-rgb: 248 113 113;
+    --peligro-800: #FA8686;
+    --peligro-800-rgb: 250 134 134;
+    --peligro-900: #FB9C9C;
+    --peligro-900-rgb: 251 156 156;
+    --peligro-950: #FB9C9C;
+    --peligro-950-rgb: 251 156 156;
+    --acento-50: #212237;
+    --acento-50-rgb: 33 34 55;
+    --acento-100: #282A42;
+    --acento-100-rgb: 40 42 66;
+    --acento-200: #393A66;
+    --acento-200-rgb: 57 58 102;
+    --acento-300: #49478B;
+    --acento-300-rgb: 73 71 139;
+    --acento-400: #5D57B0;
+    --acento-400-rgb: 93 87 176;
+    --acento-500: #6C66CB;
+    --acento-500-rgb: 108 102 203;
+    --acento-600: #807AE0;
+    --acento-600-rgb: 128 122 224;
+    --acento-700: #9994F0;
+    --acento-700-rgb: 153 148 240;
+    --acento-800: #A6A1F3;
+    --acento-800-rgb: 166 161 243;
+    --acento-900: #B3AFF5;
+    --acento-900-rgb: 179 175 245;
+    --acento-950: #B3AFF5;
+    --acento-950-rgb: 179 175 245;
 }
 
 * {
@@ -41,18 +321,21 @@
 body {
   background: var(--lienzo);
   color: var(--tinta);
+  font-family: var(--fuente);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 
 /* Las cifras se leen en columna: ancho fijo para que no bailen. */
 .num {
+  font-family: var(--fuente-num);
   font-variant-numeric: tabular-nums;
 }
 
 h1,
 h2,
 h3 {
+  font-family: var(--fuente-num);
   letter-spacing: -0.011em;
 }
 
@@ -86,8 +369,8 @@ textarea {
   border-right: 1px solid var(--linea);
 }
 
-/* El activo se marca con una barra sólida y con peso tipográfico, no con una
-   píldora de color: se lee antes y no grita. */
+/* El activo se marca con una ficha de acento, con peso tipográfico: se lee
+   antes y no compite con el color de estado de las pantallas. */
 .rail-item {
   position: relative;
   display: flex;
@@ -100,24 +383,13 @@ textarea {
   transition: background-color 0.12s, color 0.12s;
 }
 .rail-item:hover {
-  background: #f5f5f4;
+  background: var(--panel-2);
   color: var(--tinta);
 }
 .rail-item[aria-current='page'] {
-  background: #f5f5f4;
-  color: var(--tinta);
+  background: var(--acento-suave);
+  color: var(--acento);
   font-weight: 600;
-}
-.rail-item[aria-current='page']::before {
-  content: '';
-  position: absolute;
-  left: -0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 18px;
-  border-radius: 0 3px 3px 0;
-  background: var(--tinta);
 }
 
 /* ---------- bloques ---------- */
@@ -157,7 +429,7 @@ textarea {
   padding: 0.625rem 1rem;
 }
 .fila:hover {
-  background: #fcfcfb;
+  background: var(--panel-2);
 }
 
 /* ---------- controles ---------- */
@@ -176,8 +448,8 @@ textarea {
 }
 .campo:focus {
   outline: none;
-  border-color: var(--tinta-2);
-  box-shadow: 0 0 0 3px #f5f5f4;
+  border-color: var(--acento);
+  box-shadow: 0 0 0 3px var(--acento-suave);
 }
 
 .boton {
@@ -206,11 +478,11 @@ textarea {
 }
 
 .boton-principal {
-  background: var(--tinta);
-  color: #fff;
+  background: var(--acento);
+  color: var(--tinta-inversa);
 }
 .boton-principal:hover:not(:disabled) {
-  background: #292524;
+  filter: brightness(1.08);
 }
 .boton-secundario {
   background: var(--panel);
@@ -224,16 +496,16 @@ textarea {
 .boton-peligro {
   background: var(--panel);
   color: var(--peligro);
-  border: 1px solid #fecaca;
+  border: 1px solid var(--peligro-200);
 }
 .boton-peligro:hover:not(:disabled) {
-  background: #fef2f2;
+  background: var(--peligro-suave);
 }
 .boton-sutil {
   color: var(--tinta-2);
 }
 .boton-sutil:hover:not(:disabled) {
-  background: #f5f5f4;
+  background: var(--panel-2);
   color: var(--tinta);
 }
 
@@ -252,10 +524,10 @@ textarea {
 }
 .producto:hover:not(:disabled) {
   border-color: var(--tinta-3);
-  background: #fcfcfb;
+  background: var(--panel-2);
 }
 .producto:active:not(:disabled) {
-  background: #f5f5f4;
+  background: var(--linea);
 }
 .producto:disabled {
   opacity: 0.4;
@@ -265,7 +537,7 @@ textarea {
 /* ---------- carga ---------- */
 
 .esqueleto {
-  background: linear-gradient(90deg, #f0efed 25%, #f8f7f6 50%, #f0efed 75%);
+  background: linear-gradient(90deg, var(--gris-200) 25%, var(--gris-100) 50%, var(--gris-200) 75%);
   background-size: 200% 100%;
   animation: brillo 1.4s ease-in-out infinite;
   border-radius: 3px;
@@ -320,7 +592,7 @@ textarea {
 }
 .ticket-tarde {
   border-left-color: var(--peligro);
-  background: #fffbfb;
+  background: var(--peligro-suave);
 }
 
 /* =========================================================
@@ -333,7 +605,9 @@ textarea {
    El documento se arma en #impresion, que es hijo directo de <body>. Al
    imprimir se esconde todo lo demás en vez de abrir otra ventana: así no hay
    que volver a cargar la aplicación ni pelear con el bloqueador de emergentes.
-   ========================================================= */
+
+   El papel siempre es blanco con tinta negra, sin importar el tema de la
+   pantalla: una térmica no sabe de temas oscuros. */
 
 #impresion {
   display: none;

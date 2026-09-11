@@ -32,6 +32,7 @@ const TRAZOS = {
   impuesto: '<path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   clientes: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.4 3.1-5 7-5s7 1.6 7 5"/><path d="M17 8.5a3 3 0 0 1 0 5M18 20c0-2-.6-3.4-1.6-4.4"/>',
   etiqueta: '<path d="M4 4h8l8 8-8 8-8-8z"/><circle cx="9" cy="9" r="1.5"/>',
+  luna: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/>',
 };
 
 /**

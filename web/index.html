@@ -4,14 +4,137 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Plataforma de restaurantes</title>
+
+    <!-- Tema claro u oscuro, por dispositivo (web/js/tema.js). Va inline y
+         antes de cualquier CSS, no en un módulo, para que `data-theme` quede
+         puesto antes del primer pintado: un script que corriera después
+         dejaría ver el tema equivocado durante un instante. -->
+    <script>
+      (function () {
+        var elegido = null;
+        try {
+          elegido = localStorage.getItem('resto_tema');
+        } catch (e) {}
+        var oscuro = elegido ? elegido === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', oscuro ? 'dark' : 'light');
+      })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+    />
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Los seis grupos de color que usan las pantallas (stone/amber/emerald/
+      // red/rose/sky) quedan remapeados a las variables de app.css: así
+      // `bg-stone-100` o `text-emerald-700` en cualquier vista de web/js/
+      // sale ya en la paleta nueva y responde al tema, sin tocar esas
+      // vistas. El formato rgb(var(...) / <alpha-value>) es el que pide
+      // Tailwind para que además funcione el modificador de opacidad
+      // (bg-amber-50/60) sobre una variable CSS.
+      //
+      // Si el CDN no respondió, `window.tailwind` no existe todavía: sin la
+      // comprobación, fijar `tailwind.config` reventaría este script y con
+      // él el arranque entero, por algo que ya de por sí deja a la
+      // aplicación sin utilidades de Tailwind.
+      if (window.tailwind) tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              stone: {
+                50: 'rgb(var(--gris-50-rgb) / <alpha-value>)',
+                100: 'rgb(var(--gris-100-rgb) / <alpha-value>)',
+                200: 'rgb(var(--gris-200-rgb) / <alpha-value>)',
+                300: 'rgb(var(--gris-300-rgb) / <alpha-value>)',
+                400: 'rgb(var(--gris-400-rgb) / <alpha-value>)',
+                500: 'rgb(var(--gris-500-rgb) / <alpha-value>)',
+                600: 'rgb(var(--gris-600-rgb) / <alpha-value>)',
+                700: 'rgb(var(--gris-700-rgb) / <alpha-value>)',
+                800: 'rgb(var(--gris-800-rgb) / <alpha-value>)',
+                900: 'rgb(var(--gris-900-rgb) / <alpha-value>)',
+                950: 'rgb(var(--gris-950-rgb) / <alpha-value>)',
+              },
+              amber: {
+                50: 'rgb(var(--aviso-50-rgb) / <alpha-value>)',
+                100: 'rgb(var(--aviso-100-rgb) / <alpha-value>)',
+                200: 'rgb(var(--aviso-200-rgb) / <alpha-value>)',
+                300: 'rgb(var(--aviso-300-rgb) / <alpha-value>)',
+                400: 'rgb(var(--aviso-400-rgb) / <alpha-value>)',
+                500: 'rgb(var(--aviso-500-rgb) / <alpha-value>)',
+                600: 'rgb(var(--aviso-600-rgb) / <alpha-value>)',
+                700: 'rgb(var(--aviso-700-rgb) / <alpha-value>)',
+                800: 'rgb(var(--aviso-800-rgb) / <alpha-value>)',
+                900: 'rgb(var(--aviso-900-rgb) / <alpha-value>)',
+                950: 'rgb(var(--aviso-950-rgb) / <alpha-value>)',
+              },
+              emerald: {
+                50: 'rgb(var(--ok-50-rgb) / <alpha-value>)',
+                100: 'rgb(var(--ok-100-rgb) / <alpha-value>)',
+                200: 'rgb(var(--ok-200-rgb) / <alpha-value>)',
+                300: 'rgb(var(--ok-300-rgb) / <alpha-value>)',
+                400: 'rgb(var(--ok-400-rgb) / <alpha-value>)',
+                500: 'rgb(var(--ok-500-rgb) / <alpha-value>)',
+                600: 'rgb(var(--ok-600-rgb) / <alpha-value>)',
+                700: 'rgb(var(--ok-700-rgb) / <alpha-value>)',
+                800: 'rgb(var(--ok-800-rgb) / <alpha-value>)',
+                900: 'rgb(var(--ok-900-rgb) / <alpha-value>)',
+                950: 'rgb(var(--ok-950-rgb) / <alpha-value>)',
+              },
+              red: {
+                50: 'rgb(var(--peligro-50-rgb) / <alpha-value>)',
+                100: 'rgb(var(--peligro-100-rgb) / <alpha-value>)',
+                200: 'rgb(var(--peligro-200-rgb) / <alpha-value>)',
+                300: 'rgb(var(--peligro-300-rgb) / <alpha-value>)',
+                400: 'rgb(var(--peligro-400-rgb) / <alpha-value>)',
+                500: 'rgb(var(--peligro-500-rgb) / <alpha-value>)',
+                600: 'rgb(var(--peligro-600-rgb) / <alpha-value>)',
+                700: 'rgb(var(--peligro-700-rgb) / <alpha-value>)',
+                800: 'rgb(var(--peligro-800-rgb) / <alpha-value>)',
+                900: 'rgb(var(--peligro-900-rgb) / <alpha-value>)',
+                950: 'rgb(var(--peligro-950-rgb) / <alpha-value>)',
+              },
+              rose: {
+                50: 'rgb(var(--peligro-50-rgb) / <alpha-value>)',
+                100: 'rgb(var(--peligro-100-rgb) / <alpha-value>)',
+                200: 'rgb(var(--peligro-200-rgb) / <alpha-value>)',
+                300: 'rgb(var(--peligro-300-rgb) / <alpha-value>)',
+                400: 'rgb(var(--peligro-400-rgb) / <alpha-value>)',
+                500: 'rgb(var(--peligro-500-rgb) / <alpha-value>)',
+                600: 'rgb(var(--peligro-600-rgb) / <alpha-value>)',
+                700: 'rgb(var(--peligro-700-rgb) / <alpha-value>)',
+                800: 'rgb(var(--peligro-800-rgb) / <alpha-value>)',
+                900: 'rgb(var(--peligro-900-rgb) / <alpha-value>)',
+                950: 'rgb(var(--peligro-950-rgb) / <alpha-value>)',
+              },
+              sky: {
+                50: 'rgb(var(--acento-50-rgb) / <alpha-value>)',
+                100: 'rgb(var(--acento-100-rgb) / <alpha-value>)',
+                200: 'rgb(var(--acento-200-rgb) / <alpha-value>)',
+                300: 'rgb(var(--acento-300-rgb) / <alpha-value>)',
+                400: 'rgb(var(--acento-400-rgb) / <alpha-value>)',
+                500: 'rgb(var(--acento-500-rgb) / <alpha-value>)',
+                600: 'rgb(var(--acento-600-rgb) / <alpha-value>)',
+                700: 'rgb(var(--acento-700-rgb) / <alpha-value>)',
+                800: 'rgb(var(--acento-800-rgb) / <alpha-value>)',
+                900: 'rgb(var(--acento-900-rgb) / <alpha-value>)',
+                950: 'rgb(var(--acento-950-rgb) / <alpha-value>)',
+              },
+            },
+          },
+        },
+      };
+    </script>
     <link rel="stylesheet" href="/app.css" />
 
     <!-- Instalable: una tableta de mostrador se abre a pantalla completa y,
          con el service worker que registra app.js, sigue sirviendo cuando el
          internet se corta. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#1c1917" />
+    <meta name="theme-color" content="#101322" />
     <link rel="icon" href="/iconos/app.svg" type="image/svg+xml" />
     <!-- iOS no lee el manifiesto: su icono de pantalla de inicio sale de
          aquí, y solo acepta PNG. -->

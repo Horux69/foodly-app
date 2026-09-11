@@ -38,13 +38,13 @@ export function abrirDivision(pedido, recargar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/40 flex items-end sm:items-center justify-center p-0 sm:p-4',
+      class: 'fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-t-2xl sm:rounded-[--r-g] w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl border border-[--linea]',
+        class: 'aparece bg-[--panel] rounded-t-2xl sm:rounded-[--r-g] w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl border border-[--linea]',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': 'Dividir la cuenta',
@@ -127,7 +127,7 @@ export function abrirDivision(pedido, recargar) {
         'button',
         {
           class: `flex-1 py-1.5 text-[13px] font-medium rounded-[--r] transition ${
-            modo === clave ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-800'
+            modo === clave ? 'bg-[--panel] shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-800'
           }`,
           onClick: () => {
             modo = clave;

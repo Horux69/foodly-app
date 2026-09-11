@@ -143,7 +143,7 @@ export async function salon(outlet) {
     const ajena = soloMias && ocupada && mesa.server_id !== me()?.user_id;
     const tono = ocupada
       ? 'bg-amber-50 border-amber-300 text-amber-900'
-      : 'bg-white border-[--linea] text-stone-500';
+      : 'bg-[--panel] border-[--linea] text-stone-500';
 
     const nodo = h(
       'button',

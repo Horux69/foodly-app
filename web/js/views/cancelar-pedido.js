@@ -32,13 +32,13 @@ export function abrirCancelacion(pedido, estado, alAnular) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea]',
+        class: 'aparece bg-[--panel] rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea]',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': 'Anular pedido',

@@ -263,7 +263,7 @@ export function toast(message, kind = 'error') {
     host,
     h(
       'div',
-      { class: `aparece flex items-center gap-2 px-3.5 py-2.5 rounded-[--r] text-white shadow-lg text-[13px] max-w-sm ${fondo}`, role: 'status' },
+      { class: `aparece flex items-center gap-2 px-3.5 py-2.5 rounded-[--r] text-[--tinta-inversa] shadow-lg text-[13px] max-w-sm ${fondo}`, role: 'status' },
       icon(ico, { size: 16 }),
       h('span', {}, message)
     )
@@ -350,12 +350,12 @@ export function confirm({ title, message, confirmLabel = 'Confirmar', variant = 
     const overlay = h(
       'div',
       {
-        class: 'fixed inset-0 z-50 bg-stone-900/30 flex items-center justify-center p-4',
+        class: 'fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4',
         onClick: (e) => e.target === overlay && close(false),
       },
       h(
         'div',
-        { class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full p-5 shadow-xl border border-[--linea]', role: 'dialog', 'aria-modal': 'true' },
+        { class: 'aparece bg-[--panel] rounded-[--r-g] max-w-sm w-full p-5 shadow-xl border border-[--linea]', role: 'dialog', 'aria-modal': 'true' },
         h('h3', { class: 'text-[15px] font-semibold' }, title),
         message ? h('p', { class: 'text-[13.5px] text-stone-600 mt-1.5 leading-relaxed' }, message) : null,
         h(

@@ -74,7 +74,7 @@ export function abrirPedido(orderId, { alCambiar } = {}) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-50 bg-stone-900/30 flex justify-end',
+      class: 'fixed inset-0 z-50 bg-black/30 flex justify-end',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
@@ -440,13 +440,13 @@ function abrirAgregar(pedido, recargar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-[--r-g] max-w-md w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+        class: 'aparece bg-[--panel] rounded-[--r-g] max-w-md w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': 'Agregar productos al pedido',
@@ -566,13 +566,13 @@ function abrirMeseros(pedido, recargar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+        class: 'aparece bg-[--panel] rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': 'Mesero a cargo',
@@ -639,13 +639,13 @@ function abrirMesas({ titulo, ayuda, etiqueta, filtrar, alElegir, alTerminar }) 
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
+        class: 'aparece bg-[--panel] rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea] max-h-[80vh] overflow-y-auto',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': etiqueta,
@@ -815,13 +815,13 @@ function abrirDescuento(pedido, recargar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
       {
-        class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea]',
+        class: 'aparece bg-[--panel] rounded-[--r-g] max-w-sm w-full shadow-xl border border-[--linea]',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': 'Descuento del pedido',
@@ -1290,12 +1290,12 @@ function pedirReembolso(pedido, cobro, devuelto, recargar) {
   const overlay = h(
     'div',
     {
-      class: 'fixed inset-0 z-[60] bg-stone-900/30 flex items-center justify-center p-4',
+      class: 'fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4',
       onClick: (e) => e.target === overlay && cerrar(),
     },
     h(
       'div',
-      { class: 'aparece bg-white rounded-[--r-g] max-w-sm w-full p-5 shadow-xl border border-[--linea]', role: 'dialog', 'aria-modal': 'true' },
+      { class: 'aparece bg-[--panel] rounded-[--r-g] max-w-sm w-full p-5 shadow-xl border border-[--linea]', role: 'dialog', 'aria-modal': 'true' },
       h('h3', { class: 'text-[15px] font-semibold' }, `Reembolsar ${metodoPago(cobro.method)}`),
       h(
         'p',
