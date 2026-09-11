@@ -106,7 +106,7 @@ export function abrirDivision(pedido, recargar) {
           { class: 'text-center py-6' },
           h('div', { class: 'inline-flex text-emerald-600 mb-2' }, icon('check', { size: 28 })),
           h('p', { class: 'text-[14px] font-medium' }, 'La cuenta quedó saldada'),
-          h('p', { class: 'text-[13px] text-stone-500 mt-1' }, 'No queda nada por repartir.')
+          h('p', { class: 'text-[13px] text-stone-600 mt-1' }, 'No queda nada por repartir.')
         ),
         h('div', { class: 'flex justify-end' }, button('Cerrar', { variant: 'secondary', onClick: cerrar }))
       );
@@ -127,7 +127,7 @@ export function abrirDivision(pedido, recargar) {
         'button',
         {
           class: `flex-1 py-1.5 text-[13px] font-medium rounded-[--r] transition ${
-            modo === clave ? 'bg-[--panel] shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-800'
+            modo === clave ? 'bg-[--panel] shadow-sm text-stone-900' : 'text-stone-600 hover:text-stone-800'
           }`,
           onClick: () => {
             modo = clave;
@@ -195,7 +195,7 @@ export function abrirDivision(pedido, recargar) {
       // Se cobra de a una parte y se vuelve a repartir lo que queda: así el
       // centavo de diferencia siempre cae dentro de la cuenta y nunca sobra
       // ni falta al final.
-      h('p', { class: 'text-[12px] text-stone-500' }, 'Se cobra una parte a la vez. Lo que quede se vuelve a repartir entre los que faltan.'),
+      h('p', { class: 'text-[12px] text-stone-600' }, 'Se cobra una parte a la vez. Lo que quede se vuelve a repartir entre los que faltan.'),
       h('div', { class: 'flex flex-wrap items-center gap-2' }, metodo, h('div', { class: 'flex-1 min-w-[140px]' }, cobrarParte))
     );
   }
@@ -240,7 +240,7 @@ export function abrirDivision(pedido, recargar) {
         { class: 'flex items-center gap-2.5 px-3 py-2 text-[13.5px] cursor-pointer hover:bg-stone-50' },
         h('input', {
           type: 'checkbox',
-          class: 'w-4 h-4 rounded border-stone-300 accent-amber-700',
+          class: 'w-4 h-4 rounded border-stone-300 accent-stone-900',
           onChange: (e) => {
             if (e.target.checked) seleccion.add(item.id);
             else seleccion.delete(item.id);
@@ -318,7 +318,7 @@ export function abrirDivision(pedido, recargar) {
     h(
       'button',
       {
-        class: 'w-8 h-8 inline-flex items-center justify-center rounded-lg border border-stone-300 text-stone-600 hover:border-stone-900 active:scale-95 transition',
+        class: 'w-8 h-8 inline-flex items-center justify-center rounded-[--r] border border-stone-300 text-stone-600 hover:border-stone-900 active:scale-95 transition',
         'aria-label': etiqueta,
         onClick,
       },

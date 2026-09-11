@@ -41,7 +41,7 @@ export function abrirModificadores(item, alConfirmar) {
           h(
             'span',
             { class: 'text-xs shrink-0' },
-            grupo.is_required ? badge(grupo.rule ?? 'Obligatorio', 'warn') : h('span', { class: 'text-stone-500' }, grupo.rule ?? `Hasta ${grupo.max_select}`)
+            grupo.is_required ? badge(grupo.rule ?? 'Obligatorio', 'warn') : h('span', { class: 'text-stone-600' }, grupo.rule ?? `Hasta ${grupo.max_select}`)
           )
         ),
         h(
@@ -51,7 +51,7 @@ export function abrirModificadores(item, alConfirmar) {
             const control = h('input', {
               type: unico ? 'radio' : 'checkbox',
               name: `g-${grupo.id}`,
-              class: 'w-4 h-4 accent-amber-700',
+              class: 'w-4 h-4 accent-stone-900',
               disabled: !m.is_available,
               onChange: (e) => {
                 const elegidos = seleccion.get(grupo.id);
@@ -66,7 +66,7 @@ export function abrirModificadores(item, alConfirmar) {
             return h(
               'label',
               {
-                class: `flex items-center gap-2.5 text-sm py-2 px-2 -mx-2 rounded-lg cursor-pointer hover:bg-stone-50 ${
+                class: `flex items-center gap-2.5 text-sm py-2 px-2 -mx-2 rounded-[--r] cursor-pointer hover:bg-stone-50 ${
                   m.is_available ? '' : 'opacity-40 cursor-not-allowed'
                 }`,
               },
@@ -138,7 +138,7 @@ export function abrirModificadores(item, alConfirmar) {
     h(
       'div',
       {
-        class: 'aparece bg-[--panel] rounded-t-2xl sm:rounded-xl max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl',
+        class: 'aparece bg-[--panel] rounded-t-2xl sm:rounded-[--r-g] max-w-md w-full max-h-[85vh] overflow-y-auto shadow-xl',
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': `Opciones de ${item.name}`,

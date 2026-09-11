@@ -195,7 +195,7 @@ function seccionOrigenes({ origenes }, refrescar) {
                 { class: 'py-3 flex flex-wrap items-center gap-3' },
                 h('div', { class: 'flex-1 min-w-[160px]' }, nombreFila),
                 h('div', { class: 'w-28' }, comisionFila),
-                h('span', { class: 'text-xs text-stone-500' }, '% de comisión'),
+                h('span', { class: 'text-xs text-stone-600' }, '% de comisión'),
                 o.is_active ? badge('Activo', 'ok') : badge('Apagado', 'neutral'),
                 edita
                   ? button('Guardar', {
@@ -269,7 +269,7 @@ function seccionOrigenes({ origenes }, refrescar) {
 
     h(
       'p',
-      { class: 'text-xs text-stone-500 px-1' },
+      { class: 'text-xs text-stone-600 px-1' },
       'La comisión se congela con cada venta: renegociarla cambia lo que viene, no lo que ya se vendió.'
     ),
   ];
@@ -359,7 +359,7 @@ function seccionFacturacion(estado, refrescar) {
                 ),
                 h(
                   'div',
-                  { class: 'text-[12px] text-stone-500' },
+                  { class: 'text-[12px] text-stone-600' },
                   [
                     `Resolución ${r.number}`,
                     r.valid_until ? `vence ${r.valid_until}` : 'sin vencimiento',
@@ -369,7 +369,7 @@ function seccionFacturacion(estado, refrescar) {
               )
             )
           )
-        : [h('p', { class: 'text-[13px] text-stone-500' }, 'Sin resolución: todavía no se puede emitir ningún documento.')],
+        : [h('p', { class: 'text-[13px] text-stone-600' }, 'Sin resolución: todavía no se puede emitir ningún documento.')],
     }),
   ];
 }
@@ -413,7 +413,7 @@ function seccionImpresion(estado, refrescar) {
           'div',
           { class: 'flex-1 min-w-0' },
           h('div', { class: 'text-[13.5px] text-stone-900' }, info.titulo),
-          h('div', { class: 'text-[12px] text-stone-500' }, info.ayuda)
+          h('div', { class: 'text-[12px] text-stone-600' }, info.ayuda)
         ),
         ancho,
         copias,
@@ -537,7 +537,7 @@ function seccionConfig({ ajustes }) {
       listaTiempos,
       h(
         'p',
-        { class: 'text-xs text-stone-500 mb-3' },
+        { class: 'text-xs text-stone-600 mb-3' },
         'Se toman todos juntos y salen a la cocina por partes: el primero al crear el pedido y los demás cuando el mesero los marcha. Sin ninguno, todo sale junto.'
       ),
       editable && tiempos.length < 9
@@ -601,11 +601,11 @@ function seccionConfig({ ajustes }) {
               }
             },
           })
-        : h('p', { class: 'text-xs text-stone-500' }, 'No tienes permiso para editar esta configuración.')
+        : h('p', { class: 'text-xs text-stone-600' }, 'No tienes permiso para editar esta configuración.')
     ),
     h(
       'p',
-      { class: 'text-xs text-stone-500 px-1' },
+      { class: 'text-xs text-stone-600 px-1' },
       'Esto cambia cómo se comporta el sistema sin tocar código: los canales apagados se rechazan al tomar un pedido, y sin mesas ni propina esos campos desaparecen de la pantalla de venta.'
     ),
   ];
@@ -656,7 +656,7 @@ function seccionSucursales({ sucursales, ajustes }, refrescar) {
                     badge(b.code),
                     b.is_active ? null : badge('Inactiva', 'warn')
                   ),
-                  h('div', { class: 'text-xs text-stone-500' }, [b.timezone, b.address].filter(Boolean).join(' · '))
+                  h('div', { class: 'text-xs text-stone-600' }, [b.timezone, b.address].filter(Boolean).join(' · '))
                 ),
                 gestiona
                   ? button(b.is_active ? 'Desactivar' : 'Activar', {
@@ -840,8 +840,8 @@ async function verMesas(sucursal, host, ajustes) {
     return render(host, errorBox(error.message));
   }
 
-  const codigo = input({ placeholder: 'M1', class: 'w-28 rounded-lg border border-stone-300 px-3 py-2 text-sm' });
-  const capacidad = input({ type: 'number', min: '1', value: '4', class: 'w-24 rounded-lg border border-stone-300 px-3 py-2 text-sm' });
+  const codigo = input({ placeholder: 'M1', class: 'w-28 rounded-[--r] border border-stone-300 px-3 py-2 text-sm' });
+  const capacidad = input({ type: 'number', min: '1', value: '4', class: 'w-24 rounded-[--r] border border-stone-300 px-3 py-2 text-sm' });
 
   render(
     host,
@@ -854,13 +854,13 @@ async function verMesas(sucursal, host, ajustes) {
             mesas.map((m) =>
               h(
                 'span',
-                { class: 'border border-stone-300 rounded-lg px-3 py-1.5 text-sm' },
+                { class: 'border border-stone-300 rounded-[--r] px-3 py-1.5 text-sm' },
                 m.code,
-                h('span', { class: 'text-stone-500' }, ` · ${m.capacity} personas`)
+                h('span', { class: 'text-stone-600' }, ` · ${m.capacity} personas`)
               )
             )
           )
-        : h('p', { class: 'text-sm text-stone-500 mb-3' }, 'Esta sucursal todavía no tiene mesas.'),
+        : h('p', { class: 'text-sm text-stone-600 mb-3' }, 'Esta sucursal todavía no tiene mesas.'),
       h(
         'div',
         { class: 'flex flex-wrap gap-2 items-end' },
@@ -964,7 +964,7 @@ function seccionHorarios({ horarios, sede, sucursales }, refrescar) {
                   `${f.opens_at} – ${f.closes_at}`,
                   // Cerrar antes de abrir no es un error de captura: es la
                   // franja nocturna, y decirlo evita que alguien la "corrija".
-                  f.crosses_midnight ? h('span', { class: 'text-stone-500' }, ' (del día siguiente)') : null
+                  f.crosses_midnight ? h('span', { class: 'text-stone-600' }, ' (del día siguiente)') : null
                 ),
                 h(
                   'div',
@@ -1001,7 +1001,7 @@ function seccionHorarios({ horarios, sede, sucursales }, refrescar) {
               )
             )
           )
-        : h('p', { class: 'text-sm text-stone-500' }, 'Sin franjas: esta sede atiende a cualquier hora.'),
+        : h('p', { class: 'text-sm text-stone-600' }, 'Sin franjas: esta sede atiende a cualquier hora.'),
 
       gestiona
         ? h(
@@ -1036,7 +1036,7 @@ function seccionHorarios({ horarios, sede, sucursales }, refrescar) {
 
     h(
       'p',
-      { class: 'text-xs text-stone-500 px-1' },
+      { class: 'text-xs text-stone-600 px-1' },
       'Para una sede que cierra pasada la medianoche, pon la hora de cierre menor que la de apertura: “Viernes 20:00 – 02:00” abre el viernes por la noche y cierra la madrugada del sábado.'
     ),
   ];
@@ -1074,7 +1074,7 @@ function seccionEstados({ flujo }, refrescar) {
     const color = h('input', {
       type: 'color',
       value: estado.color ?? '#78716c',
-      class: 'h-9 w-12 rounded-lg border border-stone-300 bg-[--panel] p-1',
+      class: 'h-9 w-12 rounded-[--r] border border-stone-300 bg-[--panel] p-1',
       disabled: !edita,
     });
     const orden = input({ type: 'number', value: estado.sort_order, class: 'campo w-20 tabular-nums', disabled: !edita });
@@ -1161,11 +1161,11 @@ function seccionEstados({ flujo }, refrescar) {
                 )
               )
             )
-          : h('p', { class: 'text-sm text-stone-500' }, 'No hay otros estados a los que ir.'),
+          : h('p', { class: 'text-sm text-stone-600' }, 'No hay otros estados a los que ir.'),
         estado.is_final
           ? h(
               'p',
-              { class: 'text-[12px] text-stone-500 mt-1.5' },
+              { class: 'text-[12px] text-stone-600 mt-1.5' },
               'Es un estado final: de aquí no se sale, así que lo que se marque no se va a usar.'
             )
           : null
@@ -1313,7 +1313,7 @@ function seccionEstados({ flujo }, refrescar) {
           ),
           h(
             'p',
-            { class: 'text-[12.5px] text-stone-500 mt-2' },
+            { class: 'text-[12.5px] text-stone-600 mt-2' },
             'Un estado nuevo nace sin salidas: créalo como final, o dale una salida desde su tarjeta apenas exista. Para que se use, marca en otro estado que se puede pasar a él.'
           )
         )
@@ -1349,7 +1349,7 @@ function seccionImpuestos({ impuestos }, refrescar) {
                   h('div', { class: 'font-medium text-sm text-stone-900' }, t.name),
                   h(
                     'div',
-                    { class: 'text-xs text-stone-500 tabular-nums' },
+                    { class: 'text-xs text-stone-600 tabular-nums' },
                     `${percent(t.rate)} · ${t.included_in_price ? 'incluido en el precio' : 'se suma al precio'}`
                   )
                 ),
@@ -1485,7 +1485,7 @@ function seccionDomicilios({ zonas, sede }, refrescar) {
                   ),
                   h(
                     'div',
-                    { class: 'text-xs text-stone-500' },
+                    { class: 'text-xs text-stone-600' },
                     [
                       `Envío ${money(z.fee)}`,
                       Number(z.min_order) ? `mínimo ${money(z.min_order)} de subtotal` : 'sin mínimo',
@@ -1677,8 +1677,8 @@ function abrirMapaZona(zona, otras, refrescar) {
     const puntos = (zona.polygon ?? []).map((p) => [p[0], p[1]]);
     let capa = null;
 
-    const mapaEl = h('div', { class: 'h-72 rounded-lg border border-stone-200' });
-    const contador = h('p', { class: 'text-xs text-stone-500' }, '');
+    const mapaEl = h('div', { class: 'h-72 rounded-[--r-g] border border-stone-200' });
+    const contador = h('p', { class: 'text-xs text-stone-600' }, '');
 
     render(
       cuerpo,
@@ -1747,7 +1747,7 @@ function abrirMapaZona(zona, otras, refrescar) {
     otras
       .filter((z) => z.id !== zona.id && z.polygon)
       .forEach((z) => {
-        L.polygon(z.polygon, { color: '#78716c', weight: 1, fillOpacity: 0.08 }).bindTooltip(z.name).addTo(mapa);
+        L.polygon(z.polygon, { color: 'var(--tinta-tenue)', weight: 1, fillOpacity: 0.08 }).bindTooltip(z.name).addTo(mapa);
       });
 
     mapa.on('click', (e) => {
@@ -1757,7 +1757,7 @@ function abrirMapaZona(zona, otras, refrescar) {
 
     function actualizar() {
       if (capa) capa.remove();
-      capa = puntos.length ? L.polygon(puntos, { color: '#0ea5e9' }).addTo(mapa) : null;
+      capa = puntos.length ? L.polygon(puntos, { color: 'var(--acento)' }).addTo(mapa) : null;
       contador.textContent = puntos.length
         ? `${puntos.length} punto${puntos.length === 1 ? '' : 's'}`
         : 'Sin puntos todavía';
@@ -1791,7 +1791,7 @@ function rejillaPermisos(permisos, seleccionados = []) {
 
   const nodo = h(
     'div',
-    { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-stone-200 rounded-lg p-2' },
+    { class: 'grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-64 overflow-y-auto border border-stone-200 rounded-[--r-g] p-2' },
     casillas.map((p) =>
       h(
         'label',
@@ -1802,7 +1802,7 @@ function rejillaPermisos(permisos, seleccionados = []) {
           {},
           h('span', { class: 'font-mono text-xs' }, p.code),
           h('br'),
-          h('span', { class: 'text-xs text-stone-500' }, p.descripcion ?? '')
+          h('span', { class: 'text-xs text-stone-600' }, p.descripcion ?? '')
         )
       )
     )
@@ -1827,7 +1827,7 @@ function filaRol(rol, permisos, refrescar) {
 
   const resumen = h(
     'div',
-    { class: 'text-xs text-stone-500 mt-1' },
+    { class: 'text-xs text-stone-600 mt-1' },
     `${rol.permissions.length} permisos: ${rol.permissions.join(', ')}`
   );
 
@@ -1917,7 +1917,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
               'div',
               { class: 'flex-1 min-w-[180px]' },
               h('div', { class: 'font-medium text-sm text-stone-900' }, u.name),
-              h('div', { class: 'text-xs text-stone-500' }, `${u.email} · ${u.role_code}`)
+              h('div', { class: 'text-xs text-stone-600' }, `${u.email} · ${u.role_code}`)
             ),
             u.is_active ? badge('Activo', 'ok') : badge('Inactivo'),
             button(u.is_active ? 'Desactivar' : 'Activar', {
@@ -2018,7 +2018,7 @@ function seccionEquipo({ usuarios, roles, permisos, sucursales }, refrescar) {
       ),
       h(
         'p',
-        { class: 'text-xs text-stone-500 mt-2' },
+        { class: 'text-xs text-stone-600 mt-2' },
         'El catálogo de permisos es fijo; lo configurable es cómo se agrupan en roles.'
       )
     ),

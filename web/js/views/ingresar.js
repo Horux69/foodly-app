@@ -61,11 +61,11 @@ export async function ingresar(outlet) {
       { class: 'text-center' },
       h(
         'div',
-        { class: 'inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-amber-700 text-[--tinta-inversa] mb-3' },
-        icon('cocina', { size: 26 })
+        { class: 'inline-flex items-center justify-center w-12 h-12 rounded-[--r] bg-[--acento] text-[--tinta-inversa] mb-3' },
+        icon('sucursal', { size: 26 })
       ),
       h('h1', { class: 'text-xl font-semibold tracking-tight text-stone-900' }, 'Bienvenido'),
-      h('p', { class: 'text-sm text-stone-500 mt-1' }, 'Ingresa para operar tu restaurante')
+      h('p', { class: 'text-sm text-stone-600 mt-1' }, 'Ingresa para operar tu restaurante')
     ),
     field('Correo', correo),
     field('Contraseña', clave),

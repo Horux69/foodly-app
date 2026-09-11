@@ -73,24 +73,24 @@ export async function menu(outlet) {
             { class: 'flex items-center gap-2 mb-3' },
             h('h2', { class: 'font-semibold text-stone-900' }, cat.name),
             !cat.is_active ? badge('Inactiva', 'warn') : null,
-            h('span', { class: 'text-xs text-stone-500' }, `${items.length} producto${items.length === 1 ? '' : 's'}`)
+            h('span', { class: 'text-xs text-stone-600' }, `${items.length} producto${items.length === 1 ? '' : 's'}`)
           ),
           items.length
             ? h('div', { class: 'divide-y divide-stone-100' }, items.map(fila))
-            : h('p', { class: 'text-sm text-stone-500' }, 'Sin productos en esta categoría.')
+            : h('p', { class: 'text-sm text-stone-600' }, 'Sin productos en esta categoría.')
         );
       })
     );
   }
 
   function fila(item) {
-    const precio = input({ type: 'number', min: '0', value: item.base_price, class: 'w-28 rounded-lg border border-stone-300 px-2 py-1.5 text-sm tabular-nums' });
+    const precio = input({ type: 'number', min: '0', value: item.base_price, class: 'w-28 rounded-[--r] border border-stone-300 px-2 py-1.5 text-sm tabular-nums' });
     const impuesto = select(
       [
         { value: '', label: 'Exento', selected: !item.tax_rate_id },
         ...impuestos.map((t) => ({ value: t.id, label: t.name, selected: t.id === item.tax_rate_id })),
       ],
-      { class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' }
+      { class: 'rounded-[--r] border border-stone-300 px-2 py-1.5 text-sm' }
     );
 
     // Vacío significa "esta sede no ajusta el precio", no cero: el producto
@@ -103,7 +103,7 @@ export async function menu(outlet) {
           value: ajuste ?? '',
           placeholder: 'Precio base',
           title: `Precio en ${porSucursal.name}`,
-          class: 'w-32 rounded-lg border border-amber-300 bg-amber-50/40 px-2 py-1.5 text-sm tabular-nums',
+          class: 'w-32 rounded-[--r] border border-amber-300 bg-amber-50/40 px-2 py-1.5 text-sm tabular-nums',
         })
       : null;
 
@@ -123,7 +123,7 @@ export async function menu(outlet) {
         ),
         h(
           'div',
-          { class: 'text-xs text-stone-500' },
+          { class: 'text-xs text-stone-600' },
           `${money(item.base_price)} · ${nombreImpuesto(item.tax_rate_id)}`,
           porSucursal && ajuste !== null
             ? h('span', { class: 'text-amber-800' }, ` · en ${porSucursal.name} ${money(ajuste)}`)
@@ -286,7 +286,7 @@ export async function menu(outlet) {
         h('h3', { class: 'text-[15px] font-semibold' }, `Opciones de “${item.name}”`),
         h(
           'p',
-          { class: 'text-[13px] text-stone-500 mt-1 mb-3' },
+          { class: 'text-[13px] text-stone-600 mt-1 mb-3' },
           'Al pedir este producto se preguntará por cada grupo marcado, en este orden.'
         ),
         h(
@@ -301,7 +301,7 @@ export async function menu(outlet) {
                 'span',
                 {},
                 h('span', { class: 'font-medium' }, grupo.name),
-                h('span', { class: 'text-stone-500' }, ` · ${grupo.rule}`),
+                h('span', { class: 'text-stone-600' }, ` · ${grupo.rule}`),
                 h(
                   'span',
                   { class: 'block text-[12px] text-stone-400' },
@@ -354,7 +354,7 @@ export async function menu(outlet) {
         type: 'number',
         min: '1',
         value: actuales.get(candidato.id) ?? 1,
-        class: 'w-16 rounded-lg border border-stone-300 px-2 py-1 text-sm tabular-nums',
+        class: 'w-16 rounded-[--r] border border-stone-300 px-2 py-1 text-sm tabular-nums',
         'aria-label': `Cantidad de ${candidato.name}`,
       });
       const marca = h('input', {
@@ -403,7 +403,7 @@ export async function menu(outlet) {
         h('h3', { class: 'text-[15px] font-semibold' }, `¿Qué lleva “${item.name}”?`),
         h(
           'p',
-          { class: 'text-[13px] text-stone-500 mt-1 mb-3' },
+          { class: 'text-[13px] text-stone-600 mt-1 mb-3' },
           `Se vende como una sola línea, a ${money(item.base_price)}. La cocina recibe los productos marcados; ` +
             'sin ninguno, vuelve a ser un producto suelto.'
         ),
@@ -557,7 +557,7 @@ export async function menu(outlet) {
         badge(grupo.rule, grupo.is_required ? 'warn' : 'neutral'),
         h(
           'span',
-          { class: 'text-[12.5px] text-stone-500' },
+          { class: 'text-[12.5px] text-stone-600' },
           grupo.used_by_items === 0
             ? 'Sin asignar a ningún producto'
             : `Lo usan ${grupo.used_by_items} producto${grupo.used_by_items === 1 ? '' : 's'}`
@@ -576,7 +576,7 @@ export async function menu(outlet) {
 
       grupo.modifiers.length
         ? h('div', { class: 'divide-y divide-stone-100' }, grupo.modifiers.map(filaOpcion))
-        : h('p', { class: 'text-sm text-stone-500 py-2' }, 'Todavía no tiene opciones.'),
+        : h('p', { class: 'text-sm text-stone-600 py-2' }, 'Todavía no tiene opciones.'),
 
       h(
         'div',
@@ -645,7 +645,7 @@ export async function menu(outlet) {
         ),
         h(
           'p',
-          { class: 'text-[12.5px] text-stone-500 mt-2' },
+          { class: 'text-[12.5px] text-stone-600 mt-2' },
           'Un grupo agrupa opciones de un mismo producto: el término de la carne, el tamaño, las adiciones. Después se asigna a los productos que lo usen.'
         )
       ),
@@ -840,7 +840,7 @@ export async function menu(outlet) {
         body: h('div', { class: 'flex flex-wrap items-center gap-2' }, nombre, crear),
         list: estaciones.length
           ? estaciones.map((e) => filaEstacion(e))
-          : [h('p', { class: 'text-[13px] text-stone-500' }, 'Sin estaciones, la comanda sale entera en una hoja.')],
+          : [h('p', { class: 'text-[13px] text-stone-600' }, 'Sin estaciones, la comanda sale entera en una hoja.')],
       }),
       estaciones.length
         ? section('A qué estación va cada categoría', {

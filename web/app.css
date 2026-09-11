@@ -46,8 +46,6 @@
   --peligro: #DC2626;
   --peligro-suave: #FDEEEE;
 
-  --sombra: 0 1px 2px rgba(16, 19, 34, 0.06), 0 10px 22px -14px rgba(16, 19, 34, 0.45);
-
   /* Tipografías: Space Grotesk para títulos, cifras y etiquetas cortas
      (lo que hay que leer de un vistazo); Plus Jakarta Sans para todo lo
      demás. Cargadas por CDN en index.html, sin paso de compilación. */

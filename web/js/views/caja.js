@@ -291,11 +291,11 @@ function bloqueMovimientos(movimientos, recargar, registerId) {
               'div',
               { class: 'flex-1 min-w-0' },
               h('div', { class: 'text-[13.5px] text-stone-900' }, m.reason),
-              h('div', { class: 'text-[12px] text-stone-500' }, `${time(m.created_at)} · ${m.by_name ?? 'alguien que ya no está'}`)
+              h('div', { class: 'text-[12px] text-stone-600' }, `${time(m.created_at)} · ${m.by_name ?? 'alguien que ya no está'}`)
             )
           )
         )
-      : [h('p', { class: 'text-[13px] text-stone-500' }, 'Nada ha entrado ni salido del cajón en este turno.')],
+      : [h('p', { class: 'text-[13px] text-stone-600' }, 'Nada ha entrado ni salido del cajón en este turno.')],
   });
 }
 
@@ -319,12 +319,12 @@ function cuadre(totals) {
               )
             )
           )
-        : h('p', { class: 'text-stone-500' }, 'Todavía no se ha cobrado nada en este turno.'),
+        : h('p', { class: 'text-stone-600' }, 'Todavía no se ha cobrado nada en este turno.'),
 
       Number(totals.cash_in) || Number(totals.cash_out)
         ? h(
             'div',
-            { class: 'flex justify-between text-[13px] text-stone-500' },
+            { class: 'flex justify-between text-[13px] text-stone-600' },
             h('span', {}, `Entró al cajón ${money(totals.cash_in)}, salió ${money(totals.cash_out)}`),
             h('span', { class: 'tabular-nums' }, `neto ${money(Number(totals.cash_in) - Number(totals.cash_out))}`)
           )
@@ -332,7 +332,7 @@ function cuadre(totals) {
       Number(totals.refunded)
         ? h(
             'div',
-            { class: 'flex justify-between text-stone-500 pt-2 border-t border-[--linea]' },
+            { class: 'flex justify-between text-stone-600 pt-2 border-t border-[--linea]' },
             h('span', {}, `Cobrado ${money(totals.charged)}, devuelto ${money(totals.refunded)}`),
             h('span', { class: 'tabular-nums' }, `neto ${money(totals.net_collected)}`)
           )
@@ -345,7 +345,7 @@ function cuadre(totals) {
           'span',
           { class: 'font-medium text-stone-700' },
           'Debería haber en el cajón',
-          h('span', { class: 'block text-[12px] font-normal text-stone-500' }, `Base ${money(totals.opening_float)}, el efectivo del turno y lo que entró o salió del cajón`)
+          h('span', { class: 'block text-[12px] font-normal text-stone-600' }, `Base ${money(totals.opening_float)}, el efectivo del turno y lo que entró o salió del cajón`)
         ),
         h('span', { class: 'text-xl font-bold tabular-nums' }, money(totals.expected_cash))
       )
@@ -475,14 +475,14 @@ function filaHistorial({ session, totals }) {
       ),
       h(
         'div',
-        { class: 'text-[12.5px] text-stone-500' },
+        { class: 'text-[12.5px] text-stone-600' },
         [
           `Abrió ${session.opened_by_name ?? '—'}`,
           `cerró ${session.closed_by_name ?? '—'}`,
           `neto ${money(totals.net_collected)}`,
         ].join(' · ')
       ),
-      session.note ? h('div', { class: 'text-[12px] text-stone-500 mt-0.5' }, session.note) : null
+      session.note ? h('div', { class: 'text-[12px] text-stone-600 mt-0.5' }, session.note) : null
     ),
     diferencia === 0
       ? badge('Cuadró', 'ok', 'check')

@@ -151,7 +151,7 @@ function encabezado(pedido, cerrar) {
       ),
       h(
         'div',
-        { class: 'text-[12.5px] text-stone-500 mt-1' },
+        { class: 'text-[12.5px] text-stone-600 mt-1' },
         [
           canal(pedido.channel),
           pedido.table_code ? `Mesa ${pedido.table_code}` : null,
@@ -230,7 +230,7 @@ function bloqueEntrega(entrega, pedido) {
       h('div', { class: 'font-medium text-stone-900' }, entrega.address),
       h(
         'div',
-        { class: 'text-stone-500 text-[12.5px]' },
+        { class: 'text-stone-600 text-[12.5px]' },
         [
           entrega.zone_name ? `Zona ${entrega.zone_name}` : 'Sin zona',
           entrega.courier_name ? `Repartidor ${entrega.courier_name}` : 'Sin repartidor',
@@ -317,7 +317,7 @@ function bloqueLineas(pedido, recargar) {
           { class: 'fila items-start' },
           h(
             'span',
-            { class: 'inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-md bg-stone-100 text-[12.5px] font-semibold tabular-nums shrink-0' },
+            { class: 'inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-[--r] bg-stone-100 text-[12.5px] font-semibold tabular-nums shrink-0' },
             i.quantity
           ),
           h(
@@ -327,12 +327,12 @@ function bloqueLineas(pedido, recargar) {
             i.components?.length
               ? h(
                   'div',
-                  { class: 'text-[12px] text-stone-500' },
+                  { class: 'text-[12px] text-stone-600' },
                   i.components.map((c) => `${c.quantity}× ${c.name_snapshot}`).join(' · ')
                 )
               : null,
             i.modifiers.length
-              ? h('div', { class: 'text-[12px] text-stone-500' }, i.modifiers.map((m) => m.name_snapshot).join(' · '))
+              ? h('div', { class: 'text-[12px] text-stone-600' }, i.modifiers.map((m) => m.name_snapshot).join(' · '))
               : null,
             i.notes ? h('div', { class: 'text-[12px] text-amber-800' }, i.notes) : null
           ),
@@ -370,7 +370,7 @@ function conTiempos(pedido, recargar, linea) {
         { class: 'flex items-center justify-between gap-2 pt-1' },
         h(
           'span',
-          { class: 'text-[11.5px] font-semibold uppercase tracking-wide text-stone-500' },
+          { class: 'text-[11.5px] font-semibold uppercase tracking-wide text-stone-600' },
           tiempos[numero - 1] ?? `Tiempo ${numero}`
         ),
         pendiente
@@ -486,7 +486,7 @@ function abrirAgregar(pedido, recargar) {
                     item.components?.length
                       ? h(
                           'span',
-                          { class: 'block text-[11px] text-stone-500' },
+                          { class: 'block text-[11px] text-stone-600' },
                           item.components.map((c) => `${c.quantity}× ${c.name}`).join(' · ')
                         )
                       : null
@@ -517,7 +517,7 @@ function bloqueMesa(pedido, recargar) {
     body: h(
       'div',
       { class: 'flex flex-wrap items-center gap-2 text-[13.5px]' },
-      h('span', { class: 'text-stone-500' }, pedido.table_code ? `Mesa ${pedido.table_code}` : 'Sin mesa'),
+      h('span', { class: 'text-stone-600' }, pedido.table_code ? `Mesa ${pedido.table_code}` : 'Sin mesa'),
       button('Mover', { variant: 'secondary', onClick: () => abrirMover(pedido, recargar) }),
       button('Unir otra cuenta', { variant: 'secondary', onClick: () => abrirUnir(pedido, recargar) })
     ),
@@ -544,7 +544,7 @@ function bloqueMesero(pedido, recargar) {
       { class: 'flex flex-wrap items-center gap-2 text-[13.5px]' },
       h(
         'span',
-        { class: pedido.server_name ? 'font-medium' : 'text-stone-500' },
+        { class: pedido.server_name ? 'font-medium' : 'text-stone-600' },
         pedido.server_name ?? 'Sin mesero a cargo'
       ),
       puede
@@ -601,7 +601,7 @@ function abrirMeseros(pedido, recargar) {
       render(
         cuerpo,
         h('h3', { class: 'text-[15px] font-semibold' }, `Mesero de ${pedido.order_number}`),
-        h('p', { class: 'text-[13px] text-stone-500' }, 'Queda en la bitácora y en el reporte por mesero.'),
+        h('p', { class: 'text-[13px] text-stone-600' }, 'Queda en la bitácora y en el reporte por mesero.'),
         gente.length
           ? h(
               'div',
@@ -664,7 +664,7 @@ function abrirMesas({ titulo, ayuda, etiqueta, filtrar, alElegir, alTerminar }) 
       render(
         cuerpo,
         h('h3', { class: 'text-[15px] font-semibold' }, titulo),
-        h('p', { class: 'text-[13px] text-stone-500' }, ayuda),
+        h('p', { class: 'text-[13px] text-stone-600' }, ayuda),
         candidatas.length
           ? h(
               'div',
@@ -763,7 +763,7 @@ function bloqueFiscal(pedido, recargar) {
       { class: 'flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px]' },
       h('span', { class: 'font-semibold tabular-nums' }, doc.full_number),
       badge(etiqueta, tono),
-      doc.external_id ? h('span', { class: 'text-[12px] text-stone-500 break-all' }, doc.external_id) : null
+      doc.external_id ? h('span', { class: 'text-[12px] text-stone-600 break-all' }, doc.external_id) : null
     ),
   });
 }
@@ -772,7 +772,7 @@ function bloqueTotales(pedido, recargar) {
   const linea = (etiqueta, valor, fuerte) =>
     h(
       'div',
-      { class: `flex justify-between ${fuerte ? 'pt-2 mt-1 border-t border-[--linea] font-semibold text-stone-900' : 'text-stone-500'}` },
+      { class: `flex justify-between ${fuerte ? 'pt-2 mt-1 border-t border-[--linea] font-semibold text-stone-900' : 'text-stone-600'}` },
       h('span', {}, etiqueta),
       h('span', { class: 'tabular-nums' }, valor)
     );
@@ -787,7 +787,7 @@ function bloqueTotales(pedido, recargar) {
       Number(pedido.discount) ? linea('Descuento', `− ${money(pedido.discount)}`) : null,
       Number(pedido.tip) ? linea('Propina', money(pedido.tip)) : null,
       linea('Total', money(pedido.total), true),
-      pedido.notes ? h('p', { class: 'text-[12.5px] text-stone-500 pt-2' }, pedido.notes) : null
+      pedido.notes ? h('p', { class: 'text-[12.5px] text-stone-600 pt-2' }, pedido.notes) : null
     ),
     actions:
       pedido.is_editable && can('orders.discount')
@@ -873,7 +873,7 @@ function abrirDescuento(pedido, recargar) {
         h('h3', { class: 'text-[15px] font-semibold' }, `Descuento de ${pedido.order_number}`),
         h(
           'p',
-          { class: 'text-[13px] text-stone-500' },
+          { class: 'text-[13px] text-stone-600' },
           `Sobre un subtotal de ${money(pedido.subtotal)}. Queda en la bitácora con tu nombre.`
         ),
         field('Importe', importe),
@@ -973,7 +973,7 @@ function formularioCobro(pedido, recargar) {
       h(
         'div',
         { class: 'flex flex-wrap items-center gap-1.5' },
-        h('span', { class: 'text-[12px] text-stone-500' }, 'Caja:'),
+        h('span', { class: 'text-[12px] text-stone-600' }, 'Caja:'),
         abiertas.map((c) =>
           button(c.register_name ?? 'Sucursal', {
             variant: c.register_id === registerId ? 'primary' : 'secondary',
@@ -1142,7 +1142,7 @@ function filaPropina(pedido, recargar) {
   return h(
     'div',
     { class: 'flex flex-wrap items-center gap-2 text-[13px]' },
-    h('span', { class: 'text-stone-500' }, puesta ? `Propina ${money(puesta)}` : 'Propina'),
+    h('span', { class: 'text-stone-600' }, puesta ? `Propina ${money(puesta)}` : 'Propina'),
     sugerida && puesta !== sugerida
       ? button(`${contexto.tip_percent ?? 10}% · ${money(sugerida)}`, {
           variant: 'secondary',
@@ -1188,7 +1188,7 @@ function bloquePagos(pedido, pagos, recargar) {
       { class: 'text-[13.5px] space-y-2' },
       cobros.length
         ? h('div', { class: 'space-y-1' }, cobros.map((p) => filaCobro(pedido, p, devueltoDe(p.id), recargar)))
-        : h('p', { class: 'text-stone-500' }, 'Sin cobros registrados.'),
+        : h('p', { class: 'text-stone-600' }, 'Sin cobros registrados.'),
 
       devoluciones.length
         ? h(
@@ -1202,7 +1202,7 @@ function bloquePagos(pedido, pagos, recargar) {
                   'div',
                   { class: 'min-w-0' },
                   h('span', { class: 'text-stone-600' }, `Reembolso · ${metodoPago(r.method)}`),
-                  r.note ? h('div', { class: 'text-[12px] text-stone-500' }, r.note) : null
+                  r.note ? h('div', { class: 'text-[12px] text-stone-600' }, r.note) : null
                 ),
                 h('span', { class: 'tabular-nums text-red-700 shrink-0' }, `− ${money(r.amount)}`)
               )
@@ -1235,7 +1235,7 @@ function filaCobro(pedido, cobro, devuelto, recargar) {
       { class: `text-stone-600 ${revertido ? 'line-through text-stone-400' : ''}` },
       metodoPago(cobro.method),
       revertido ? h('span', { class: 'ml-1.5' }, badge('Reembolsado', 'danger')) : null,
-      !revertido && devuelto ? h('span', { class: 'ml-1.5 text-[12px] text-stone-500' }, `(devuelto ${money(devuelto)})`) : null
+      !revertido && devuelto ? h('span', { class: 'ml-1.5 text-[12px] text-stone-600' }, `(devuelto ${money(devuelto)})`) : null
     ),
     h(
       'span',
@@ -1371,7 +1371,7 @@ function bloqueBitacora(eventos) {
                 e.status.name,
                 h('span', { class: 'text-stone-400 font-normal' }, ` · ${e.changed_by_name ?? 'el sistema'}`)
               ),
-              e.note ? h('div', { class: 'text-[12px] text-stone-500' }, e.note) : null
+              e.note ? h('div', { class: 'text-[12px] text-stone-600' }, e.note) : null
             ),
             h('span', { class: 'text-[12px] text-stone-400 shrink-0' }, `${date(e.changed_at)} ${time(e.changed_at)}`)
           )

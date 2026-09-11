@@ -51,7 +51,7 @@ export function pageHeader(titulo, { hint, actions } = {}) {
       'div',
       { class: 'min-w-0' },
       h('h1', { class: 'text-[19px] font-semibold' }, titulo),
-      hint ? h('p', { class: 'text-[13px] text-stone-500 mt-0.5' }, hint) : null
+      hint ? h('p', { class: 'text-[13px] text-stone-600 mt-0.5' }, hint) : null
     ),
     actions ? h('div', { class: 'flex flex-wrap gap-2' }, actions) : null
   );
@@ -73,7 +73,7 @@ export function section(titulo, { actions, body, list, hint } = {}) {
             'div',
             { class: 'min-w-0' },
             h('h2', {}, titulo),
-            hint ? h('p', { class: 'text-[12px] text-stone-500 normal-case font-normal mt-0.5' }, hint) : null
+            hint ? h('p', { class: 'text-[12px] text-stone-600 normal-case font-normal mt-0.5' }, hint) : null
           ),
           actions ? h('div', { class: 'flex gap-2 shrink-0' }, actions) : null
         )
@@ -126,7 +126,7 @@ export function field(label, input, hint) {
     { class: 'block' },
     h('span', { class: 'block text-[12.5px] font-medium text-stone-600 mb-1' }, label),
     input,
-    hint ? h('span', { class: 'block text-[12px] text-stone-500 mt-1' }, hint) : null
+    hint ? h('span', { class: 'block text-[12px] text-stone-600 mt-1' }, hint) : null
   );
 }
 
@@ -178,7 +178,7 @@ export function tabs(items, activa, alCambiar) {
         'button',
         {
           class: `relative pb-2.5 text-[13.5px] whitespace-nowrap transition ${
-            item.key === activa ? 'text-stone-900 font-semibold' : 'text-stone-500 hover:text-stone-800'
+            item.key === activa ? 'text-stone-900 font-semibold' : 'text-stone-600 hover:text-stone-800'
           }`,
           onClick: () => alCambiar(item.key),
         },
@@ -213,7 +213,7 @@ export function skeleton({ rows = 3 } = {}) {
 export function loading(text = 'Cargando…') {
   return h(
     'div',
-    { class: 'flex items-center gap-2.5 text-[13px] text-stone-500 p-8 justify-center' },
+    { class: 'flex items-center gap-2.5 text-[13px] text-stone-600 p-8 justify-center' },
     h('span', { class: 'w-3.5 h-3.5 border-2 border-stone-200 border-t-stone-500 rounded-full animate-spin' }),
     text
   );
@@ -226,7 +226,7 @@ export function empty(title, hint, action, iconName = 'vacio') {
     { class: 'text-center px-6 py-12' },
     h('div', { class: 'inline-flex text-stone-300 mb-3' }, icon(iconName, { size: 28 })),
     h('p', { class: 'text-[14px] font-medium text-stone-800' }, title),
-    hint ? h('p', { class: 'text-[13px] text-stone-500 mt-1 max-w-sm mx-auto' }, hint) : null,
+    hint ? h('p', { class: 'text-[13px] text-stone-600 mt-1 max-w-sm mx-auto' }, hint) : null,
     action ? h('div', { class: 'mt-4 flex justify-center' }, action) : null
   );
 }

@@ -61,7 +61,7 @@ export function abrirCuenta() {
         'aria-label': 'Mi cuenta',
       },
       h('h3', { class: 'text-[15px] font-semibold' }, 'Mi cuenta'),
-      h('p', { class: 'text-[13px] text-stone-500 mt-0.5 mb-4' }, `${usuario?.name ?? ''} · ${usuario?.email ?? ''}`),
+      h('p', { class: 'text-[13px] text-stone-600 mt-0.5 mb-4' }, `${usuario?.name ?? ''} · ${usuario?.email ?? ''}`),
       h(
         'div',
         { class: 'space-y-3' },

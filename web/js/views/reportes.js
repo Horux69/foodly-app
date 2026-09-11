@@ -12,7 +12,10 @@ import { badge, button, card, errorBox, h, pageHeader, render, skeleton, tabs, t
 import { canal } from './cocina.js';
 import { metodoPago } from './pedido-detalle.js';
 
-const SERIE = '#2a78d6'; // validado para contraste sobre superficie blanca
+// El mismo acento de marca del resto de la aplicación: una sola serie, un
+// solo tono, y así el gráfico responde al tema claro/oscuro sin un segundo
+// azul que no está en la paleta.
+const SERIE = 'var(--acento)';
 const RANGOS = [
   { etiqueta: '7 días', dias: 6 },
   { etiqueta: '30 días', dias: 29 },
@@ -20,9 +23,9 @@ const RANGOS = [
 ];
 
 export async function reportes(outlet) {
-  const desde = h('input', { type: 'date', class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
-  const hasta = h('input', { type: 'date', class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
-  const sucursal = h('select', { class: 'rounded-lg border border-stone-300 px-2 py-1.5 text-sm' });
+  const desde = h('input', { type: 'date', class: 'rounded-[--r] border border-stone-300 px-2 py-1.5 text-sm' });
+  const hasta = h('input', { type: 'date', class: 'rounded-[--r] border border-stone-300 px-2 py-1.5 text-sm' });
+  const sucursal = h('select', { class: 'rounded-[--r] border border-stone-300 px-2 py-1.5 text-sm' });
   const contenido = h('div', { class: 'space-y-4' });
   const pestanas = h('div');
   // Dos maneras de mirar el mismo período: la venta (qué se vendió) y el
@@ -196,7 +199,7 @@ function panel(ventas, productos, tiempos, horas, promesa, porOrigen, descargar)
       ),
       h(
         'div',
-        { class: 'text-sm text-stone-500 mt-2' },
+        { class: 'text-sm text-stone-600 mt-2' },
         `${ventas.from_date} a ${ventas.to_date} · solo pedidos completados`,
         ventas.previous
           ? h(
@@ -337,12 +340,12 @@ function panelCierre(ingresos, porUsuario, porMesero, ajustes, descargar) {
       h('div', { class: 'text-5xl font-semibold text-stone-900 mt-1' }, money(neto)),
       h(
         'div',
-        { class: 'text-sm text-stone-500 mt-2' },
+        { class: 'text-sm text-stone-600 mt-2' },
         `${ingresos.from_date} a ${ingresos.to_date} · lo cobrado menos lo devuelto, por fecha del cobro`
       ),
       h(
         'p',
-        { class: 'text-xs text-stone-500 mt-2' },
+        { class: 'text-xs text-stone-600 mt-2' },
         'No tiene por qué coincidir con la venta: aquí entra lo cobrado sobre pedidos todavía abiertos, y no entra lo vendido que aún no se ha cobrado.'
       )
     ),
@@ -355,7 +358,7 @@ function panelCierre(ingresos, porUsuario, porMesero, ajustes, descargar) {
             { class: 'w-full text-sm' },
             h(
               'thead',
-              { class: 'text-left text-stone-500 border-b border-stone-200' },
+              { class: 'text-left text-stone-600 border-b border-stone-200' },
               h(
                 'tr',
                 {},
@@ -452,7 +455,7 @@ function seccionAjuste(titulo, grupo, descripcion, tituloDe) {
       h('h3', { class: 'font-semibold text-stone-900' }, titulo),
       h('span', { class: 'text-lg font-semibold tabular-nums' }, money(grupo.total))
     ),
-    h('p', { class: 'text-xs text-stone-500 mb-3' }, `${grupo.count} en el período · ${descripcion}`),
+    h('p', { class: 'text-xs text-stone-600 mb-3' }, `${grupo.count} en el período · ${descripcion}`),
 
     grupo.items.length
       ? h(
@@ -470,14 +473,14 @@ function seccionAjuste(titulo, grupo, descripcion, tituloDe) {
               ),
               h(
                 'div',
-                { class: 'text-xs text-stone-500 mt-0.5' },
+                { class: 'text-xs text-stone-600 mt-0.5' },
                 [i.by_name ?? 'sin usuario', i.at ? `${fecha(i.at)} ${time(i.at)}` : null].filter(Boolean).join(' · ')
               ),
               i.reason ? h('div', { class: 'text-xs text-stone-600 mt-0.5' }, i.reason) : null
             )
           )
         )
-      : h('p', { class: 'text-sm text-stone-500' }, 'Nada en este período.'),
+      : h('p', { class: 'text-sm text-stone-600' }, 'Nada en este período.'),
 
     grupo.truncated
       ? h('p', { class: 'text-xs text-amber-800 mt-3' }, badge('Lista recortada', 'warn'), ' El total sí es del período completo.')
@@ -514,7 +517,7 @@ const tarjetaDato = (titulo, valor, pie, cambio) =>
       h('div', { class: 'text-2xl font-semibold text-stone-900' }, valor),
       variacion(cambio)
     ),
-    pie ? h('div', { class: 'text-xs text-stone-500 mt-1' }, pie) : null
+    pie ? h('div', { class: 'text-xs text-stone-600 mt-1' }, pie) : null
   );
 
 function columnas(titulo, filas, { etiquetaDe, valorDe, formato }) {
@@ -523,7 +526,7 @@ function columnas(titulo, filas, { etiquetaDe, valorDe, formato }) {
 
   return card(
     h('h3', { class: 'font-semibold text-stone-900' }, titulo),
-    h('p', { class: 'text-xs text-stone-500 mb-3 tabular-nums' }, `Máximo ${formato(maximo)}`),
+    h('p', { class: 'text-xs text-stone-600 mb-3 tabular-nums' }, `Máximo ${formato(maximo)}`),
     h(
       'div',
       { class: 'h-40 flex items-stretch gap-1 border-b border-stone-200' },
@@ -542,7 +545,7 @@ function columnas(titulo, filas, { etiquetaDe, valorDe, formato }) {
               style: `height:${alto}%; background:${SERIE}`,
             })
           ),
-          h('div', { class: 'text-[10px] text-stone-500 truncate w-full text-center' }, etiquetaDe(fila))
+          h('div', { class: 'text-[10px] text-stone-600 truncate w-full text-center' }, etiquetaDe(fila))
         );
       })
     )
@@ -589,20 +592,20 @@ function barras(titulo, filas, { etiquetaDe, valorDe, formato, detalleDe }) {
 const sinDatos = (titulo) =>
   card(
     h('h3', { class: 'font-semibold text-stone-900 mb-2' }, titulo),
-    h('p', { class: 'text-sm text-stone-500' }, 'Sin datos en este período.')
+    h('p', { class: 'text-sm text-stone-600' }, 'Sin datos en este período.')
   );
 
 function tablaDeDatos(porDia) {
   return h(
     'details',
-    { class: 'bg-[--panel] rounded-xl border border-stone-200 p-4' },
+    { class: 'bg-[--panel] rounded-[--r-g] border border-stone-200 p-4' },
     h('summary', { class: 'cursor-pointer font-semibold text-stone-900' }, 'Ver los datos en tabla'),
     h(
       'table',
       { class: 'w-full text-sm mt-3' },
       h(
         'thead',
-        { class: 'text-left text-stone-500 border-b border-stone-200' },
+        { class: 'text-left text-stone-600 border-b border-stone-200' },
         h(
           'tr',
           {},
@@ -624,7 +627,7 @@ function tablaDeDatos(porDia) {
                 h('td', { class: 'py-1 text-right' }, money(r.revenue))
               )
             )
-          : h('tr', {}, h('td', { colspan: '3', class: 'py-3 text-stone-500' }, 'Sin ventas en el período.'))
+          : h('tr', {}, h('td', { colspan: '3', class: 'py-3 text-stone-600' }, 'Sin ventas en el período.'))
       )
     )
   );

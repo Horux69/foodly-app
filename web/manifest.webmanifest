@@ -1,7 +1,7 @@
 {
-  "name": "Plataforma de restaurantes",
-  "short_name": "Restaurante",
-  "description": "Toma de pedidos, cocina y caja.",
+  "name": "Foodly",
+  "short_name": "Foodly",
+  "description": "Foodly — toma de pedidos, cocina y caja.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

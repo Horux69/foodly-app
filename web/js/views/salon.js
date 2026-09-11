@@ -26,7 +26,7 @@ const CASILLA = 108;
 
 export async function salon(outlet) {
   const plano = h('div');
-  const marca = h('span', { class: 'flex items-center gap-1.5 text-xs text-stone-500' });
+  const marca = h('span', { class: 'flex items-center gap-1.5 text-xs text-stone-600' });
 
   let editando = false;
   let mesas = [];
@@ -129,7 +129,7 @@ export async function salon(outlet) {
       editando
         ? h(
             'p',
-            { class: 'text-[13px] text-stone-500 mt-2' },
+            { class: 'text-[13px] text-stone-600 mt-2' },
             'Arrastra las mesas para colocarlas como están en el salón. Se guardan solas.'
           )
         : null
@@ -143,13 +143,13 @@ export async function salon(outlet) {
     const ajena = soloMias && ocupada && mesa.server_id !== me()?.user_id;
     const tono = ocupada
       ? 'bg-amber-50 border-amber-300 text-amber-900'
-      : 'bg-[--panel] border-[--linea] text-stone-500';
+      : 'bg-[--panel] border-[--linea] text-stone-600';
 
     const nodo = h(
       'button',
       {
         class: `absolute flex flex-col items-center justify-center gap-0.5 border text-center transition-colors
-                ${mesa.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${tono}
+                ${mesa.shape === 'round' ? 'rounded-full' : 'rounded-[--r]'} ${tono}
                 ${editando ? 'cursor-move' : 'hover:border-amber-400'} ${ajena ? 'opacity-40' : ''}`,
         style: `left:${mesa.pos_x * CASILLA}px;top:${mesa.pos_y * CASILLA}px;width:${CASILLA - 12}px;height:${CASILLA - 12}px`,
         'aria-label': ocupada

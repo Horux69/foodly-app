@@ -110,7 +110,7 @@ export async function clientes(outlet) {
         'div',
         { class: 'flex-1 min-w-0' },
         h('div', { class: 'text-[13.5px] font-medium text-stone-900 truncate' }, cliente.name || 'Sin nombre'),
-        h('div', { class: 'text-[12.5px] text-stone-500 tabular-nums' }, cliente.phone)
+        h('div', { class: 'text-[12.5px] text-stone-600 tabular-nums' }, cliente.phone)
       ),
       icon('pedidos', { size: 15, class: 'text-stone-300' })
     );
@@ -200,7 +200,7 @@ function fichaCliente(detalle, refrescar) {
                   h('span', { class: 'tabular-nums' }, o.order_number),
                   badge(canal(o.channel))
                 ),
-                h('div', { class: 'text-[12.5px] text-stone-500' }, date(o.created_at))
+                h('div', { class: 'text-[12.5px] text-stone-600' }, date(o.created_at))
               ),
               h('span', { class: 'text-[13.5px] font-medium tabular-nums' }, money(o.total))
             )

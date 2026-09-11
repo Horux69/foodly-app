@@ -34,7 +34,7 @@ const COLUMNAS = [
 
 export async function domicilios(outlet) {
   const tablero = h('div');
-  const marca = h('span', { class: 'flex items-center gap-1.5 text-xs text-stone-500' });
+  const marca = h('span', { class: 'flex items-center gap-1.5 text-xs text-stone-600' });
   let vivo = true;
   let repartidores = [];
 
@@ -124,7 +124,7 @@ export async function domicilios(outlet) {
               ? paginas[i].items.map((pedido) => tarjeta(pedido, repartidores, refrescar))
               : h(
                   'p',
-                  { class: 'text-sm text-stone-400 px-1 py-6 text-center border border-dashed border-stone-200 rounded-xl' },
+                  { class: 'text-sm text-stone-400 px-1 py-6 text-center border border-dashed border-stone-200 rounded-[--r-g]' },
                   'Nada aquí'
                 )
           )
@@ -180,7 +180,7 @@ async function pintarCuadre(host) {
             h('div', { class: 'text-[13.5px] text-stone-900' }, c.courier_name ?? 'Sin nombre'),
             h(
               'div',
-              { class: 'text-[12px] text-stone-500' },
+              { class: 'text-[12px] text-stone-600' },
               `${c.orders} pedido${c.orders === 1 ? '' : 's'}${
                 c.from_at ? ` · desde el último cuadre` : ''
               }`
@@ -219,7 +219,7 @@ function abrirCuadre(courier, host) {
   );
 
   desmontar = montarDialogo(overlay, { alCerrar: cerrar });
-  render(cuerpo, h('p', { class: 'text-sm text-stone-500' }, 'Cargando sus pedidos…'));
+  render(cuerpo, h('p', { class: 'text-sm text-stone-600' }, 'Cargando sus pedidos…'));
 
   api
     .get(`/couriers/${courier.courier_id}/settlement${branchQuery()}`)
@@ -231,7 +231,7 @@ function abrirCuadre(courier, host) {
         class: 'campo tabular-nums',
         'aria-label': 'Efectivo que entrega',
       });
-      const diferencia = h('p', { class: 'text-[13px] text-stone-500' });
+      const diferencia = h('p', { class: 'text-[13px] text-stone-600' });
       const nota = input({ placeholder: 'Nota (opcional)', maxlength: '255' });
 
       // La diferencia se muestra mientras se teclea, pero la que vale es la
@@ -286,7 +286,7 @@ function abrirCuadre(courier, host) {
                 )
               )
             )
-          : h('p', { class: 'text-[13px] text-stone-500' }, 'Sin pedidos en efectivo pendientes.'),
+          : h('p', { class: 'text-[13px] text-stone-600' }, 'Sin pedidos en efectivo pendientes.'),
         h(
           'div',
           { class: 'flex items-center justify-between text-[14px] font-medium border-t border-[--linea] pt-2' },
@@ -399,7 +399,7 @@ function tarjeta(pedido, repartidores, refrescar) {
         h('div', { class: 'text-[13px] text-stone-700 mt-0.5' }, entrega.address),
         h(
           'div',
-          { class: 'text-[12px] text-stone-500' },
+          { class: 'text-[12px] text-stone-600' },
           [
             entrega.zone_name ?? 'Sin zona',
             money(pedido.total),
@@ -409,7 +409,7 @@ function tarjeta(pedido, repartidores, refrescar) {
       ),
       h(
         'div',
-        { class: 'text-right shrink-0 text-[12px] text-stone-500' },
+        { class: 'text-right shrink-0 text-[12px] text-stone-600' },
         h('div', { class: 'flex items-center gap-1 justify-end' }, icon('reloj', { size: 13 }), elapsed(pedido.created_at)),
         entrega.estimated_time
           ? h(
@@ -453,6 +453,9 @@ function tarjeta(pedido, repartidores, refrescar) {
           pedido.next_statuses.map((estado) =>
             button(estado.name, {
               variant: estado.category === 'cancelled' ? 'danger' : 'primary',
+              // Mismo trato que en cocina: es la acción que más se toca en un
+              // tablero que también se opera de pie y contra reloj.
+              big: true,
               onClick: async (event) => {
                 if (estado.category === 'cancelled') {
                   return abrirCancelacion(pedido, estado, refrescar);

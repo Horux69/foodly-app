@@ -209,7 +209,7 @@ function pintarRail(rutaActiva, usuario) {
       { class: 'flex items-center gap-2.5 h-14 px-3.5 lg:px-4 border-b border-[--linea]' },
       h(
         'span',
-        { class: 'w-7 h-7 rounded-md bg-[--acento] text-[--tinta-inversa] grid place-items-center text-[11px] font-semibold shrink-0' },
+        { class: 'w-7 h-7 rounded-[--r] bg-[--acento] text-[--tinta-inversa] grid place-items-center text-[11px] font-semibold shrink-0' },
         iniciales(usuario.tenant_name)
       ),
       h('span', { class: 'hidden lg:block text-[13.5px] font-semibold truncate' }, usuario.tenant_name)
@@ -245,7 +245,7 @@ function pintarRail(rutaActiva, usuario) {
           h('div', { class: 'text-[13px] font-medium truncate' }, usuario.name),
           h(
             'div',
-            { class: 'text-[12px] text-stone-500 truncate' },
+            { class: 'text-[12px] text-stone-600 truncate' },
             session.activeBranch()?.name ?? usuario.branch_name ?? 'Sin sucursal'
           )
         ),
@@ -294,7 +294,7 @@ function pintarTopbar(rutaActiva, usuario) {
         { class: 'flex items-center gap-2.5 min-w-0' },
         h(
           'span',
-          { class: 'w-7 h-7 rounded-md bg-[--acento] text-[--tinta-inversa] grid place-items-center text-[11px] font-semibold shrink-0' },
+          { class: 'w-7 h-7 rounded-[--r] bg-[--acento] text-[--tinta-inversa] grid place-items-center text-[11px] font-semibold shrink-0' },
           iniciales(usuario.tenant_name)
         ),
         h(
@@ -303,7 +303,7 @@ function pintarTopbar(rutaActiva, usuario) {
           h('div', { class: 'text-[13.5px] font-semibold leading-tight truncate' }, rutaActiva?.label ?? usuario.tenant_name),
           h(
             'div',
-            { class: 'text-[11.5px] text-stone-500 leading-tight truncate' },
+            { class: 'text-[11.5px] text-stone-600 leading-tight truncate' },
             session.activeBranch()?.name ?? usuario.branch_name ?? 'Sin sucursal'
           )
         )

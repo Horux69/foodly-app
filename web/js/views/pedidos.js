@@ -139,7 +139,7 @@ async function vistaNuevo(host) {
         h(
           'button',
           {
-            class: `px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+            class: `px-3 py-1.5 rounded-[--r] text-sm font-medium border transition ${
               c === canalActivo
                 ? 'bg-stone-900 text-[--tinta-inversa] border-stone-900'
                 : 'bg-[--panel] text-stone-600 border-stone-300 hover:border-stone-900'
@@ -231,12 +231,12 @@ async function vistaNuevo(host) {
         h(
           'button',
           {
-            class: 'w-full text-left px-2.5 py-1.5 rounded-lg border border-stone-200 hover:border-stone-900 text-sm flex items-center gap-2',
+            class: 'w-full text-left px-2.5 py-1.5 rounded-[--r] border border-stone-200 hover:border-stone-900 text-sm flex items-center gap-2',
             onClick: () => usarCliente(c),
           },
           icon('clientes', { size: 15, class: 'text-stone-400 shrink-0' }),
           h('span', { class: 'font-medium truncate' }, c.name || 'Sin nombre'),
-          h('span', { class: 'text-stone-500 tabular-nums text-xs' }, c.phone)
+          h('span', { class: 'text-stone-600 tabular-nums text-xs' }, c.phone)
         )
       )
     );
@@ -265,11 +265,11 @@ async function vistaNuevo(host) {
   const bloqueDomicilio = h('div', { class: 'hidden space-y-2 mt-2' });
   const direccion = input({ placeholder: 'Dirección de entrega' });
   const zona = select([{ value: '', label: 'Sin zona' }], { onChange: recalcular });
-  const avisoZona = h('p', { class: 'text-[12px] text-stone-500' });
+  const avisoZona = h('p', { class: 'text-[12px] text-stone-600' });
 
   const esDomicilio = h('input', {
     type: 'checkbox',
-    class: 'w-4 h-4 rounded border-stone-300 accent-amber-700',
+    class: 'w-4 h-4 rounded border-stone-300 accent-stone-900',
     onChange: () => {
       bloqueDomicilio.classList.toggle('hidden', !esDomicilio.checked);
       recalcular();
@@ -341,7 +341,7 @@ async function vistaNuevo(host) {
         item.components?.length
           ? h(
               'div',
-              { class: 'text-[11px] text-stone-500 mt-0.5' },
+              { class: 'text-[11px] text-stone-600 mt-0.5' },
               item.components.map((c) => `${c.quantity}× ${c.name}`).join(' · ')
             )
           : null,
@@ -414,7 +414,7 @@ async function vistaNuevo(host) {
         h(
           'div',
           {
-            class: 'py-2.5 flex items-start gap-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400',
+            class: 'py-2.5 flex items-start gap-2 rounded-[--r] focus:outline-none focus:ring-2 focus:ring-stone-400',
             // Con foco, las flechas cambian la cantidad: en un mostrador con
             // cola es más rápido que apuntar a un botón de 36 píxeles.
             tabindex: '0',
@@ -441,7 +441,7 @@ async function vistaNuevo(host) {
               ? h('div', { class: 'text-[11px] text-stone-400' }, tiempos[linea.tiempo - 1] ?? `Tiempo ${linea.tiempo}`)
               : null,
             linea.modificadores.length
-              ? h('div', { class: 'text-xs text-stone-500' }, linea.modificadores.map((m) => m.name).join(', '))
+              ? h('div', { class: 'text-xs text-stone-600' }, linea.modificadores.map((m) => m.name).join(', '))
               : null
           ),
           h(
@@ -493,7 +493,7 @@ async function vistaNuevo(host) {
     h(
       'button',
       {
-        class: 'w-9 h-9 inline-flex items-center justify-center rounded-lg border border-stone-300 text-stone-600 hover:border-stone-900 hover:text-stone-900 active:scale-95 transition',
+        class: 'w-9 h-9 inline-flex items-center justify-center rounded-[--r] border border-stone-300 text-stone-600 hover:border-stone-900 hover:text-stone-900 active:scale-95 transition',
         onClick,
       },
       icon(ico, { size: 16 })
@@ -540,7 +540,7 @@ async function vistaNuevo(host) {
   }
 
   const fila = (etiqueta, valor) =>
-    h('div', { class: 'flex justify-between text-stone-500' }, h('span', {}, etiqueta), h('span', { class: 'tabular-nums' }, valor));
+    h('div', { class: 'flex justify-between text-stone-600' }, h('span', {}, etiqueta), h('span', { class: 'tabular-nums' }, valor));
 
   function cuerpo() {
     const entrega =
@@ -661,13 +661,13 @@ async function vistaNuevo(host) {
             h('h2', { class: 'font-semibold text-stone-900' }, 'Pedido'),
             contador
           ),
-          h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Canal'),
+          h('div', { class: 'text-xs font-medium text-stone-600 mb-1.5' }, 'Canal'),
           selectorCanal,
           contexto.uses_tables
             ? h(
                 'div',
                 { class: 'mt-3' },
-                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Mesa'),
+                h('div', { class: 'text-xs font-medium text-stone-600 mb-1.5' }, 'Mesa'),
                 mesa
               )
             : null,
@@ -675,7 +675,7 @@ async function vistaNuevo(host) {
             ? h(
                 'div',
                 { class: 'mt-3' },
-                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Mesero'),
+                h('div', { class: 'text-xs font-medium text-stone-600 mb-1.5' }, 'Mesero'),
                 mesero
               )
             : null,
@@ -683,7 +683,7 @@ async function vistaNuevo(host) {
             ? h(
                 'div',
                 { class: 'mt-3' },
-                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Agregando a'),
+                h('div', { class: 'text-xs font-medium text-stone-600 mb-1.5' }, 'Agregando a'),
                 selectorTiempo
               )
             : null,
@@ -691,7 +691,7 @@ async function vistaNuevo(host) {
             ? h(
                 'div',
                 { class: 'mt-3' },
-                h('div', { class: 'text-xs font-medium text-stone-500 mb-1.5' }, 'Origen'),
+                h('div', { class: 'text-xs font-medium text-stone-600 mb-1.5' }, 'Origen'),
                 origen
               )
             : null,
@@ -834,7 +834,7 @@ async function vistaNuevo(host) {
 }
 
 const campoNumero = (etiqueta, control) =>
-  h('label', { class: 'block' }, h('span', { class: 'text-xs text-stone-500' }, etiqueta), control);
+  h('label', { class: 'block' }, h('span', { class: 'text-xs text-stone-600' }, etiqueta), control);
 
 
 // =========================================================
@@ -1056,7 +1056,7 @@ function tarjetaPedido(pedido, refrescar) {
       ? h(
           'div',
           { class: 'mt-3 pt-3 border-t border-stone-100' },
-          h('div', { class: 'text-xs font-medium text-stone-500 mb-2' }, `Cobrar ${money(saldo.pending)}`),
+          h('div', { class: 'text-xs font-medium text-stone-600 mb-2' }, `Cobrar ${money(saldo.pending)}`),
           h(
             'div',
             { class: 'flex flex-wrap gap-2' },

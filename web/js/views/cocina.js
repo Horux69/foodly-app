@@ -47,7 +47,7 @@ export async function cocina(outlet) {
   const tablero = h('div');
   const filtroEstacion = h('div');
   let estacion = leerEstacion();
-  const marca = h('span', { class: 'flex items-center gap-1.5 text-xs text-stone-500' });
+  const marca = h('span', { class: 'flex items-center gap-1.5 text-xs text-stone-600' });
   const aviso = crearAviso();
   const interruptor = h('button', { class: 'boton boton-secundario', onClick: cambiarAviso });
 
@@ -98,15 +98,11 @@ export async function cocina(outlet) {
         'div',
         { class: 'flex flex-wrap items-center gap-1.5' },
         [{ id: null, name: 'Todo' }, ...estaciones].map((e) =>
-          h(
-            'button',
-            {
-              class: `boton ${e.id === estacion ? 'boton-primario' : 'boton-secundario'}`,
-              'aria-pressed': e.id === estacion ? 'true' : 'false',
-              onClick: () => elegirEstacion(e.id),
-            },
-            e.name
-          )
+          button(e.name, {
+            variant: e.id === estacion ? 'primary' : 'secondary',
+            'aria-pressed': e.id === estacion ? 'true' : 'false',
+            onClick: () => elegirEstacion(e.id),
+          })
         )
       )
     );
@@ -224,7 +220,7 @@ export async function cocina(outlet) {
                 ? suyos.map((pedido) => ticket(pedido, refrescar, listas))
                 : h(
                     'p',
-                    { class: 'text-sm text-stone-400 px-1 py-6 text-center border border-dashed border-stone-200 rounded-xl' },
+                    { class: 'text-sm text-stone-400 px-1 py-6 text-center border border-dashed border-stone-200 rounded-[--r-g]' },
                     'Nada aquí'
                   )
             );
@@ -288,8 +284,12 @@ function linea(item, listas) {
     h(
       'button',
       {
-        class: `w-full text-left flex gap-2.5 rounded-lg px-1 -mx-1 py-0.5 transition ${
-          marcada ? 'opacity-45' : 'hover:bg-stone-50'
+        // py-2.5 en vez de py-0.5: esta fila es el objetivo táctil que más se
+        // toca en toda la pantalla que más se opera de pie y con prisa — un
+        // renglón de un solo ítem sin esto quedaba en ~26px de alto, bajo
+        // cualquier mínimo razonable para un dedo en la cocina.
+        class: `w-full text-left flex gap-2.5 rounded-[--r] px-1.5 -mx-1.5 py-2.5 transition ${
+          marcada ? 'opacity-45' : 'hover:bg-stone-50 active:bg-stone-100'
         }`,
         'aria-pressed': marcada ? 'true' : 'false',
         title: marcada ? 'Marcada como preparada' : 'Marcar como preparada',
@@ -301,7 +301,7 @@ function linea(item, listas) {
       // La cantidad va aparte y con peso: es lo primero que busca cocina.
       h(
         'span',
-        { class: `inline-flex items-center justify-center min-w-[26px] h-[26px] px-1.5 rounded-md text-sm font-bold tabular-nums shrink-0 ${
+        { class: `inline-flex items-center justify-center min-w-[26px] h-[26px] px-1.5 rounded-[--r] text-sm font-bold tabular-nums shrink-0 ${
           marcada ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-900'
         }` },
         marcada ? icon('check', { size: 15 }) : item.quantity
@@ -324,7 +324,7 @@ function linea(item, listas) {
             )
           : null,
         item.modifiers.length
-          ? h('div', { class: 'text-xs text-stone-500' }, item.modifiers.join(' · '))
+          ? h('div', { class: 'text-xs text-stone-600' }, item.modifiers.join(' · '))
           : null,
         item.notes
           ? h(
@@ -357,7 +357,7 @@ function lineasPorTiempo(pedido, listas) {
     pedido.kitchen_tickets?.find((t) => (t.course ?? 1) === n)?.course_name ?? `Tiempo ${n}`;
 
   return numeros.flatMap((n) => [
-    h('li', { class: 'text-[11px] font-semibold uppercase tracking-wide text-stone-500 pt-1' }, nombre(n)),
+    h('li', { class: 'text-[11px] font-semibold uppercase tracking-wide text-stone-600 pt-1' }, nombre(n)),
     ...pedido.items.filter((i) => (i.course ?? 1) === n).map((item) => linea(item, listas)),
   ]);
 }
@@ -365,7 +365,7 @@ function lineasPorTiempo(pedido, listas) {
 function urgencia(minutos) {
   if (minutos >= TARDE_MINUTOS) return { clase: 'ticket-tarde', texto: 'text-red-700 font-semibold' };
   if (minutos >= ATENTO_MINUTOS) return { clase: 'ticket-atento', texto: 'text-amber-700 font-medium' };
-  return { clase: 'ticket-fresco', texto: 'text-stone-500' };
+  return { clase: 'ticket-fresco', texto: 'text-stone-600' };
 }
 
 function ticket(pedido, refrescar, listas) {
@@ -395,7 +395,7 @@ function ticket(pedido, refrescar, listas) {
         ),
         h(
           'div',
-          { class: 'flex items-center gap-1.5 text-xs text-stone-500 mt-0.5' },
+          { class: 'flex items-center gap-1.5 text-xs text-stone-600 mt-0.5' },
           icon(pedido.table_code ? 'mesa' : 'domicilio', { size: 14 }),
           pedido.table_code ? `Mesa ${pedido.table_code}` : canal(pedido.channel)
         )
@@ -423,17 +423,22 @@ function ticket(pedido, refrescar, listas) {
     h(
       'div',
       { class: 'flex flex-wrap gap-2 mt-auto pt-1' },
+      // big: true en toda la fila — es la acción que más se toca en la
+      // pantalla que más se opera de pie; la densidad de 34px es la que
+      // manda en el resto de la aplicación, no aquí.
       // Sale marcada como reimpresión: una comanda repetida sin avisar es
       // un plato preparado dos veces.
       button('Reimprimir', {
         variant: 'secondary',
         iconName: 'archivar',
+        big: true,
         onClick: () => imprimirComanda(pedido, { reimpresion: true }),
       }),
       pedido.next_statuses.map((estado) =>
         button(estado.name, {
           variant: estado.category === 'cancelled' ? 'danger' : 'primary',
           iconName: estado.category === 'cancelled' ? 'cerrar' : 'check',
+          big: true,
           onClick: (event) => avanzar(event.currentTarget, pedido, estado, refrescar),
         })
       )
