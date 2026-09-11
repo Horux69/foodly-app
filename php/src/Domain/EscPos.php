@@ -67,20 +67,33 @@ final class EscPos
     }
 
     /**
-     * A ASCII plano. `iconv` no siempre está disponible en un build mínimo de
-     * PHP; sin él, cualquier cosa fuera del rango imprimible se cambia por
-     * `?` en vez de mandarla tal cual — perder un caracter es mejor que
-     * mandarle a la impresora una secuencia que no sabe interpretar.
+     * Letras que el castellano usa y la impresora no entiende. Se mapean a
+     * mano y no con `iconv('ASCII//TRANSLIT')` porque el resultado de iconv
+     * depende de la implementación de la plataforma: con glibc 'ó' se vuelve
+     * 'o', pero en Windows se vuelve "'o" y 'ñ' se vuelve "~n", así que la
+     * comanda salía impresa «Jalape~no». Un mapa explícito imprime igual en
+     * todas partes, que es lo único que se le pide a un ticket.
+     */
+    private const SIN_TILDE = [
+        'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+        'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U', 'Ñ' => 'N',
+        'à' => 'a', 'è' => 'e', 'ì' => 'i', 'ò' => 'o', 'ù' => 'u',
+        'â' => 'a', 'ê' => 'e', 'î' => 'i', 'ô' => 'o', 'û' => 'u',
+        'ç' => 'c', 'Ç' => 'C', 'º' => 'o', 'ª' => 'a', '¿' => '?', '¡' => '!',
+    ];
+
+    /**
+     * A ASCII plano. Lo que quede fuera del rango imprimible después del mapa
+     * se cambia por `?` en vez de mandarlo tal cual: perder un caracter es
+     * mejor que mandarle a la impresora una secuencia que no sabe interpretar.
+     *
+     * El reemplazo va sin el modificador `u` a propósito, byte a byte: con
+     * texto mal codificado `preg_replace` en modo UTF-8 devuelve null y el
+     * ticket saldría en blanco, que es peor que salir con interrogantes.
      */
     public static function ascii(string $texto): string
     {
-        if (function_exists('iconv')) {
-            $transliterado = @iconv('UTF-8', 'ASCII//TRANSLIT', $texto);
-            if ($transliterado !== false) {
-                return $transliterado;
-            }
-        }
-        return (string) preg_replace('/[^\x20-\x7E]/', '?', $texto);
+        return (string) preg_replace('/[^\x20-\x7E]/', '?', strtr($texto, self::SIN_TILDE));
     }
 
     public static function linea(string $texto = ''): string
